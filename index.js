@@ -1,5 +1,3 @@
-// index.js
-
 const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({
@@ -9,75 +7,56 @@ const client = new Client({
   ]
 });
 
-// ===============================
-// Discord Bot Token
-// ===============================
+const TOKEN = process.env.TOKEN;
 
-const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
-
-// ===============================
-// 保護対象ユーザー
-// ===============================
-
-const protectedUsers = [
+// 対象ユーザー
+const protectedUsers = new Set([
   '1345621295303495711'
-];
+]);
 
-// ===============================
 // 保護ロール
-// ===============================
-
 const protectedRoles = [
   '1406344310072414218',
   '1447596863678320641'
 ];
 
-// ===============================
-
 client.once('ready', () => {
-
-  console.log(`✅ ${client.user.tag} 起動完了`);
-
+  console.log(`✅ 起動完了: ${client.user.tag}`);
 });
 
-// ロール削除監視
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
-
   try {
+    if (!protectedUsers.has(newMember.id)) return;
 
-    // 指定ユーザー以外無視
-    if (!protectedUsers.includes(newMember.id)) return;
+    // ロール差分確認（安全版）
+    const removedRoles = oldMember.roles.cache.filter(
+      role => !newMember.roles.cache.has(role.id)
+    );
 
     for (const roleId of protectedRoles) {
 
-      const hadRole = oldMember.roles.cache.has(roleId);
-      const hasRole = newMember.roles.cache.has(roleId);
+      // 削除された場合だけ復旧
+      if (removedRoles.has(roleId)) {
 
-      // ロール削除検知
-      if (hadRole && !hasRole) {
+        const role = newMember.guild.roles.cache.get(roleId);
+        if (!role) continue;
 
-        console.log(`⚠ ロール削除検知`);
+        // 重要：Botのロール順位チェック
+        const botMember = newMember.guild.members.me;
+        if (role.position >= botMember.roles.highest.position) {
+          console.log(`⚠ ロール順位が低くて付与不可: ${roleId}`);
+          continue;
+        }
 
-        // 即復旧
-        await newMember.roles.add(
-          roleId,
-          '保護ロール自動復旧'
-        );
+        await newMember.roles.add(roleId, 'auto restore');
 
-        console.log(`✅ ロール復旧完了`);
-
+        console.log(`✅ 復旧成功: ${roleId}`);
       }
     }
 
   } catch (err) {
-
-    console.error('❌ エラー');
-
-    console.error(err);
-
+    console.error('❌ エラー:', err);
   }
-
 });
 
-// ログイン
 client.login(TOKEN);
