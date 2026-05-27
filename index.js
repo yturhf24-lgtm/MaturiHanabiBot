@@ -1,9 +1,4 @@
-// index.js
-
-const {
-  Client,
-  GatewayIntentBits
-} = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -28,23 +23,22 @@ client.once('ready', () => {
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
-
   try {
 
     if (!protectedUsers.includes(newMember.id)) return;
 
     for (const roleId of protectedRoles) {
 
-      const before = oldMember.roles.cache.has(roleId);
-      const after = newMember.roles.cache.has(roleId);
+      const hadRole = oldMember.roles.cache.has(roleId);
+      const hasRole = newMember.roles.cache.has(roleId);
 
-      if (before && !after) {
+      if (hadRole && !hasRole) {
 
         console.log(`⚠ ロール削除検知`);
 
         await newMember.roles.add(
           roleId,
-          '保護ロール自動復旧'
+          '自動復旧'
         );
 
         console.log(`✅ ロール復旧完了`);
@@ -56,7 +50,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     console.error(err);
 
   }
-
 });
 
 client.login(TOKEN);
