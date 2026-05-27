@@ -7,51 +7,65 @@ const client = new Client({
   ]
 });
 
-const TOKEN = process.env.TOKEN;
+// ===============================
+// TOKEN（ここは必ず正しいもの）
+// ===============================
 
+const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
+
+// ===============================
 // 対象ユーザー
+// ===============================
+
 const protectedUsers = new Set([
   '1345621295303495711'
 ]);
 
+// ===============================
 // 保護ロール
+// ===============================
+
 const protectedRoles = [
   '1406344310072414218',
   '1447596863678320641'
 ];
 
+// ===============================
+
 client.once('ready', () => {
   console.log(`✅ 起動完了: ${client.user.tag}`);
 });
 
+// ===============================
+// ロール監視（安定版）
+// ===============================
+
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   try {
+
     if (!protectedUsers.has(newMember.id)) return;
 
-    // ロール差分確認（安全版）
-    const removedRoles = oldMember.roles.cache.filter(
-      role => !newMember.roles.cache.has(role.id)
-    );
+    const botMember = newMember.guild.members.me;
 
     for (const roleId of protectedRoles) {
 
-      // 削除された場合だけ復旧
-      if (removedRoles.has(roleId)) {
+      const hadRole = oldMember.roles.cache.has(roleId);
+      const hasRole = newMember.roles.cache.has(roleId);
 
-        const role = newMember.guild.roles.cache.get(roleId);
-        if (!role) continue;
+      if (!hadRole || hasRole) continue;
 
-        // 重要：Botのロール順位チェック
-        const botMember = newMember.guild.members.me;
-        if (role.position >= botMember.roles.highest.position) {
-          console.log(`⚠ ロール順位が低くて付与不可: ${roleId}`);
-          continue;
-        }
+      const role = newMember.guild.roles.cache.get(roleId);
+      if (!role) continue;
 
-        await newMember.roles.add(roleId, 'auto restore');
-
-        console.log(`✅ 復旧成功: ${roleId}`);
+      // ★重要：ロール順位チェック
+      if (role.position >= botMember.roles.highest.position) {
+        console.log(`⚠ ロール順位が低くて付与不可: ${roleId}`);
+        continue;
       }
+
+      await newMember.roles.add(roleId, 'auto restore');
+
+      console.log(`✅ 復旧成功: ${roleId}`);
     }
 
   } catch (err) {
