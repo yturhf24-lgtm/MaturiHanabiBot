@@ -9,32 +9,38 @@ const client = new Client({
   ]
 });
 
-// Render Environment Variables からTOKEN取得
-const TOKEN = process.env.TOKEN;
+// ===============================
+// Discord Bot Token
+// ===============================
 
-// TOKEN未設定防止
-if (!TOKEN) {
-  console.error('❌ TOKEN が設定されていません');
-  process.exit(1);
-}
+const TOKEN = 'https://api.render.com/deploy/srv-d8bde4hakrks73djk320?key=JF-MZBufB7w';
 
+// ===============================
 // 保護対象ユーザー
+// ===============================
+
 const protectedUsers = [
   '1345621295303495711'
 ];
 
+// ===============================
 // 保護ロール
+// ===============================
+
 const protectedRoles = [
   '1406344310072414218',
   '1447596863678320641'
 ];
 
-// 起動
+// ===============================
+
 client.once('ready', () => {
+
   console.log(`✅ ${client.user.tag} 起動完了`);
+
 });
 
-// ロール監視
+// ロール削除監視
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
   try {
@@ -44,11 +50,11 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
     for (const roleId of protectedRoles) {
 
-      const before = oldMember.roles.cache.has(roleId);
-      const after = newMember.roles.cache.has(roleId);
+      const hadRole = oldMember.roles.cache.has(roleId);
+      const hasRole = newMember.roles.cache.has(roleId);
 
       // ロール削除検知
-      if (before && !after) {
+      if (hadRole && !hasRole) {
 
         console.log(`⚠ ロール削除検知`);
 
