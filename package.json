@@ -1,0 +1,14 @@
+// package.json
+
+{
+  "name": "role-protect-bot",
+  "version": "1.0.0",
+  "description": "Discord role protect bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3"
+  }
+}
