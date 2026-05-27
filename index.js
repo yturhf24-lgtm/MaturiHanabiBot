@@ -1,6 +1,7 @@
+// index.js
 // ============================================
 // Discord ロール自動復旧BOT
-// 1ファイル完結版
+// Render対応 完全版
 // ============================================
 
 // npm install discord.js
@@ -15,7 +16,7 @@ const {
 // BOT TOKEN
 // =====================
 
-const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GtEFMi.stp1SiXglxQ15qQbkBLS9FEXnXswbrjGSdP-No';
+const TOKEN = process.env.TOKEN;
 
 // =====================
 // 保護対象ユーザー
