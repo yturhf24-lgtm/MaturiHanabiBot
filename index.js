@@ -13,7 +13,7 @@ const client = new Client({
 // Discord Bot Token
 // ===============================
 
-const TOKEN = 'https://api.render.com/deploy/srv-d8bde4hakrks73djk320?key=JF-MZBufB7w';
+const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
 
 // ===============================
 // 保護対象ユーザー
