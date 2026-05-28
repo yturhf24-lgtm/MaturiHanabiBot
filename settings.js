@@ -8,15 +8,14 @@ const defaultData = {
   newAccountAlertEnabled: true,
   alertChannelId: null,
   allowedRoleIds: [],
-  panelText: '説明ここ',
-  panelButton: 'ボタン'
+  panelText: '説明を入力してください'
 };
 
 function load() {
   if (!fs.existsSync(FILE)) {
     fs.writeFileSync(FILE, JSON.stringify(defaultData, null, 2));
   }
-  return JSON.parse(fs.readFileSync(FILE));
+  return JSON.parse(fs.readFileSync(FILE, 'utf8'));
 }
 
 function save(data) {
