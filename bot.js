@@ -1,5 +1,3 @@
-const fs = require('fs');
-
 const {
   Client,
   GatewayIntentBits,
@@ -9,53 +7,14 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   PermissionsBitField
 } = require('discord.js');
 
-const TOKEN = process.env.TOKEN;
+const { load, save } = require('./settings');
 
-if (!TOKEN) {
-  console.log('TOKENなし');
-  process.exit(1);
-}
+const TOKEN = 'ここにトークン';
 
-const SETTINGS_FILE = './settings.json';
-
-const defaultSettings = {
-  monitorEnabled: true,
-  linkAlertEnabled: true,
-  newAccountAlertEnabled: true,
-  alertChannelId: null,
-  allowedRoleIds: [],
-  panelDescription: '説明を入力してください',
-  panelButtonLabel: '開く'
-};
-
-let settings = defaultSettings;
-
-// ===============================
-// load/save
-// ===============================
-
-function loadSettings() {
-  if (!fs.existsSync(SETTINGS_FILE)) {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2));
-  }
-  settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-}
-
-function saveSettings() {
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-}
-
-loadSettings();
-
-// ===============================
-// client
-// ===============================
+let settings = load();
 
 const client = new Client({
   intents: [
@@ -67,28 +26,29 @@ const client = new Client({
 });
 
 // ===============================
-// permission
+// 権限
 // ===============================
 
-function hasPerm(interaction) {
-  const isOwner = interaction.user.id === interaction.guild.ownerId;
+function hasPerm(i) {
+  const owner = i.user.id === i.guild.ownerId;
 
-  const isAdmin = interaction.member.permissions.has(
+  const admin = i.member.permissions.has(
     PermissionsBitField.Flags.Administrator
   );
 
-  const roleOk = interaction.member.roles.cache.some(r =>
+  const role = i.member.roles.cache.some(r =>
     settings.allowedRoleIds.includes(r.id)
   );
 
-  return isOwner || isAdmin || roleOk;
+  return owner || admin || role;
 }
 
 // ===============================
-// ready
+// 起動
 // ===============================
 
 client.once('ready', async () => {
+
   console.log(client.user.tag + ' Ready');
 
   const cmds = [
@@ -110,20 +70,6 @@ client.once('ready', async () => {
       ),
 
     new SlashCommandBuilder()
-      .setName('リンクアラート')
-      .setDescription('ON/OFF')
-      .addBooleanOption(o =>
-        o.setName('状態').setRequired(true)
-      ),
-
-    new SlashCommandBuilder()
-      .setName('新規アカウントアラート')
-      .setDescription('ON/OFF')
-      .addBooleanOption(o =>
-        o.setName('状態').setRequired(true)
-      ),
-
-    new SlashCommandBuilder()
       .setName('設定確認')
       .setDescription('確認'),
 
@@ -141,48 +87,36 @@ client.once('ready', async () => {
 });
 
 // ===============================
-// interaction
+// コマンド
 // ===============================
 
 client.on('interactionCreate', async i => {
 
   if (!i.isChatInputCommand()) return;
 
-  if (
-    i.commandName !== '監視' &&
-    i.commandName !== '設定確認' &&
-    i.commandName !== 'サーバー情報' &&
-    !hasPerm(i)
-  ) {
-    return i.reply({ content: '権限なし', ephemeral: true });
+  settings = load();
+
+  if (!hasPerm(i) && i.commandName !== '設定確認') {
+    return i.reply({ content: '権限なし' });
   }
 
-  // ===============================
-  // 監視
-  // ===============================
   if (i.commandName === '監視') {
     settings.monitorEnabled = i.options.getBoolean('状態');
-    saveSettings();
-    return i.reply({ content: 'OK', ephemeral: true });
+    save(settings);
+    return i.reply({ content: 'OK' });
   }
 
-  // ===============================
-  // 設定確認
-  // ===============================
   if (i.commandName === '設定確認') {
     return i.reply({
       content:
         `監視:${settings.monitorEnabled}\n` +
-        `リンク:${settings.linkAlertEnabled}\n` +
-        `新規:${settings.newAccountAlertEnabled}`,
+        `リンク:${settings.linkAlertEnabled}`,
       ephemeral: true
     });
   }
 
-  // ===============================
-  // サーバー情報
-  // ===============================
   if (i.commandName === 'サーバー情報') {
+
     const g = i.guild;
 
     const bots = g.members.cache.filter(m => m.user.bot).size;
@@ -190,14 +124,10 @@ client.on('interactionCreate', async i => {
 
     return i.reply({
       content:
-        `合計:${g.memberCount}\nユーザー:${users}\nBOT:${bots}`,
-      ephemeral: true
+        `合計:${g.memberCount}\nユーザー:${users}\nBOT:${bots}`
     });
   }
 
-  // ===============================
-  // パネル
-  // ===============================
   if (i.commandName === 'パネル') {
 
     const embed = new EmbedBuilder()
@@ -220,7 +150,7 @@ client.on('interactionCreate', async i => {
 });
 
 // ===============================
-// message
+// メッセージ監視
 // ===============================
 
 client.on('messageCreate', m => {
@@ -228,16 +158,12 @@ client.on('messageCreate', m => {
   if (m.author.bot) return;
   if (!settings.monitorEnabled) return;
 
-  if (settings.linkAlertEnabled) {
+  if (/(https?:\/\/)/.test(m.content)) {
 
-    if (/(https?:\/\/)/.test(m.content)) {
+    const ch = m.guild.channels.cache.get(settings.alertChannelId);
+    if (!ch) return;
 
-      const ch = m.guild.channels.cache.get(settings.alertChannelId);
-      if (!ch) return;
-
-      ch.send(`リンク: ${m.author.tag}\n${m.content}`);
-    }
-
+    ch.send(`リンク検知\n${m.author.tag}\n${m.content}`);
   }
 
 });
