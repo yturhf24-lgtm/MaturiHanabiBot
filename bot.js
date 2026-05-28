@@ -40,7 +40,10 @@ function load() {
   }
 
   return JSON.parse(
-    fs.readFileSync(SETTINGS)
+    fs.readFileSync(
+      SETTINGS,
+      'utf8'
+    )
   );
 }
 
@@ -66,7 +69,7 @@ const client = new Client({
 });
 
 // =====================
-// util
+// embed util
 // =====================
 function okEmbed(title, desc) {
 
@@ -80,7 +83,7 @@ function errorEmbed(desc) {
 
   return new EmbedBuilder()
     .setColor(0xed4245)
-    .setTitle("エラー")
+    .setTitle('エラー')
     .setDescription(desc);
 }
 
@@ -92,6 +95,9 @@ function infoEmbed(title, desc) {
     .setDescription(desc);
 }
 
+// =====================
+// util
+// =====================
 function isAdmin(i, s) {
 
   if (
@@ -115,7 +121,7 @@ async function requireAlert(i, s) {
     await i.editReply({
       embeds: [
         errorEmbed(
-          "❌ アラートチャンネル未設定"
+          '❌ アラートチャンネル未設定'
         )
       ]
     });
@@ -186,9 +192,7 @@ client.once('ready', async () => {
       )
       .addSubcommand(s =>
         s.setName('clear')
-          .setDescription(
-            '全削除'
-          )
+          .setDescription('全削除')
       ),
 
     // panel
@@ -213,7 +217,7 @@ client.once('ready', async () => {
       .addSubcommand(s =>
         s.setName('create')
           .setDescription(
-            'パネル送信'
+            'パネル生成'
           )
       ),
 
@@ -250,9 +254,16 @@ client.on(
     // =====================
     if (i.isChatInputCommand()) {
 
-      await i.deferReply({
-        ephemeral: true
-      });
+      const noDefer =
+        i.commandName === 'panel' &&
+        i.options.getSubcommand() === 'create';
+
+      if (!noDefer) {
+
+        await i.deferReply({
+          ephemeral: true
+        });
+      }
 
       const s = load();
 
@@ -268,7 +279,7 @@ client.on(
             return i.editReply({
               embeds: [
                 errorEmbed(
-                  "❌ 権限なし"
+                  '❌ 権限なし'
                 )
               ]
             });
@@ -286,7 +297,7 @@ client.on(
           return i.editReply({
             embeds: [
               okEmbed(
-                "アラート設定",
+                'アラート設定',
                 `設定: ${ch}`
               )
             ]
@@ -303,7 +314,7 @@ client.on(
             return i.editReply({
               embeds: [
                 errorEmbed(
-                  "❌ 権限なし"
+                  '❌ 権限なし'
                 )
               ]
             });
@@ -329,10 +340,10 @@ client.on(
             return i.editReply({
               embeds: [
                 infoEmbed(
-                  "リンク監視",
+                  'リンク監視',
                   s.linkAlertEnabled
-                    ? "✅ ON"
-                    : "❌ OFF"
+                    ? '✅ ON'
+                    : '❌ OFF'
                 )
               ]
             });
@@ -349,10 +360,10 @@ client.on(
             return i.editReply({
               embeds: [
                 infoEmbed(
-                  "参加監視",
+                  '参加監視',
                   s.playerMonitorEnabled
-                    ? "✅ ON"
-                    : "❌ OFF"
+                    ? '✅ ON'
+                    : '❌ OFF'
                 )
               ]
             });
@@ -369,7 +380,7 @@ client.on(
             return i.editReply({
               embeds: [
                 errorEmbed(
-                  "❌ 権限なし"
+                  '❌ 権限なし'
                 )
               ]
             });
@@ -401,7 +412,7 @@ client.on(
             return i.editReply({
               embeds: [
                 okEmbed(
-                  "ロール追加",
+                  'ロール追加',
                   `${role} を追加`
                 )
               ]
@@ -418,8 +429,8 @@ client.on(
             return i.editReply({
               embeds: [
                 infoEmbed(
-                  "ロール削除",
-                  "全削除しました"
+                  'ロール削除',
+                  '全削除しました'
                 )
               ]
             });
@@ -436,7 +447,7 @@ client.on(
             return i.editReply({
               embeds: [
                 errorEmbed(
-                  "❌ 権限なし"
+                  '❌ 権限なし'
                 )
               ]
             });
@@ -463,7 +474,7 @@ client.on(
             return i.editReply({
               embeds: [
                 okEmbed(
-                  "パネル設定",
+                  'パネル設定',
                   `設定: ${ch}`
                 )
               ]
@@ -477,12 +488,13 @@ client.on(
               !s.panelChannelId
             ) {
 
-              return i.editReply({
+              return i.reply({
                 embeds: [
                   errorEmbed(
-                    "❌ パネルチャンネル未設定"
+                    '❌ パネルチャンネル未設定'
                   )
-                ]
+                ],
+                ephemeral: true
               });
             }
 
@@ -608,7 +620,7 @@ client.on(
               .addFields(
                 {
                   name:
-                    "メンバー",
+                    'メンバー',
                   value:
 `総数: ${g.memberCount}
 一般: ${humans}
@@ -617,7 +629,7 @@ BOT: ${bots}`,
                 },
                 {
                   name:
-                    "ステータス",
+                    'ステータス',
                   value:
 `🟢 オンライン: ${online}
 🌙 退席中: ${idle}
@@ -627,7 +639,7 @@ BOT: ${bots}`,
                 },
                 {
                   name:
-                    "チャンネル",
+                    'チャンネル',
                   value:
 `テキスト: ${text}
 ボイス: ${voice}
@@ -636,7 +648,7 @@ BOT: ${bots}`,
                 },
                 {
                   name:
-                    "ブースト",
+                    'ブースト',
                   value:
 `レベル: ${g.premiumTier}
 回数: ${g.premiumSubscriptionCount}`,
@@ -644,7 +656,7 @@ BOT: ${bots}`,
                 },
                 {
                   name:
-                    "作成日",
+                    '作成日',
                   value:
 `<t:${Math.floor(
   g.createdTimestamp /
@@ -670,43 +682,43 @@ BOT: ${bots}`,
                 0x5865f2
               )
               .setTitle(
-                "設定一覧"
+                '設定一覧'
               )
               .addFields(
                 {
                   name:
-                    "アラート",
+                    'アラート',
                   value:
                     s.alertChannelId
                       ? `<#${s.alertChannelId}>`
-                      : "OFF",
+                      : 'OFF',
                   inline: false
                 },
                 {
                   name:
-                    "リンク監視",
+                    'リンク監視',
                   value:
                     s.linkAlertEnabled
-                      ? "ON"
-                      : "OFF",
+                      ? 'ON'
+                      : 'OFF',
                   inline: true
                 },
                 {
                   name:
-                    "参加監視",
+                    '参加監視',
                   value:
                     s.playerMonitorEnabled
-                      ? "ON"
-                      : "OFF",
+                      ? 'ON'
+                      : 'OFF',
                   inline: true
                 },
                 {
                   name:
-                    "パネルチャンネル",
+                    'パネルチャンネル',
                   value:
                     s.panelChannelId
                       ? `<#${s.panelChannelId}>`
-                      : "未設定",
+                      : '未設定',
                   inline: false
                 }
               );
@@ -720,12 +732,27 @@ BOT: ${bots}`,
 
         console.error(e);
 
-        return i.editReply({
+        if (
+          i.deferred ||
+          i.replied
+        ) {
+
+          return i.editReply({
+            embeds: [
+              errorEmbed(
+                '❌ エラー'
+              )
+            ]
+          });
+        }
+
+        return i.reply({
           embeds: [
             errorEmbed(
-              "❌ エラー"
+              '❌ エラー'
             )
-          ]
+          ],
+          ephemeral: true
         });
       }
     }
@@ -737,7 +764,7 @@ BOT: ${bots}`,
 
       const s = load();
 
-      // panel
+      // panel modal
       if (
         i.customId ===
         'panel_modal'
@@ -758,7 +785,7 @@ BOT: ${bots}`,
           return i.reply({
             embeds: [
               errorEmbed(
-                "❌ チャンネルなし"
+                '❌ チャンネルなし'
               )
             ],
             ephemeral: true
@@ -797,8 +824,8 @@ BOT: ${bots}`,
         return i.reply({
           embeds: [
             okEmbed(
-              "パネル",
-              "送信しました"
+              'パネル',
+              '送信しました'
             )
           ],
           ephemeral: true
@@ -819,7 +846,7 @@ BOT: ${bots}`,
         return i.reply({
           embeds: [
             infoEmbed(
-              "送信内容",
+              '送信内容',
               msg
             )
           ],
@@ -913,7 +940,7 @@ client.on(
             0xed4245
           )
           .setTitle(
-            "リンク検知"
+            'リンク検知'
           )
           .setDescription(
             m.content
@@ -921,13 +948,13 @@ client.on(
           .addFields(
             {
               name:
-                "ユーザー",
+                'ユーザー',
               value:
                 m.author.tag
             },
             {
               name:
-                "チャンネル",
+                'チャンネル',
               value:
                 `${m.channel}`
             }
@@ -970,7 +997,7 @@ client.on(
           0x57f287
         )
         .setTitle(
-          "参加通知"
+          '参加通知'
         )
         .setDescription(
           `${member.user.tag} が参加しました`
