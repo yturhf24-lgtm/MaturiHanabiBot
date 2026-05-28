@@ -793,7 +793,7 @@ BOT: ${bots}`,
                         g.createdTimestamp
                       )
                     ),
-                  inline: false
+                  inline: true
                 },
 
                 {
