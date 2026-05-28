@@ -9,5 +9,8 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log('Server Start');
+  console.log('Web Server Start');
 });
+
+// Discord bot起動
+require('./bot');
