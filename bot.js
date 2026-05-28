@@ -155,12 +155,12 @@ client.on('interactionCreate', async i => {
         {
           name: '作成日',
           value: created,
-          inline: false
+          inline: true
         },
         {
           name: '過疎度',
           value: `${inactivity}%`,
-          inline: false
+          inline: true
         }
       )
       .setColor(0x2b2d31);
