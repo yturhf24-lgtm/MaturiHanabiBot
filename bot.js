@@ -11,7 +11,7 @@ const {
 
 const { load, save } = require('./settings');
 
-const TOKEN = 'YOUR_TOKEN_HERE';
+const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s';
 
 const client = new Client({
   intents: [
