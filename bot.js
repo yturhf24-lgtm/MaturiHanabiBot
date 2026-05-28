@@ -1,3 +1,4 @@
+js
 // =====================
 // Discord BOT 完成版
 // discord.js v14
@@ -793,7 +794,7 @@ BOT: ${bots}`,
                         g.createdTimestamp
                       )
                     ),
-                  inline: true
+                  inline: false
                 },
 
                 {
@@ -806,7 +807,7 @@ BOT: ${bots}`,
                         dnd,
                       g.memberCount
                     ),
-                  inline: true
+                  inline: false
                 }
               )
               .setTimestamp();
@@ -1241,3 +1242,4 @@ client.on(
 // login
 // =====================
 client.login(TOKEN);
+```
