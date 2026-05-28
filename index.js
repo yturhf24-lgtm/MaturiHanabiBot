@@ -23,7 +23,7 @@ const client = new Client({
 // TOKEN
 // ===============================
 
-const TOKEN = 'ここに新しいBOT_TOKEN';
+const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
 
 // ===============================
 // /コマンド使用可能ロール
