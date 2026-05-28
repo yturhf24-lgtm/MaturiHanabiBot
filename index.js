@@ -1,13 +1,30 @@
+const express = require('express');
+
 const {
   Client,
   GatewayIntentBits,
   SlashCommandBuilder,
-  PermissionsBitField,
   ChannelType
 } = require('discord.js');
 
 // ===============================
-// BOT
+// Express
+// ===============================
+
+const app = express();
+
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('BOT ONLINE');
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Web Server 起動: ${PORT}`);
+});
+
+// ===============================
+// Discord Bot
 // ===============================
 
 const client = new Client({
@@ -26,8 +43,7 @@ const client = new Client({
 const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
 
 // ===============================
-// /コマンド使用可能ロール
-// このロール持ちだけ使用可能
+// コマンド使用可能ロール
 // ===============================
 
 const allowedRoleIds = [
@@ -54,10 +70,6 @@ client.once('ready', async () => {
 
   console.log(`✅ ${client.user.tag} 起動完了`);
 
-  // ===============================
-  // Slash Commands
-  // ===============================
-
   const commands = [
 
     new SlashCommandBuilder()
@@ -66,7 +78,7 @@ client.once('ready', async () => {
       .addBooleanOption(option =>
         option
           .setName('状態')
-          .setDescription('true = ON / false = OFF')
+          .setDescription('ON/OFF')
           .setRequired(true)
       ),
 
@@ -83,7 +95,7 @@ client.once('ready', async () => {
 
     new SlashCommandBuilder()
       .setName('リンクアラート')
-      .setDescription('リンク監視ON/OFF')
+      .setDescription('リンク監視')
       .addBooleanOption(option =>
         option
           .setName('状態')
@@ -93,7 +105,7 @@ client.once('ready', async () => {
 
     new SlashCommandBuilder()
       .setName('新規アカウントアラート')
-      .setDescription('10日以内アカウント検知')
+      .setDescription('10日以内アカウント監視')
       .addBooleanOption(option =>
         option
           .setName('状態')
@@ -121,10 +133,7 @@ client.on('interactionCreate', async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  // ===============================
-  // ロール権限チェック
-  // ===============================
-
+  // ロール権限
   const hasRole = interaction.member.roles.cache.some(
     role => allowedRoleIds.includes(role.id)
   );
@@ -132,14 +141,12 @@ client.on('interactionCreate', async interaction => {
   if (!hasRole) {
 
     return interaction.reply({
-      content: '❌ このコマンドを使う権限がありません',
+      content: '❌ 権限なし',
       ephemeral: true
     });
 
   }
 
-  // ===============================
-  // /監視
   // ===============================
 
   if (interaction.commandName === '監視') {
@@ -152,8 +159,6 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // ===============================
-  // /アラートチャンネル
   // ===============================
 
   if (interaction.commandName === 'アラートチャンネル') {
@@ -169,8 +174,6 @@ client.on('interactionCreate', async interaction => {
   }
 
   // ===============================
-  // /リンクアラート
-  // ===============================
 
   if (interaction.commandName === 'リンクアラート') {
 
@@ -183,8 +186,6 @@ client.on('interactionCreate', async interaction => {
   }
 
   // ===============================
-  // /新規アカウントアラート
-  // ===============================
 
   if (interaction.commandName === '新規アカウントアラート') {
 
@@ -196,8 +197,6 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // ===============================
-  // /サーバー情報
   // ===============================
 
   if (interaction.commandName === 'サーバー情報') {
@@ -227,10 +226,7 @@ client.on('messageCreate', async message => {
 
   if (!monitorEnabled) return;
 
-  // ===============================
-  // リンク監視
-  // ===============================
-
+  // リンク検知
   if (
     linkAlertEnabled &&
     /(https?:\/\/[^\s]+)/g.test(message.content)
@@ -261,7 +257,7 @@ ${message.content}`
 });
 
 // ===============================
-// 新規アカウント監視
+// 新規アカウント検知
 // ===============================
 
 client.on('guildMemberAdd', async member => {
@@ -298,8 +294,6 @@ client.on('guildMemberAdd', async member => {
 
 });
 
-// ===============================
-// ログイン
 // ===============================
 
 client.login(TOKEN);
