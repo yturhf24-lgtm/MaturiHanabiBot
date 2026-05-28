@@ -30,7 +30,9 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 Web Server 起動: ${PORT}`);
+  console.log(
+    "Web Server Start: " + PORT
+  );
 });
 
 // ===============================
@@ -50,13 +52,16 @@ const client = new Client({
 // TOKEN
 // ===============================
 
-const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
+const TOKEN =
+  process.env.TOKEN ||
+  'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
 
 // ===============================
 // 保存ファイル
 // ===============================
 
-const SETTINGS_FILE = './settings.json';
+const SETTINGS_FILE =
+  './settings.json';
 
 // ===============================
 // 設定
@@ -68,7 +73,8 @@ let settings = {
   linkAlertEnabled: true,
   newAccountAlertEnabled: true,
   allowedRoleIds: [],
-  panelDescription: 'ここに説明を書いてください',
+  panelDescription:
+    'ここに説明を書いてください',
   panelButtonLabel: '開く'
 };
 
@@ -76,7 +82,9 @@ let settings = {
 // 設定ロード
 // ===============================
 
-if (fs.existsSync(SETTINGS_FILE)) {
+if (
+  fs.existsSync(SETTINGS_FILE)
+) {
 
   try {
 
@@ -88,11 +96,15 @@ if (fs.existsSync(SETTINGS_FILE)) {
 
     settings = JSON.parse(data);
 
-    console.log('✅ 設定ロード完了');
+    console.log(
+      'Settings Loaded'
+    );
 
   } catch (err) {
 
-    console.log('❌ 設定ロード失敗');
+    console.log(
+      'Settings Load Error'
+    );
 
   }
 
@@ -108,14 +120,23 @@ function saveSettings() {
 
     fs.writeFileSync(
       SETTINGS_FILE,
-      JSON.stringify(settings, null, 2)
+      JSON.stringify(
+        settings,
+        null,
+        2
+      )
     );
 
-    console.log('✅ 設定保存完了');
+    console.log(
+      'Settings Saved'
+    );
 
   } catch (err) {
 
-    console.log('❌ 設定保存失敗');
+    console.log(
+      'Settings Save Error'
+    );
+
     console.error(err);
 
   }
@@ -126,168 +147,204 @@ function saveSettings() {
 // 起動
 // ===============================
 
-client.once('ready', async () => {
+client.once(
+  'ready',
+  async () => {
 
-  console.log(
-    `✅ ${client.user.tag} 起動完了`
-  );
+    console.log(
+      client.user.tag +
+      ' Ready'
+    );
 
-  const commands = [
+    const commands = [
 
-    // ===============================
-    // 監視
-    // ===============================
+      // ===============================
+      // 監視
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('監視')
-      .setDescription('監視ON/OFF')
-      .addBooleanOption(option =>
-        option
-          .setName('状態')
-          .setDescription('ON/OFF')
-          .setRequired(true)
-      ),
+      new SlashCommandBuilder()
+        .setName('監視')
+        .setDescription(
+          '監視ON/OFF'
+        )
+        .addBooleanOption(
+          option =>
+            option
+              .setName('状態')
+              .setDescription(
+                'ON/OFF'
+              )
+              .setRequired(true)
+        ),
 
-    // ===============================
-    // アラートチャンネル
-    // ===============================
+      // ===============================
+      // アラートチャンネル
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('アラートチャンネル')
-      .setDescription(
-        'アラート送信先設定'
-      )
-      .addChannelOption(option =>
-        option
-          .setName('チャンネル')
-          .setDescription('送信先')
-          .addChannelTypes(
-            ChannelType.GuildText
-          )
-          .setRequired(true)
-      ),
+      new SlashCommandBuilder()
+        .setName(
+          'アラートチャンネル'
+        )
+        .setDescription(
+          'アラート送信先'
+        )
+        .addChannelOption(
+          option =>
+            option
+              .setName(
+                'チャンネル'
+              )
+              .setDescription(
+                '送信先'
+              )
+              .addChannelTypes(
+                ChannelType.GuildText
+              )
+              .setRequired(true)
+        ),
 
-    // ===============================
-    // リンクアラート
-    // ===============================
+      // ===============================
+      // リンクアラート
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('リンクアラート')
-      .setDescription(
-        'リンク監視ON/OFF'
-      )
-      .addBooleanOption(option =>
-        option
-          .setName('状態')
-          .setDescription('ON/OFF')
-          .setRequired(true)
-      ),
+      new SlashCommandBuilder()
+        .setName(
+          'リンクアラート'
+        )
+        .setDescription(
+          'リンク監視'
+        )
+        .addBooleanOption(
+          option =>
+            option
+              .setName('状態')
+              .setDescription(
+                'ON/OFF'
+              )
+              .setRequired(true)
+        ),
 
-    // ===============================
-    // 新規アカウントアラート
-    // ===============================
+      // ===============================
+      // 新規アカウントアラート
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName(
-        '新規アカウントアラート'
-      )
-      .setDescription(
-        '10日以内アカウント監視'
-      )
-      .addBooleanOption(option =>
-        option
-          .setName('状態')
-          .setDescription('ON/OFF')
-          .setRequired(true)
-      ),
+      new SlashCommandBuilder()
+        .setName(
+          '新規アカウントアラート'
+        )
+        .setDescription(
+          '10日以内監視'
+        )
+        .addBooleanOption(
+          option =>
+            option
+              .setName('状態')
+              .setDescription(
+                'ON/OFF'
+              )
+              .setRequired(true)
+        ),
 
-    // ===============================
-    // 設定確認
-    // ===============================
+      // ===============================
+      // 設定確認
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('設定確認')
-      .setDescription(
-        '現在の設定確認'
-      ),
+      new SlashCommandBuilder()
+        .setName('設定確認')
+        .setDescription(
+          '設定確認'
+        ),
 
-    // ===============================
-    // サーバー情報
-    // ===============================
+      // ===============================
+      // サーバー情報
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('サーバー情報')
-      .setDescription(
-        'サーバー情報表示'
-      ),
+      new SlashCommandBuilder()
+        .setName(
+          'サーバー情報'
+        )
+        .setDescription(
+          'サーバー情報'
+        ),
 
-    // ===============================
-    // コマンド権限許可
-    // ===============================
+      // ===============================
+      // コマンド権限許可
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('コマンド権限許可')
-      .setDescription(
-        '使用可能ロール追加'
-      )
-      .addRoleOption(option =>
-        option
-          .setName('ロール')
-          .setDescription(
-            '許可するロール'
-          )
-          .setRequired(true)
-      ),
+      new SlashCommandBuilder()
+        .setName(
+          'コマンド権限許可'
+        )
+        .setDescription(
+          '権限追加'
+        )
+        .addRoleOption(
+          option =>
+            option
+              .setName('ロール')
+              .setDescription(
+                '許可ロール'
+              )
+              .setRequired(true)
+        ),
 
-    // ===============================
-    // コマンド権限剥奪
-    // ===============================
+      // ===============================
+      // コマンド権限剥奪
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('コマンド権限剥奪')
-      .setDescription(
-        '使用可能ロール削除'
-      )
-      .addRoleOption(option =>
-        option
-          .setName('ロール')
-          .setDescription(
-            '削除するロール'
-          )
-          .setRequired(true)
-      ),
+      new SlashCommandBuilder()
+        .setName(
+          'コマンド権限剥奪'
+        )
+        .setDescription(
+          '権限削除'
+        )
+        .addRoleOption(
+          option =>
+            option
+              .setName('ロール')
+              .setDescription(
+                '削除ロール'
+              )
+              .setRequired(true)
+        ),
 
-    // ===============================
-    // パネル設定
-    // ===============================
+      // ===============================
+      // パネル設定
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('パネル設定')
-      .setDescription(
-        '説明とボタン設定'
-      ),
+      new SlashCommandBuilder()
+        .setName(
+          'パネル設定'
+        )
+        .setDescription(
+          '説明とボタン設定'
+        ),
 
-    // ===============================
-    // パネル
-    // ===============================
+      // ===============================
+      // パネル
+      // ===============================
 
-    new SlashCommandBuilder()
-      .setName('パネル')
-      .setDescription(
-        'パネル送信'
-      )
+      new SlashCommandBuilder()
+        .setName('パネル')
+        .setDescription(
+          'パネル送信'
+        )
 
-  ].map(command => command.toJSON());
+    ].map(command =>
+      command.toJSON()
+    );
 
-  await client.application.commands.set(
-    commands
-  );
+    await client.application.commands.set(
+      commands
+    );
 
-  console.log(
-    '✅ Slash Commands 登録完了'
-  );
+    console.log(
+      'Slash Commands Loaded'
+    );
 
-});
+  }
+);
 
 // ===============================
 // Interaction
@@ -301,7 +358,9 @@ client.on(
     // Modal
     // ===============================
 
-    if (interaction.isModalSubmit()) {
+    if (
+      interaction.isModalSubmit()
+    ) {
 
       if (
         interaction.customId ===
@@ -322,7 +381,7 @@ client.on(
 
         return interaction.reply({
           content:
-`✅ パネル設定保存完了`,
+            'パネル設定保存完了',
           flags:
             MessageFlags.Ephemeral
         });
@@ -344,7 +403,7 @@ client.on(
 
         return interaction.reply({
           content:
-`✅ ボタンが押されました`,
+            'ボタンが押されました',
           flags:
             MessageFlags.Ephemeral
         });
@@ -354,26 +413,19 @@ client.on(
     }
 
     // ===============================
-    // Slash Command以外無視
+    // Slash Command
     // ===============================
 
     if (
       !interaction.isChatInputCommand()
     ) return;
 
-    const guild = interaction.guild;
-
-    // ===============================
-    // Owner
-    // ===============================
+    const guild =
+      interaction.guild;
 
     const isOwner =
       interaction.user.id ===
       guild.ownerId;
-
-    // ===============================
-    // Role Check
-    // ===============================
 
     const hasAllowedRole =
       interaction.member.roles.cache.some(
@@ -384,7 +436,7 @@ client.on(
       );
 
     // ===============================
-    // 権限チェック
+    // 権限
     // ===============================
 
     if (
@@ -397,7 +449,8 @@ client.on(
     ) {
 
       return interaction.reply({
-        content: '❌ 権限なし',
+        content:
+          '権限なし',
         flags:
           MessageFlags.Ephemeral
       });
@@ -417,7 +470,7 @@ client.on(
 
         return interaction.reply({
           content:
-            '❌ サーバー所有者限定',
+            'サーバー所有者限定',
           flags:
             MessageFlags.Ephemeral
         });
@@ -445,7 +498,7 @@ client.on(
 
       return interaction.reply({
         content:
-`✅ ${role} を許可しました`,
+          '権限追加完了',
         flags:
           MessageFlags.Ephemeral
       });
@@ -465,7 +518,7 @@ client.on(
 
         return interaction.reply({
           content:
-            '❌ サーバー所有者限定',
+            'サーバー所有者限定',
           flags:
             MessageFlags.Ephemeral
         });
@@ -486,7 +539,7 @@ client.on(
 
       return interaction.reply({
         content:
-`✅ ${role} の権限を剥奪`,
+          '権限削除完了',
         flags:
           MessageFlags.Ephemeral
       });
@@ -511,12 +564,12 @@ client.on(
 
       return interaction.reply({
         content:
-`✅ 監視:
-${
-settings.monitorEnabled
-? 'ON'
-: 'OFF'
-}`,
+          '監視: ' +
+          (
+            settings.monitorEnabled
+              ? 'ON'
+              : 'OFF'
+          ),
         flags:
           MessageFlags.Ephemeral
       });
@@ -544,8 +597,8 @@ settings.monitorEnabled
 
       return interaction.reply({
         content:
-`✅ アラートチャンネル設定:
-${channel}`,
+          '設定完了: ' +
+          channel,
         flags:
           MessageFlags.Ephemeral
       });
@@ -570,12 +623,12 @@ ${channel}`,
 
       return interaction.reply({
         content:
-`✅ リンク監視:
-${
-settings.linkAlertEnabled
-? 'ON'
-: 'OFF'
-}`,
+          'リンク監視: ' +
+          (
+            settings.linkAlertEnabled
+              ? 'ON'
+              : 'OFF'
+          ),
         flags:
           MessageFlags.Ephemeral
       });
@@ -600,12 +653,12 @@ settings.linkAlertEnabled
 
       return interaction.reply({
         content:
-`✅ 新規アカウント監視:
-${
-settings.newAccountAlertEnabled
-? 'ON'
-: 'OFF'
-}`,
+          '新規アカウント監視: ' +
+          (
+            settings.newAccountAlertEnabled
+              ? 'ON'
+              : 'OFF'
+          ),
         flags:
           MessageFlags.Ephemeral
       });
@@ -623,38 +676,32 @@ settings.newAccountAlertEnabled
 
       return interaction.reply({
         content:
-`⚙ 現在の設定
-
-👁 監視:
-${
+`監視: ${
 settings.monitorEnabled
 ? 'ON'
 : 'OFF'
 }
 
-🔗 リンク監視:
+リンク監視:
 ${
 settings.linkAlertEnabled
 ? 'ON'
 : 'OFF'
 }
 
-🆕 新規アカウント監視:
+新規アカウント監視:
 ${
 settings.newAccountAlertEnabled
 ? 'ON'
 : 'OFF'
 }
 
-📢 アラートチャンネル:
+アラートチャンネル:
 ${
 settings.alertChannelId
 ? `<#${settings.alertChannelId}>`
 : '未設定'
-}
-
-🎭 権限ロール数:
-${settings.allowedRoleIds.length}`,
+}`,
         flags:
           MessageFlags.Ephemeral
       });
@@ -687,24 +734,22 @@ ${settings.allowedRoleIds.length}`,
 
       return interaction.reply({
         content:
-`📊 サーバー情報
-
-👑 サーバー名:
+`サーバー名:
 ${guild.name}
 
-👥 合計人数:
+合計人数:
 ${guild.memberCount}
 
-🙂 一般ユーザー:
+一般ユーザー:
 ${userCount}
 
-🤖 BOT:
+BOT:
 ${botCount}
 
-📝 チャンネル数:
+チャンネル数:
 ${guild.channels.cache.size}
 
-🎭 ロール数:
+ロール数:
 ${guild.roles.cache.size}`,
         flags:
           MessageFlags.Ephemeral
@@ -726,7 +771,9 @@ ${guild.roles.cache.size}`,
           .setCustomId(
             'panel_modal'
           )
-          .setTitle('パネル設定');
+          .setTitle(
+            'パネル設定'
+          );
 
       const descriptionInput =
         new TextInputBuilder()
@@ -747,7 +794,9 @@ ${guild.roles.cache.size}`,
           .setCustomId(
             'panel_button'
           )
-          .setLabel('ボタン名')
+          .setLabel(
+            'ボタン名'
+          )
           .setStyle(
             TextInputStyle.Short
           )
@@ -863,11 +912,15 @@ client.on(
         if (channel) {
 
           channel.send(
-`🚨 リンク検知
+`リンク検知
 
-👤 ${message.author.tag}
-📍 ${message.channel}
+ユーザー:
+${message.author.tag}
 
+チャンネル:
+${message.channel}
+
+内容:
 ${message.content}`
           );
 
@@ -915,11 +968,16 @@ client.on(
       if (channel) {
 
         channel.send(
-`🚨 新規アカウント検知
+`新規アカウント検知
 
-👤 ${member.user.tag}
-📅 作成日数: ${days}日
-🆔 ${member.id}`
+ユーザー:
+${member.user.tag}
+
+作成日数:
+${days}日
+
+ID:
+${member.id}`
         );
 
       }
