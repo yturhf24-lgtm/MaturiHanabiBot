@@ -26,17 +26,23 @@ const client = new Client({
 // 安全関数
 // =====================
 const safeStr = (v, f = "未設定") =>
-  typeof v === "string" && v.trim().length ? v : f;
+  typeof v === "string" && v.trim() ? v : f;
 
+// =====================
+// 権限
+// =====================
 function isAllowed(i, s) {
   if (i.member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
   if (!s.allowedRoles?.length) return false;
   return i.member.roles.cache.some(r => s.allowedRoles.includes(r.id));
 }
 
+// =====================
+// アラート必須チェック
+// =====================
 function requireAlert(i, s) {
   if (!s.alertChannelId) {
-    i.editReply("アラートチャンネル未設定");
+    i.reply({ content: "アラートチャンネル未設定", ephemeral: true });
     return false;
   }
   return true;
@@ -50,6 +56,7 @@ client.once('ready', async () => {
 
   const cmds = [
 
+    // alert
     new SlashCommandBuilder()
       .setName('alert')
       .setDescription('アラート設定')
@@ -65,48 +72,70 @@ client.once('ready', async () => {
           .setDescription('無効化')
       ),
 
+    // link
     new SlashCommandBuilder()
       .setName('link')
       .setDescription('リンク監視')
-      .addSubcommand(s => s.setName('on'))
-      .addSubcommand(s => s.setName('off')),
+      .addSubcommand(s =>
+        s.setName('on')
+          .setDescription('ON')
+      )
+      .addSubcommand(s =>
+        s.setName('off')
+          .setDescription('OFF')
+      ),
 
+    // player
     new SlashCommandBuilder()
       .setName('player')
       .setDescription('参加監視')
-      .addSubcommand(s => s.setName('on'))
-      .addSubcommand(s => s.setName('off')),
+      .addSubcommand(s =>
+        s.setName('on')
+          .setDescription('ON')
+      )
+      .addSubcommand(s =>
+        s.setName('off')
+          .setDescription('OFF')
+      ),
 
+    // role
     new SlashCommandBuilder()
       .setName('role')
       .setDescription('ロール管理')
       .addSubcommand(s =>
         s.setName('add')
+          .setDescription('追加')
           .addRoleOption(o =>
             o.setName('role').setDescription('ロール').setRequired(true)
           )
       )
       .addSubcommand(s =>
         s.setName('clear')
+          .setDescription('全削除')
       ),
 
+    // panel
     new SlashCommandBuilder()
       .setName('panel')
       .setDescription('パネル')
       .addSubcommand(s =>
         s.setName('setchannel')
+          .setDescription('チャンネル設定')
           .addChannelOption(o =>
             o.setName('channel').setDescription('チャンネル').setRequired(true)
           )
       )
       .addSubcommand(s =>
         s.setName('post')
+          .setDescription('投稿')
       ),
 
+    // server
     new SlashCommandBuilder()
       .setName('server')
       .setDescription('サーバー情報'),
 
+    // status
     new SlashCommandBuilder()
       .setName('status')
       .setDescription('状態確認')
@@ -120,17 +149,15 @@ client.once('ready', async () => {
 // interaction
 // =====================
 client.on('interactionCreate', async i => {
-
   if (!i.isChatInputCommand()) return;
 
-  // 💥 応答遅延（必須）
   await i.deferReply({ ephemeral: true });
 
   let s;
 
   try {
     s = load();
-  } catch (e) {
+  } catch {
     return i.editReply("設定読み込み失敗");
   }
 
@@ -150,14 +177,12 @@ client.on('interactionCreate', async i => {
         const ch = i.options.getChannel('channel');
         s.alertChannelId = ch.id;
         save(s);
-
         return i.editReply("設定完了");
       }
 
       if (sub === 'off') {
         s.alertChannelId = null;
         save(s);
-
         return i.editReply("無効化");
       }
     }
@@ -170,7 +195,8 @@ client.on('interactionCreate', async i => {
       if (!isAllowed(i, s))
         return i.editReply("権限なし");
 
-      if (!requireAlert(i, s)) return;
+      if (!s.alertChannelId)
+        return i.editReply("アラート未設定");
 
       const sub = i.options.getSubcommand();
       s.linkAlertEnabled = sub === 'on';
@@ -187,7 +213,8 @@ client.on('interactionCreate', async i => {
       if (!isAllowed(i, s))
         return i.editReply("権限なし");
 
-      if (!requireAlert(i, s)) return;
+      if (!s.alertChannelId)
+        return i.editReply("アラート未設定");
 
       const sub = i.options.getSubcommand();
       s.playerMonitorEnabled = sub === 'on';
@@ -220,7 +247,6 @@ client.on('interactionCreate', async i => {
       if (sub === 'clear') {
         s.allowedRoles = [];
         save(s);
-
         return i.editReply("削除完了");
       }
     }
@@ -237,20 +263,18 @@ client.on('interactionCreate', async i => {
 
       if (sub === 'setchannel') {
         const ch = i.options.getChannel('channel');
-
         s.panelChannelId = ch.id;
         save(s);
-
         return i.editReply("設定完了");
       }
 
       if (sub === 'post') {
 
         if (!s.panelChannelId)
-          return i.editReply("チャンネル未設定");
+          return i.editReply("未設定");
 
         const ch = i.guild.channels.cache.get(s.panelChannelId);
-        if (!ch) return i.editReply("チャンネル取得失敗");
+        if (!ch) return i.editReply("チャンネルなし");
 
         const embed = new EmbedBuilder()
           .setDescription(safeStr(s.panelText));
@@ -302,7 +326,7 @@ client.on('interactionCreate', async i => {
 
   } catch (err) {
     console.error(err);
-    return i.editReply("エラーが発生しました");
+    return i.editReply("エラー発生");
   }
 });
 
