@@ -13,8 +13,7 @@ const {
   EmbedBuilder,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle,
-  MessageFlags
+  TextInputStyle
 } = require('discord.js');
 
 // ===============================
@@ -42,12 +41,19 @@ app.listen(PORT, () => {
 // ===============================
 
 const client = new Client({
+
   intents: [
+
     GatewayIntentBits.Guilds,
+
     GatewayIntentBits.GuildMembers,
+
     GatewayIntentBits.GuildMessages,
+
     GatewayIntentBits.MessageContent
+
   ]
+
 });
 
 // ===============================
@@ -55,8 +61,7 @@ const client = new Client({
 // ===============================
 
 const TOKEN =
-  process.env.TOKEN ||
-  'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
+  process.env.TOKEN;
 
 // ===============================
 // Settings File
@@ -131,12 +136,15 @@ function saveSettings() {
   try {
 
     fs.writeFileSync(
+
       SETTINGS_FILE,
+
       JSON.stringify(
         settings,
         null,
         2
       )
+
     );
 
     console.log(
@@ -447,8 +455,7 @@ client.on(
           content:
             'パネル設定保存完了',
 
-          flags:
-            MessageFlags.Ephemeral
+          ephemeral: true
 
         });
 
@@ -474,8 +481,7 @@ client.on(
           content:
             'ボタンが押されました',
 
-          flags:
-            MessageFlags.Ephemeral
+          ephemeral: true
 
         });
 
@@ -508,7 +514,7 @@ client.on(
       );
 
     // ===============================
-    // Permission Check
+    // Permission
     // ===============================
 
     if (
@@ -530,8 +536,7 @@ client.on(
         content:
           '権限なし',
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -553,8 +558,7 @@ client.on(
           content:
             'サーバー所有者限定',
 
-          flags:
-            MessageFlags.Ephemeral
+          ephemeral: true
 
         });
 
@@ -586,8 +590,7 @@ client.on(
         content:
           '権限追加完了',
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -609,8 +612,7 @@ client.on(
           content:
             'サーバー所有者限定',
 
-          flags:
-            MessageFlags.Ephemeral
+          ephemeral: true
 
         });
 
@@ -633,8 +635,7 @@ client.on(
         content:
           '権限削除完了',
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -667,8 +668,7 @@ client.on(
               : 'OFF'
           ),
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -699,8 +699,7 @@ client.on(
           '設定完了: ' +
           channel,
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -733,8 +732,7 @@ client.on(
               : 'OFF'
           ),
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -767,8 +765,7 @@ client.on(
               : 'OFF'
           ),
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -820,8 +817,7 @@ client.on(
               : '未設定'
           ),
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -873,8 +869,7 @@ client.on(
           '\n\nロール数:\n' +
           guild.roles.cache.size,
 
-        flags:
-          MessageFlags.Ephemeral
+        ephemeral: true
 
       });
 
@@ -1036,10 +1031,6 @@ client.on(
     if (
       !settings.monitorEnabled
     ) return;
-
-    // ===============================
-    // Link Detect
-    // ===============================
 
     if (
 
