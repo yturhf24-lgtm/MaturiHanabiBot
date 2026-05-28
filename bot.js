@@ -3,17 +3,16 @@ const {
   GatewayIntentBits,
   SlashCommandBuilder,
   ChannelType,
-  PermissionsBitField
+  PermissionsBitField,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder
 } = require('discord.js');
 
 const { load, save } = require('./settings');
 
-// ===============================
-// TOKEN
-// ===============================
 const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s';
-
-// ===============================
 
 let settings = load();
 
@@ -25,10 +24,6 @@ const client = new Client({
     GatewayIntentBits.MessageContent
   ]
 });
-
-// ===============================
-// 権限チェック
-// ===============================
 
 function hasPerm(i) {
   const owner = i.user.id === i.guild.ownerId;
@@ -51,15 +46,13 @@ function hasPerm(i) {
 client.once('ready', async () => {
   console.log(client.user.tag + ' Ready');
 
-  const commands = [
+  const cmds = [
 
     new SlashCommandBuilder()
       .setName('監視')
-      .setDescription('監視機能のON/OFF')
+      .setDescription('全チャンネル監視ON/OFF')
       .addBooleanOption(o =>
-        o.setName('状態')
-          .setDescription('ONかOFF')
-          .setRequired(true)
+        o.setName('状態').setDescription('ON/OFF').setRequired(true)
       ),
 
     new SlashCommandBuilder()
@@ -67,26 +60,44 @@ client.once('ready', async () => {
       .setDescription('通知チャンネル設定')
       .addChannelOption(o =>
         o.setName('チャンネル')
-          .setDescription('送信先チャンネル')
+          .setDescription('指定')
           .addChannelTypes(ChannelType.GuildText)
           .setRequired(true)
       ),
 
     new SlashCommandBuilder()
+      .setName('リンクアラート')
+      .setDescription('リンク監視ON/OFF')
+      .addBooleanOption(o =>
+        o.setName('状態').setDescription('ON/OFF').setRequired(true)
+      ),
+
+    new SlashCommandBuilder()
+      .setName('新規アカウントアラート')
+      .setDescription('10日以内アカウント検知')
+      .addBooleanOption(o =>
+        o.setName('状態').setDescription('ON/OFF').setRequired(true)
+      ),
+
+    new SlashCommandBuilder()
       .setName('設定確認')
-      .setDescription('現在の設定を確認'),
+      .setDescription('ON/OFF確認'),
 
     new SlashCommandBuilder()
       .setName('サーバー情報')
-      .setDescription('サーバー情報を表示')
+      .setDescription('サーバー情報表示'),
+
+    new SlashCommandBuilder()
+      .setName('パネル')
+      .setDescription('説明＋ボタン表示')
 
   ].map(c => c.toJSON());
 
-  await client.application.commands.set(commands);
+  await client.application.commands.set(cmds);
 });
 
 // ===============================
-// コマンド処理
+// 権限
 // ===============================
 
 client.on('interactionCreate', async i => {
@@ -95,28 +106,62 @@ client.on('interactionCreate', async i => {
 
   settings = load();
 
-  if (!hasPerm(i) && i.commandName !== '設定確認') {
+  if (!hasPerm(i) && i.commandName !== '設定確認' && i.commandName !== 'サーバー情報') {
     return i.reply({ content: '権限なし', ephemeral: true });
   }
 
-  // 監視ON/OFF
+  // =========================
+  // 監視
+  // =========================
   if (i.commandName === '監視') {
     settings.monitorEnabled = i.options.getBoolean('状態');
     save(settings);
-    return i.reply('OK');
+    return i.reply({ content: 'OK', ephemeral: true });
   }
 
+  // =========================
+  // リンク
+  // =========================
+  if (i.commandName === 'リンクアラート') {
+    settings.linkAlertEnabled = i.options.getBoolean('状態');
+    save(settings);
+    return i.reply({ content: 'OK', ephemeral: true });
+  }
+
+  // =========================
+  // アカウント
+  // =========================
+  if (i.commandName === '新規アカウントアラート') {
+    settings.newAccountAlertEnabled = i.options.getBoolean('状態');
+    save(settings);
+    return i.reply({ content: 'OK', ephemeral: true });
+  }
+
+  // =========================
+  // アラートチャンネル
+  // =========================
+  if (i.commandName === 'アラートチャンネル') {
+    settings.alertChannelId = i.options.getChannel('チャンネル').id;
+    save(settings);
+    return i.reply({ content: 'OK', ephemeral: true });
+  }
+
+  // =========================
   // 設定確認
+  // =========================
   if (i.commandName === '設定確認') {
     return i.reply({
       content:
         `監視:${settings.monitorEnabled}\n` +
-        `リンク:${settings.linkAlertEnabled}`,
+        `リンク:${settings.linkAlertEnabled}\n` +
+        `新規:${settings.newAccountAlertEnabled}`,
       ephemeral: true
     });
   }
 
+  // =========================
   // サーバー情報
+  // =========================
   if (i.commandName === 'サーバー情報') {
 
     const g = i.guild;
@@ -126,7 +171,34 @@ client.on('interactionCreate', async i => {
 
     return i.reply({
       content:
-        `合計:${g.memberCount}\nユーザー:${users}\nBOT:${bots}`
+`サーバー名:${g.name}
+合計:${g.memberCount}
+ユーザー:${users}
+BOT:${bots}`,
+      ephemeral: true
+    });
+  }
+
+  // =========================
+  // パネル（説明＋ボタン）
+  // =========================
+  if (i.commandName === 'パネル') {
+
+    const embed = new EmbedBuilder()
+      .setTitle('パネル')
+      .setDescription(settings.panelText);
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('panel_btn')
+        .setLabel(settings.panelButton)
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    return i.reply({
+      embeds: [embed],
+      components: [row],
+      ephemeral: true
     });
   }
 
@@ -140,6 +212,7 @@ client.on('messageCreate', m => {
 
   if (m.author.bot) return;
   if (!settings.monitorEnabled) return;
+  if (!settings.linkAlertEnabled) return;
 
   if (!settings.alertChannelId) return;
 
@@ -150,7 +223,6 @@ client.on('messageCreate', m => {
 
     ch.send(`リンク検知\n${m.author.tag}\n${m.content}`);
   }
-
 });
 
 // ===============================
