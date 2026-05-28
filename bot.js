@@ -7,10 +7,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle
+  EmbedBuilder
 } = require('discord.js');
 
 const { load, save } = require('./settings');
@@ -19,6 +16,9 @@ const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj
 
 let settings = load();
 
+// =====================
+// Client
+// =====================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -30,16 +30,106 @@ const client = new Client({
 });
 
 // =====================
+// 共通関数
+// =====================
+function isAllowed(i, settings) {
+  if (i.member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+  if (!settings.allowedRoles?.length) return false;
+  return i.member.roles.cache.some(r => settings.allowedRoles.includes(r.id));
+}
+
+function requireChannel(i, settings) {
+  if (!settings.alertChannelId) {
+    i.reply({ content: "アラートチャンネル未設定", ephemeral: true });
+    return false;
+  }
+  return true;
+}
+
+// =====================
 // 起動
 // =====================
 client.once('ready', async () => {
-  console.log(client.user.tag + ' Ready');
+  console.log(`${client.user.tag} Ready`);
 
   const cmds = [
-    new SlashCommandBuilder().setName('パネル').setDescription('管理UI'),
-    new SlashCommandBuilder().setName('設定確認').setDescription('設定確認'),
-    new SlashCommandBuilder().setName('サーバー情報').setDescription('情報表示'),
-    new SlashCommandBuilder().setName('チャンネル設定').setDescription('チャンネル設定')
+
+    new SlashCommandBuilder()
+      .setName('alert')
+      .setDescription('アラート設定')
+      .addSubcommandGroup(g =>
+        g.setName('channel')
+          .setDescription('チャンネル設定')
+          .addSubcommand(s =>
+            s.setName('set')
+              .setDescription('設定')
+              .addChannelOption(o =>
+                o.setName('channel').setDescription('チャンネル').setRequired(true)
+              )
+          )
+          .addSubcommand(s =>
+            s.setName('clear').setDescription('削除')
+          )
+      ),
+
+    new SlashCommandBuilder()
+      .setName('monitor')
+      .setDescription('監視設定')
+      .addSubcommandGroup(g =>
+        g.setName('link')
+          .setDescription('リンク監視')
+          .addSubcommand(s =>
+            s.setName('on').setDescription('ON')
+          )
+          .addSubcommand(s =>
+            s.setName('off').setDescription('OFF')
+          )
+      )
+      .addSubcommandGroup(g =>
+        g.setName('player')
+          .setDescription('参加監視')
+          .addSubcommand(s =>
+            s.setName('on').setDescription('ON')
+          )
+          .addSubcommand(s =>
+            s.setName('off').setDescription('OFF')
+          )
+      ),
+
+    new SlashCommandBuilder()
+      .setName('role')
+      .setDescription('ロール制御')
+      .addSubcommand(s =>
+        s.setName('add')
+          .addRoleOption(o =>
+            o.setName('role').setDescription('ロール').setRequired(true)
+          )
+      )
+      .addSubcommand(s =>
+        s.setName('clear')
+      ),
+
+    new SlashCommandBuilder()
+      .setName('panel')
+      .setDescription('説明系')
+      .addSubcommand(s =>
+        s.setName('channel')
+          .addChannelOption(o =>
+            o.setName('channel').setRequired(true)
+          )
+      )
+      .addSubcommand(s =>
+        s.setName('post')
+      ),
+
+    new SlashCommandBuilder()
+      .setName('サーバー情報')
+      .setDescription('情報表示'),
+
+    new SlashCommandBuilder()
+      .setName('設定確認')
+      .setDescription('確認')
+
   ].map(c => c.toJSON());
 
   await client.application.commands.set(cmds);
@@ -50,63 +140,142 @@ client.once('ready', async () => {
 // =====================
 client.on('interactionCreate', async i => {
 
+  if (!i.isChatInputCommand()) return;
+
   settings = load();
 
-  // ───────────────
-  // パネル
-  // ───────────────
-  if (i.isChatInputCommand() && i.commandName === 'パネル') {
+  // =====================
+  // alert channel
+  // =====================
+  if (i.commandName === 'alert') {
 
-    const embed = new EmbedBuilder()
-      .setTitle('管理パネル')
-      .setDescription(settings.panelText);
+    const group = i.options.getSubcommandGroup();
+    const sub = i.options.getSubcommand();
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('monitor').setLabel('監視').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('link').setLabel('リンク').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('new').setLabel('新規').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('edit').setLabel('説明編集').setStyle(ButtonStyle.Success)
-    );
+    if (group === 'channel') {
 
-    return i.reply({ embeds: [embed], components: [row] });
+      if (!isAllowed(i, settings)) {
+        return i.reply({ content: "権限なし", ephemeral: true });
+      }
+
+      if (sub === 'set') {
+        const ch = i.options.getChannel('channel');
+        settings.alertChannelId = ch.id;
+        save(settings);
+
+        return i.reply({ content: "設定完了", ephemeral: true });
+      }
+
+      if (sub === 'clear') {
+        settings.alertChannelId = null;
+        save(settings);
+
+        return i.reply({ content: "削除完了", ephemeral: true });
+      }
+    }
   }
 
-  // ───────────────
-  // 設定確認
-  // ───────────────
-  if (i.isChatInputCommand() && i.commandName === '設定確認') {
+  // =====================
+  // monitor
+  // =====================
+  if (i.commandName === 'monitor') {
 
-    return i.reply({
-      content:
-`監視:${settings.monitorEnabled}
-リンク:${settings.linkAlertEnabled}
-新規:${settings.newAccountAlertEnabled}
-チャンネル:${settings.alertChannelId ? '設定済み' : '未設定'}`,
-      ephemeral: true
-    });
+    const group = i.options.getSubcommandGroup();
+    const sub = i.options.getSubcommand();
+
+    if (!requireChannel(i, settings)) return;
+
+    if (group === 'link') {
+      settings.linkAlertEnabled = (sub === 'on');
+      save(settings);
+
+      return i.reply({ content: `リンク監視:${settings.linkAlertEnabled}`, ephemeral: true });
+    }
+
+    if (group === 'player') {
+      settings.playerMonitorEnabled = (sub === 'on');
+      save(settings);
+
+      return i.reply({ content: `プレイヤー監視:${settings.playerMonitorEnabled}`, ephemeral: true });
+    }
   }
 
-  // ───────────────
-  // チャンネル設定
-  // ───────────────
-  if (i.isChatInputCommand() && i.commandName === 'チャンネル設定') {
+  // =====================
+  // role
+  // =====================
+  if (i.commandName === 'role') {
 
-    const embed = new EmbedBuilder()
-      .setTitle('アラートチャンネル')
-      .setDescription(settings.alertChannelId ? `<#${settings.alertChannelId}>` : '未設定');
+    if (!isAllowed(i, settings)) {
+      return i.reply({ content: "権限なし", ephemeral: true });
+    }
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('set_channel').setLabel('設定').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('clear_channel').setLabel('削除').setStyle(ButtonStyle.Danger)
-    );
+    const sub = i.options.getSubcommand();
 
-    return i.reply({ embeds: [embed], components: [row] });
+    if (sub === 'add') {
+      const role = i.options.getRole('role');
+
+      if (!settings.allowedRoles.includes(role.id)) {
+        settings.allowedRoles.push(role.id);
+        save(settings);
+      }
+
+      return i.reply({ content: "追加完了", ephemeral: true });
+    }
+
+    if (sub === 'clear') {
+      settings.allowedRoles = [];
+      save(settings);
+
+      return i.reply({ content: "全削除完了", ephemeral: true });
+    }
   }
 
-  // ───────────────
-  // サーバー情報（完成UI）
-  // ───────────────
-  if (i.isChatInputCommand() && i.commandName === 'サーバー情報') {
+  // =====================
+  // panel
+  // =====================
+  if (i.commandName === 'panel') {
+
+    const sub = i.options.getSubcommand();
+
+    if (sub === 'channel') {
+
+      const ch = i.options.getChannel('channel');
+
+      settings.panelChannelId = ch.id;
+      save(settings);
+
+      return i.reply({ content: "チャンネル設定完了", ephemeral: true });
+    }
+
+    if (sub === 'post') {
+
+      if (!settings.panelChannelId) {
+        return i.reply({ content: "チャンネル未設定", ephemeral: true });
+      }
+
+      const ch = i.guild.channels.cache.get(settings.panelChannelId);
+      if (!ch) return;
+
+      const embed = new EmbedBuilder()
+        .setDescription(settings.panelText || "未設定");
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('panel_button')
+          .setLabel('実行')
+          .setStyle(ButtonStyle.Primary)
+      );
+
+      await ch.send({ embeds: [embed], components: [row] });
+
+      return i.reply({ content: "送信完了", ephemeral: true });
+    }
+  }
+
+  // =====================
+  // server info
+  // =====================
+  if (i.commandName === 'サーバー情報') {
 
     const g = i.guild;
 
@@ -114,142 +283,32 @@ client.on('interactionCreate', async i => {
     const users = g.members.cache.filter(m => !m.user.bot).size;
     const bots = g.members.cache.filter(m => m.user.bot).size;
 
-    const text = g.channels.cache.filter(c => c.type === 0).size;
-    const voice = g.channels.cache.filter(c => c.type === 2).size;
-    const cat = g.channels.cache.filter(c => c.type === 4).size;
-
-    const boost = g.premiumSubscriptionCount || 0;
-    const level = g.premiumTier;
-
-    const created = g.createdAt.toISOString().split('T')[0];
-
     const online = g.members.cache.filter(m => m.presence?.status === 'online').size;
-    const offline = members - online;
-
-    const inactivity = Math.min(100, Math.round((bots / members) * 100));
 
     const embed = new EmbedBuilder()
-      .setTitle(`${g.name} サーバー情報`)
-      .setThumbnail(g.iconURL({ dynamic: true }))
+      .setTitle(g.name)
+      .setThumbnail(g.iconURL())
       .addFields(
-        {
-          name: 'メンバー',
-          value: `総数:${members}\nユーザー:${users}\nBot:${bots}`,
-          inline: true
-        },
-        {
-          name: 'ステータス',
-          value: `🟢${online}\n⚫${offline}`,
-          inline: true
-        },
-        {
-          name: 'チャンネル',
-          value: `テキスト:${text}\nボイス:${voice}\nカテゴリ:${cat}`,
-          inline: true
-        },
-        {
-          name: 'ブースト',
-          value: `Lv:${level}\n回数:${boost}`,
-          inline: true
-        },
-        {
-          name: '作成日',
-          value: created,
-          inline: true
-        },
-        {
-          name: '過疎度',
-          value: `${inactivity}%`,
-          inline: true
-        }
-      )
-      .setColor(0x2b2d31);
+        { name: "メンバー", value: `総:${members}\n人:${users}\nBot:${bots}`, inline: true },
+        { name: "オンライン", value: `${online}`, inline: true },
+        { name: "ブースト", value: `${g.premiumSubscriptionCount}`, inline: true }
+      );
 
     return i.reply({ embeds: [embed] });
   }
 
-  // ───────────────
-  // ボタン
-  // ───────────────
-  if (i.isButton()) {
+  // =====================
+  // setting check
+  // =====================
+  if (i.commandName === '設定確認') {
 
-    settings = load();
-
-    if (i.customId === 'monitor') {
-      settings.monitorEnabled = !settings.monitorEnabled;
-      save(settings);
-      return i.reply({ content: `監視:${settings.monitorEnabled}`, ephemeral: true });
-    }
-
-    if (i.customId === 'link') {
-      settings.linkAlertEnabled = !settings.linkAlertEnabled;
-      save(settings);
-      return i.reply({ content: `リンク:${settings.linkAlertEnabled}`, ephemeral: true });
-    }
-
-    if (i.customId === 'new') {
-      settings.newAccountAlertEnabled = !settings.newAccountAlertEnabled;
-      save(settings);
-      return i.reply({ content: `新規:${settings.newAccountAlertEnabled}`, ephemeral: true });
-    }
-
-    if (i.customId === 'set_channel') {
-
-      const modal = new ModalBuilder()
-        .setCustomId('channel_modal')
-        .setTitle('チャンネル設定');
-
-      const input = new TextInputBuilder()
-        .setCustomId('channel')
-        .setLabel('チャンネルID')
-        .setStyle(TextInputStyle.Short);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-      return i.showModal(modal);
-    }
-
-    if (i.customId === 'clear_channel') {
-      settings.alertChannelId = null;
-      save(settings);
-      return i.reply({ content: '削除完了', ephemeral: true });
-    }
-
-    if (i.customId === 'edit') {
-
-      const modal = new ModalBuilder()
-        .setCustomId('text_modal')
-        .setTitle('説明編集');
-
-      const input = new TextInputBuilder()
-        .setCustomId('text')
-        .setLabel('説明')
-        .setStyle(TextInputStyle.Paragraph);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-      return i.showModal(modal);
-    }
-  }
-
-  // ───────────────
-  // モーダル
-  // ───────────────
-  if (i.isModalSubmit()) {
-
-    settings = load();
-
-    if (i.customId === 'channel_modal') {
-      settings.alertChannelId = i.fields.getTextInputValue('channel');
-      save(settings);
-      return i.reply({ content: '設定完了', ephemeral: true });
-    }
-
-    if (i.customId === 'text_modal') {
-      settings.panelText = i.fields.getTextInputValue('text');
-      save(settings);
-      return i.reply({ content: '更新完了', ephemeral: true });
-    }
+    return i.reply({
+      ephemeral: true,
+      content:
+`リンク:${settings.linkAlertEnabled}
+プレイヤー:${settings.playerMonitorEnabled}
+チャンネル:${settings.alertChannelId ?? "未設定"}`
+    });
   }
 });
 
@@ -259,7 +318,9 @@ client.on('interactionCreate', async i => {
 client.on('messageCreate', m => {
 
   if (m.author.bot) return;
-  if (!settings.monitorEnabled) return;
+
+  const settings = load();
+
   if (!settings.linkAlertEnabled) return;
   if (!settings.alertChannelId) return;
 
