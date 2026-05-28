@@ -1,10 +1,15 @@
 const express = require('express');
+const fs = require('fs');
 
 const {
   Client,
   GatewayIntentBits,
   SlashCommandBuilder,
-  ChannelType
+  ChannelType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder
 } = require('discord.js');
 
 // ===============================
@@ -43,22 +48,51 @@ const client = new Client({
 const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
 
 // ===============================
-// コマンド使用可能ロール
+// 保存ファイル
 // ===============================
 
-let allowedRoleIds = [];
+const SETTINGS_FILE = './settings.json';
 
 // ===============================
 // 設定
 // ===============================
 
-let monitorEnabled = true;
+let settings = {
+  monitorEnabled: true,
+  alertChannelId: null,
+  linkAlertEnabled: true,
+  newAccountAlertEnabled: true,
+  allowedRoleIds: [],
+  panelDescription: 'ここに説明文'
+};
 
-let alertChannelId = null;
+// ===============================
+// 設定ロード
+// ===============================
 
-let linkAlertEnabled = true;
+if (fs.existsSync(SETTINGS_FILE)) {
 
-let newAccountAlertEnabled = true;
+  const data = fs.readFileSync(
+    SETTINGS_FILE,
+    'utf8'
+  );
+
+  settings = JSON.parse(data);
+
+}
+
+// ===============================
+// 保存
+// ===============================
+
+function saveSettings() {
+
+  fs.writeFileSync(
+    SETTINGS_FILE,
+    JSON.stringify(settings, null, 2)
+  );
+
+}
 
 // ===============================
 // 起動
@@ -136,6 +170,14 @@ client.once('ready', async () => {
       .setDescription('サーバー情報表示'),
 
     // ===============================
+    // 設定確認
+    // ===============================
+
+    new SlashCommandBuilder()
+      .setName('設定確認')
+      .setDescription('現在の設定確認'),
+
+    // ===============================
     // コマンド権限許可
     // ===============================
 
@@ -161,7 +203,29 @@ client.once('ready', async () => {
           .setName('ロール')
           .setDescription('削除するロール')
           .setRequired(true)
-      )
+      ),
+
+    // ===============================
+    // パネル説明変更
+    // ===============================
+
+    new SlashCommandBuilder()
+      .setName('説明変更')
+      .setDescription('ボタン説明変更')
+      .addStringOption(option =>
+        option
+          .setName('内容')
+          .setDescription('説明文')
+          .setRequired(true)
+      ),
+
+    // ===============================
+    // パネル送信
+    // ===============================
+
+    new SlashCommandBuilder()
+      .setName('パネル')
+      .setDescription('ボタン付きパネル送信')
 
   ].map(command => command.toJSON());
 
@@ -176,6 +240,31 @@ client.once('ready', async () => {
 // ===============================
 
 client.on('interactionCreate', async interaction => {
+
+  // ===============================
+  // ボタン処理
+  // ===============================
+
+  if (interaction.isButton()) {
+
+    if (interaction.customId === 'open_ticket') {
+
+      return interaction.reply({
+        content:
+`✅ ボタンが押されました
+
+必要ならここに
+チケット作成処理など追加可能`,
+        ephemeral: true
+      });
+
+    }
+
+  }
+
+  // ===============================
+  // Slash Commandのみ
+  // ===============================
 
   if (!interaction.isChatInputCommand()) return;
 
@@ -194,7 +283,10 @@ client.on('interactionCreate', async interaction => {
 
   const hasAllowedRole =
     interaction.member.roles.cache.some(
-      role => allowedRoleIds.includes(role.id)
+      role =>
+        settings.allowedRoleIds.includes(
+          role.id
+        )
     );
 
   // ===============================
@@ -233,15 +325,23 @@ client.on('interactionCreate', async interaction => {
     const role =
       interaction.options.getRole('ロール');
 
-    if (!allowedRoleIds.includes(role.id)) {
+    if (
+      !settings.allowedRoleIds.includes(
+        role.id
+      )
+    ) {
 
-      allowedRoleIds.push(role.id);
+      settings.allowedRoleIds.push(role.id);
+
+      saveSettings();
 
     }
 
-    return interaction.reply(
-      `✅ ${role} をコマンド使用可能に設定`
-    );
+    return interaction.reply({
+      content:
+`✅ ${role} をコマンド使用可能に設定`,
+      ephemeral: true
+    });
 
   }
 
@@ -263,14 +363,18 @@ client.on('interactionCreate', async interaction => {
     const role =
       interaction.options.getRole('ロール');
 
-    allowedRoleIds =
-      allowedRoleIds.filter(
+    settings.allowedRoleIds =
+      settings.allowedRoleIds.filter(
         id => id !== role.id
       );
 
-    return interaction.reply(
-      `✅ ${role} の権限を剥奪`
-    );
+    saveSettings();
+
+    return interaction.reply({
+      content:
+`✅ ${role} の権限を剥奪`,
+      ephemeral: true
+    });
 
   }
 
@@ -280,12 +384,20 @@ client.on('interactionCreate', async interaction => {
 
   if (interaction.commandName === '監視') {
 
-    monitorEnabled =
+    settings.monitorEnabled =
       interaction.options.getBoolean('状態');
 
-    return interaction.reply(
-      `✅ 監視: ${monitorEnabled ? 'ON' : 'OFF'}`
-    );
+    saveSettings();
+
+    return interaction.reply({
+      content:
+`✅ 監視: ${
+settings.monitorEnabled
+? 'ON'
+: 'OFF'
+}`,
+      ephemeral: true
+    });
 
   }
 
@@ -293,16 +405,26 @@ client.on('interactionCreate', async interaction => {
   // /アラートチャンネル
   // ===============================
 
-  if (interaction.commandName === 'アラートチャンネル') {
+  if (
+    interaction.commandName ===
+    'アラートチャンネル'
+  ) {
 
     const channel =
-      interaction.options.getChannel('チャンネル');
+      interaction.options.getChannel(
+        'チャンネル'
+      );
 
-    alertChannelId = channel.id;
+    settings.alertChannelId =
+      channel.id;
 
-    return interaction.reply(
-      `✅ アラートチャンネル設定: ${channel}`
-    );
+    saveSettings();
+
+    return interaction.reply({
+      content:
+`✅ アラートチャンネル設定: ${channel}`,
+      ephemeral: true
+    });
 
   }
 
@@ -310,14 +432,25 @@ client.on('interactionCreate', async interaction => {
   // /リンクアラート
   // ===============================
 
-  if (interaction.commandName === 'リンクアラート') {
+  if (
+    interaction.commandName ===
+    'リンクアラート'
+  ) {
 
-    linkAlertEnabled =
+    settings.linkAlertEnabled =
       interaction.options.getBoolean('状態');
 
-    return interaction.reply(
-      `✅ リンクアラート: ${linkAlertEnabled ? 'ON' : 'OFF'}`
-    );
+    saveSettings();
+
+    return interaction.reply({
+      content:
+`✅ リンクアラート: ${
+settings.linkAlertEnabled
+? 'ON'
+: 'OFF'
+}`,
+      ephemeral: true
+    });
 
   }
 
@@ -330,14 +463,60 @@ client.on('interactionCreate', async interaction => {
     '新規アカウントアラート'
   ) {
 
-    newAccountAlertEnabled =
+    settings.newAccountAlertEnabled =
       interaction.options.getBoolean('状態');
 
-    return interaction.reply(
-      `✅ 新規アカウント監視: ${
-        newAccountAlertEnabled ? 'ON' : 'OFF'
-      }`
-    );
+    saveSettings();
+
+    return interaction.reply({
+      content:
+`✅ 新規アカウント監視: ${
+settings.newAccountAlertEnabled
+? 'ON'
+: 'OFF'
+}`,
+      ephemeral: true
+    });
+
+  }
+
+  // ===============================
+  // /設定確認
+  // ===============================
+
+  if (
+    interaction.commandName ===
+    '設定確認'
+  ) {
+
+    return interaction.reply({
+      content:
+`⚙ 現在の設定
+
+👁 監視:
+${settings.monitorEnabled ? 'ON' : 'OFF'}
+
+🔗 リンク監視:
+${settings.linkAlertEnabled ? 'ON' : 'OFF'}
+
+🆕 新規アカウント監視:
+${
+settings.newAccountAlertEnabled
+? 'ON'
+: 'OFF'
+}
+
+📢 アラートチャンネル:
+${
+settings.alertChannelId
+? `<#${settings.alertChannelId}>`
+: '未設定'
+}
+
+🎭 権限ロール数:
+${settings.allowedRoleIds.length}`,
+      ephemeral: true
+    });
 
   }
 
@@ -345,16 +524,85 @@ client.on('interactionCreate', async interaction => {
   // /サーバー情報
   // ===============================
 
-  if (interaction.commandName === 'サーバー情報') {
+  if (
+    interaction.commandName ===
+    'サーバー情報'
+  ) {
 
     return interaction.reply({
       content:
 `📊 サーバー情報
 
-👥 メンバー数: ${guild.memberCount}
-📝 チャンネル数: ${guild.channels.cache.size}
-🎭 ロール数: ${guild.roles.cache.size}
-👑 サーバー名: ${guild.name}`
+👥 メンバー数:
+${guild.memberCount}
+
+📝 チャンネル数:
+${guild.channels.cache.size}
+
+🎭 ロール数:
+${guild.roles.cache.size}
+
+👑 サーバー名:
+${guild.name}`,
+      ephemeral: true
+    });
+
+  }
+
+  // ===============================
+  // /説明変更
+  // ===============================
+
+  if (
+    interaction.commandName ===
+    '説明変更'
+  ) {
+
+    const text =
+      interaction.options.getString('内容');
+
+    settings.panelDescription = text;
+
+    saveSettings();
+
+    return interaction.reply({
+      content:
+`✅ 説明文を変更しました`,
+      ephemeral: true
+    });
+
+  }
+
+  // ===============================
+  // /パネル
+  // ===============================
+
+  if (
+    interaction.commandName ===
+    'パネル'
+  ) {
+
+    const embed = new EmbedBuilder()
+      .setTitle('サポートパネル')
+      .setDescription(
+        settings.panelDescription
+      )
+      .setColor('Blue');
+
+    const row =
+      new ActionRowBuilder()
+        .addComponents(
+
+          new ButtonBuilder()
+            .setCustomId('open_ticket')
+            .setLabel('開く')
+            .setStyle(ButtonStyle.Success)
+
+        );
+
+    return interaction.reply({
+      embeds: [embed],
+      components: [row]
     });
 
   }
@@ -369,21 +617,25 @@ client.on('messageCreate', async message => {
 
   if (message.author.bot) return;
 
-  if (!monitorEnabled) return;
+  if (!settings.monitorEnabled) return;
 
   // ===============================
   // リンク検知
   // ===============================
 
   if (
-    linkAlertEnabled &&
-    /(https?:\/\/[^\s]+)/g.test(message.content)
+    settings.linkAlertEnabled &&
+    /(https?:\/\/[^\s]+)/g.test(
+      message.content
+    )
   ) {
 
-    if (alertChannelId) {
+    if (settings.alertChannelId) {
 
       const channel =
-        message.guild.channels.cache.get(alertChannelId);
+        message.guild.channels.cache.get(
+          settings.alertChannelId
+        );
 
       if (channel) {
 
@@ -408,39 +660,49 @@ ${message.content}`
 // 新規アカウント検知
 // ===============================
 
-client.on('guildMemberAdd', async member => {
+client.on(
+  'guildMemberAdd',
+  async member => {
 
-  if (!newAccountAlertEnabled) return;
+    if (
+      !settings.newAccountAlertEnabled
+    ) return;
 
-  if (!alertChannelId) return;
+    if (!settings.alertChannelId)
+      return;
 
-  const accountAge =
-    Date.now() - member.user.createdTimestamp;
+    const accountAge =
+      Date.now() -
+      member.user.createdTimestamp;
 
-  const days = Math.floor(
-    accountAge / (1000 * 60 * 60 * 24)
-  );
+    const days = Math.floor(
+      accountAge /
+      (1000 * 60 * 60 * 24)
+    );
 
-  if (days <= 10) {
+    if (days <= 10) {
 
-    const channel =
-      member.guild.channels.cache.get(alertChannelId);
+      const channel =
+        member.guild.channels.cache.get(
+          settings.alertChannelId
+        );
 
-    if (channel) {
+      if (channel) {
 
-      channel.send(
+        channel.send(
 `🚨 新規アカウント検知
 
 👤 ${member.user.tag}
 📅 作成日数: ${days}日
 🆔 ${member.id}`
-      );
+        );
+
+      }
 
     }
 
   }
-
-});
+);
 
 // ===============================
 // ログイン
