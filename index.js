@@ -12,5 +12,5 @@ app.listen(PORT, () => {
   console.log('Web Server Start');
 });
 
-// Discord bot起動
+// Discord起動
 require('./bot');
