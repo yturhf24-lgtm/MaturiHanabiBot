@@ -40,15 +40,13 @@ const client = new Client({
 // TOKEN
 // ===============================
 
-const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GXgtZG.SDW89nKd9GSYjsBh7BJgMDPy_jTbTG-n_pM56Y';
+const TOKEN = 'ここにBOT_TOKEN';
 
 // ===============================
 // コマンド使用可能ロール
 // ===============================
 
-const allowedRoleIds = [
-  'ここに許可ロールID'
-];
+let allowedRoleIds = [];
 
 // ===============================
 // 設定
@@ -72,6 +70,10 @@ client.once('ready', async () => {
 
   const commands = [
 
+    // ===============================
+    // 監視
+    // ===============================
+
     new SlashCommandBuilder()
       .setName('監視')
       .setDescription('監視ON/OFF')
@@ -81,6 +83,10 @@ client.once('ready', async () => {
           .setDescription('ON/OFF')
           .setRequired(true)
       ),
+
+    // ===============================
+    // アラートチャンネル
+    // ===============================
 
     new SlashCommandBuilder()
       .setName('アラートチャンネル')
@@ -93,6 +99,10 @@ client.once('ready', async () => {
           .setRequired(true)
       ),
 
+    // ===============================
+    // リンクアラート
+    // ===============================
+
     new SlashCommandBuilder()
       .setName('リンクアラート')
       .setDescription('リンク監視')
@@ -102,6 +112,10 @@ client.once('ready', async () => {
           .setDescription('ON/OFF')
           .setRequired(true)
       ),
+
+    // ===============================
+    // 新規アカウントアラート
+    // ===============================
 
     new SlashCommandBuilder()
       .setName('新規アカウントアラート')
@@ -113,9 +127,41 @@ client.once('ready', async () => {
           .setRequired(true)
       ),
 
+    // ===============================
+    // サーバー情報
+    // ===============================
+
     new SlashCommandBuilder()
       .setName('サーバー情報')
-      .setDescription('サーバー情報表示')
+      .setDescription('サーバー情報表示'),
+
+    // ===============================
+    // コマンド権限許可
+    // ===============================
+
+    new SlashCommandBuilder()
+      .setName('コマンド権限許可')
+      .setDescription('/コマンド使用可能ロール追加')
+      .addRoleOption(option =>
+        option
+          .setName('ロール')
+          .setDescription('許可するロール')
+          .setRequired(true)
+      ),
+
+    // ===============================
+    // コマンド権限剥奪
+    // ===============================
+
+    new SlashCommandBuilder()
+      .setName('コマンド権限剥奪')
+      .setDescription('/コマンド使用可能ロール削除')
+      .addRoleOption(option =>
+        option
+          .setName('ロール')
+          .setDescription('削除するロール')
+          .setRequired(true)
+      )
 
   ].map(command => command.toJSON());
 
@@ -133,12 +179,34 @@ client.on('interactionCreate', async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  // ロール権限
-  const hasRole = interaction.member.roles.cache.some(
-    role => allowedRoleIds.includes(role.id)
-  );
+  const guild = interaction.guild;
 
-  if (!hasRole) {
+  // ===============================
+  // サーバー所有者
+  // ===============================
+
+  const isOwner =
+    interaction.user.id === guild.ownerId;
+
+  // ===============================
+  // 権限ロール所持
+  // ===============================
+
+  const hasAllowedRole =
+    interaction.member.roles.cache.some(
+      role => allowedRoleIds.includes(role.id)
+    );
+
+  // ===============================
+  // 権限チェック
+  // ===============================
+
+  if (
+    !isOwner &&
+    !hasAllowedRole &&
+    interaction.commandName !== 'コマンド権限許可' &&
+    interaction.commandName !== 'コマンド権限剥奪'
+  ) {
 
     return interaction.reply({
       content: '❌ 権限なし',
@@ -147,6 +215,67 @@ client.on('interactionCreate', async interaction => {
 
   }
 
+  // ===============================
+  // /コマンド権限許可
+  // ===============================
+
+  if (interaction.commandName === 'コマンド権限許可') {
+
+    if (!isOwner) {
+
+      return interaction.reply({
+        content: '❌ サーバー所有者限定',
+        ephemeral: true
+      });
+
+    }
+
+    const role =
+      interaction.options.getRole('ロール');
+
+    if (!allowedRoleIds.includes(role.id)) {
+
+      allowedRoleIds.push(role.id);
+
+    }
+
+    return interaction.reply(
+      `✅ ${role} をコマンド使用可能に設定`
+    );
+
+  }
+
+  // ===============================
+  // /コマンド権限剥奪
+  // ===============================
+
+  if (interaction.commandName === 'コマンド権限剥奪') {
+
+    if (!isOwner) {
+
+      return interaction.reply({
+        content: '❌ サーバー所有者限定',
+        ephemeral: true
+      });
+
+    }
+
+    const role =
+      interaction.options.getRole('ロール');
+
+    allowedRoleIds =
+      allowedRoleIds.filter(
+        id => id !== role.id
+      );
+
+    return interaction.reply(
+      `✅ ${role} の権限を剥奪`
+    );
+
+  }
+
+  // ===============================
+  // /監視
   // ===============================
 
   if (interaction.commandName === '監視') {
@@ -157,8 +286,11 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(
       `✅ 監視: ${monitorEnabled ? 'ON' : 'OFF'}`
     );
+
   }
 
+  // ===============================
+  // /アラートチャンネル
   // ===============================
 
   if (interaction.commandName === 'アラートチャンネル') {
@@ -171,8 +303,11 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(
       `✅ アラートチャンネル設定: ${channel}`
     );
+
   }
 
+  // ===============================
+  // /リンクアラート
   // ===============================
 
   if (interaction.commandName === 'リンクアラート') {
@@ -183,25 +318,34 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(
       `✅ リンクアラート: ${linkAlertEnabled ? 'ON' : 'OFF'}`
     );
+
   }
 
   // ===============================
+  // /新規アカウントアラート
+  // ===============================
 
-  if (interaction.commandName === '新規アカウントアラート') {
+  if (
+    interaction.commandName ===
+    '新規アカウントアラート'
+  ) {
 
     newAccountAlertEnabled =
       interaction.options.getBoolean('状態');
 
     return interaction.reply(
-      `✅ 新規アカウント監視: ${newAccountAlertEnabled ? 'ON' : 'OFF'}`
+      `✅ 新規アカウント監視: ${
+        newAccountAlertEnabled ? 'ON' : 'OFF'
+      }`
     );
+
   }
 
   // ===============================
+  // /サーバー情報
+  // ===============================
 
   if (interaction.commandName === 'サーバー情報') {
-
-    const guild = interaction.guild;
 
     return interaction.reply({
       content:
@@ -212,6 +356,7 @@ client.on('interactionCreate', async interaction => {
 🎭 ロール数: ${guild.roles.cache.size}
 👑 サーバー名: ${guild.name}`
     });
+
   }
 
 });
@@ -226,7 +371,10 @@ client.on('messageCreate', async message => {
 
   if (!monitorEnabled) return;
 
+  // ===============================
   // リンク検知
+  // ===============================
+
   if (
     linkAlertEnabled &&
     /(https?:\/\/[^\s]+)/g.test(message.content)
@@ -294,6 +442,8 @@ client.on('guildMemberAdd', async member => {
 
 });
 
+// ===============================
+// ログイン
 // ===============================
 
 client.login(TOKEN);
