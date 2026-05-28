@@ -12,7 +12,7 @@ const {
 
 const { load, save } = require('./settings');
 
-const TOKEN = 'ここにトークン';
+const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s';
 
 let settings = load();
 
