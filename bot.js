@@ -769,7 +769,7 @@ BOT: ${bots}`,
           dnd,
         g.memberCount
       ),
-    inline: false
+    inline: true
   },
 
   {
