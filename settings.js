@@ -7,14 +7,16 @@ const defaultData = {
   linkAlertEnabled: true,
   newAccountAlertEnabled: true,
   alertChannelId: null,
-  allowedRoleIds: []
+  allowedRoleIds: [],
+  panelText: '説明ここ',
+  panelButton: 'ボタン'
 };
 
 function load() {
   if (!fs.existsSync(FILE)) {
     fs.writeFileSync(FILE, JSON.stringify(defaultData, null, 2));
   }
-  return JSON.parse(fs.readFileSync(FILE, 'utf8'));
+  return JSON.parse(fs.readFileSync(FILE));
 }
 
 function save(data) {
