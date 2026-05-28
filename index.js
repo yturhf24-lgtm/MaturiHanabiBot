@@ -1,18 +1,19 @@
+```js
 const express = require('express');
 const fs = require('fs');
 
 const {
-Client,
-GatewayIntentBits,
-SlashCommandBuilder,
-ChannelType,
-ActionRowBuilder,
-ButtonBuilder,
-ButtonStyle,
-EmbedBuilder,
-ModalBuilder,
-TextInputBuilder,
-TextInputStyle
+  Client,
+  GatewayIntentBits,
+  SlashCommandBuilder,
+  ChannelType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require('discord.js');
 
 // ===============================
@@ -24,14 +25,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
-res.send('BOT ONLINE');
+  res.send('BOT ONLINE');
 });
 
 app.listen(PORT, () => {
 
-console.log(
-'Web Server Start: ' + PORT
-);
+  console.log(
+    'Web Server Start: ' + PORT
+  );
 
 });
 
@@ -41,19 +42,14 @@ console.log(
 
 const client = new Client({
 
-intents: [
+  intents: [
 
-```
-GatewayIntentBits.Guilds,
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
 
-GatewayIntentBits.GuildMembers,
-
-GatewayIntentBits.GuildMessages,
-
-GatewayIntentBits.MessageContent
-```
-
-]
+  ]
 
 });
 
@@ -62,14 +58,14 @@ GatewayIntentBits.MessageContent
 // ===============================
 
 const TOKEN =
-process.env.TOKEN;
+  process.env.TOKEN;
 
 // ===============================
 // Settings File
 // ===============================
 
 const SETTINGS_FILE =
-'./settings.json';
+  './settings.json';
 
 // ===============================
 // Settings
@@ -77,21 +73,21 @@ const SETTINGS_FILE =
 
 let settings = {
 
-monitorEnabled: true,
+  monitorEnabled: true,
 
-alertChannelId: null,
+  alertChannelId: null,
 
-linkAlertEnabled: true,
+  linkAlertEnabled: true,
 
-newAccountAlertEnabled: true,
+  newAccountAlertEnabled: true,
 
-allowedRoleIds: [],
+  allowedRoleIds: [],
 
-panelDescription:
-'ここに説明を書いてください',
+  panelDescription:
+    'ここに説明を書いてください',
 
-panelButtonLabel:
-'開く'
+  panelButtonLabel:
+    '開く'
 
 };
 
@@ -100,35 +96,33 @@ panelButtonLabel:
 // ===============================
 
 if (
-fs.existsSync(SETTINGS_FILE)
+  fs.existsSync(SETTINGS_FILE)
 ) {
 
-try {
+  try {
 
-```
-const data =
-  fs.readFileSync(
-    SETTINGS_FILE,
-    'utf8'
-  );
+    const data =
+      fs.readFileSync(
+        SETTINGS_FILE,
+        'utf8'
+      );
 
-settings =
-  JSON.parse(data);
+    settings =
+      JSON.parse(data);
 
-console.log(
-  'Settings Loaded'
-);
-```
+    console.log(
+      'Settings Loaded'
+    );
 
-} catch (err) {
+  } catch (err) {
 
-```
-console.log(
-  'Settings Load Error'
-);
-```
+    console.log(
+      'Settings Load Error'
+    );
 
-}
+    console.error(err);
+
+  }
 
 }
 
@@ -138,37 +132,33 @@ console.log(
 
 function saveSettings() {
 
-try {
+  try {
 
-```
-fs.writeFileSync(
+    fs.writeFileSync(
 
-  SETTINGS_FILE,
+      SETTINGS_FILE,
 
-  JSON.stringify(
-    settings,
-    null,
-    2
-  )
+      JSON.stringify(
+        settings,
+        null,
+        2
+      )
 
-);
+    );
 
-console.log(
-  'Settings Saved'
-);
-```
+    console.log(
+      'Settings Saved'
+    );
 
-} catch (err) {
+  } catch (err) {
 
-```
-console.log(
-  'Settings Save Error'
-);
+    console.log(
+      'Settings Save Error'
+    );
 
-console.error(err);
-```
+    console.error(err);
 
-}
+  }
 
 }
 
@@ -177,215 +167,213 @@ console.error(err);
 // ===============================
 
 client.once(
-'ready',
-async () => {
+  'ready',
+  async () => {
 
-```
-console.log(
-  client.user.tag +
-  ' Ready'
-);
+    console.log(
+      client.user.tag +
+      ' Ready'
+    );
 
-const commands = [
+    const commands = [
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName('監視')
+        .setName('監視')
 
-    .setDescription(
-      '監視ON/OFF'
-    )
+        .setDescription(
+          '監視ON/OFF'
+        )
 
-    .addBooleanOption(
-      option =>
+        .addBooleanOption(
+          option =>
 
-        option
+            option
 
-          .setName('状態')
+              .setName('状態')
 
-          .setDescription(
-            'ON/OFF'
-          )
+              .setDescription(
+                'ON/OFF'
+              )
 
-          .setRequired(true)
-    ),
+              .setRequired(true)
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName(
-      'アラートチャンネル'
-    )
+        .setName(
+          'アラートチャンネル'
+        )
 
-    .setDescription(
-      'アラート送信先'
-    )
+        .setDescription(
+          'アラート送信先'
+        )
 
-    .addChannelOption(
-      option =>
+        .addChannelOption(
+          option =>
 
-        option
+            option
 
-          .setName(
-            'チャンネル'
-          )
+              .setName(
+                'チャンネル'
+              )
 
-          .setDescription(
-            '送信先'
-          )
+              .setDescription(
+                '送信先'
+              )
 
-          .addChannelTypes(
-            ChannelType.GuildText
-          )
+              .addChannelTypes(
+                ChannelType.GuildText
+              )
 
-          .setRequired(true)
-    ),
+              .setRequired(true)
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName(
-      'リンクアラート'
-    )
+        .setName(
+          'リンクアラート'
+        )
 
-    .setDescription(
-      'リンク監視'
-    )
+        .setDescription(
+          'リンク監視'
+        )
 
-    .addBooleanOption(
-      option =>
+        .addBooleanOption(
+          option =>
 
-        option
+            option
 
-          .setName('状態')
+              .setName('状態')
 
-          .setDescription(
-            'ON/OFF'
-          )
+              .setDescription(
+                'ON/OFF'
+              )
 
-          .setRequired(true)
-    ),
+              .setRequired(true)
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName(
-      '新規アカウントアラート'
-    )
+        .setName(
+          '新規アカウントアラート'
+        )
 
-    .setDescription(
-      '10日以内監視'
-    )
+        .setDescription(
+          '10日以内監視'
+        )
 
-    .addBooleanOption(
-      option =>
+        .addBooleanOption(
+          option =>
 
-        option
+            option
 
-          .setName('状態')
+              .setName('状態')
 
-          .setDescription(
-            'ON/OFF'
-          )
+              .setDescription(
+                'ON/OFF'
+              )
 
-          .setRequired(true)
-    ),
+              .setRequired(true)
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName('設定確認')
+        .setName('設定確認')
 
-    .setDescription(
-      '設定確認'
-    ),
+        .setDescription(
+          '設定確認'
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName(
-      'サーバー情報'
-    )
+        .setName(
+          'サーバー情報'
+        )
 
-    .setDescription(
-      'サーバー情報'
-    ),
+        .setDescription(
+          'サーバー情報'
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName(
-      'コマンド権限許可'
-    )
+        .setName(
+          'コマンド権限許可'
+        )
 
-    .setDescription(
-      '権限追加'
-    )
+        .setDescription(
+          '権限追加'
+        )
 
-    .addRoleOption(
-      option =>
+        .addRoleOption(
+          option =>
 
-        option
+            option
 
-          .setName('ロール')
+              .setName('ロール')
 
-          .setDescription(
-            '許可ロール'
-          )
+              .setDescription(
+                '許可ロール'
+              )
 
-          .setRequired(true)
-    ),
+              .setRequired(true)
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName(
-      'コマンド権限剥奪'
-    )
+        .setName(
+          'コマンド権限剥奪'
+        )
 
-    .setDescription(
-      '権限削除'
-    )
+        .setDescription(
+          '権限削除'
+        )
 
-    .addRoleOption(
-      option =>
+        .addRoleOption(
+          option =>
 
-        option
+            option
 
-          .setName('ロール')
+              .setName('ロール')
 
-          .setDescription(
-            '削除ロール'
-          )
+              .setDescription(
+                '削除ロール'
+              )
 
-          .setRequired(true)
-    ),
+              .setRequired(true)
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName(
-      'パネル設定'
-    )
+        .setName(
+          'パネル設定'
+        )
 
-    .setDescription(
-      '説明とボタン設定'
-    ),
+        .setDescription(
+          '説明とボタン設定'
+        ),
 
-  new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-    .setName('パネル')
+        .setName('パネル')
 
-    .setDescription(
-      'パネル送信'
-    )
+        .setDescription(
+          'パネル送信'
+        )
 
-].map(command =>
-  command.toJSON()
-);
+    ].map(command =>
+      command.toJSON()
+    );
 
-await client.application.commands.set(
-  commands
-);
+    await client.application.commands.set(
+      commands
+    );
 
-console.log(
-  'Slash Commands Loaded'
-);
-```
+    console.log(
+      'Slash Commands Loaded'
+    );
 
-}
+  }
 );
 
 // ===============================
@@ -393,506 +381,634 @@ console.log(
 // ===============================
 
 client.on(
-'interactionCreate',
-async interaction => {
-
-```
-// Modal
-
-if (
-  interaction.isModalSubmit()
-) {
-
-  if (
-    interaction.customId ===
-    'panel_modal'
-  ) {
-
-    settings.panelDescription =
-      interaction.fields.getTextInputValue(
-        'panel_description'
-      );
-
-    settings.panelButtonLabel =
-      interaction.fields.getTextInputValue(
-        'panel_button'
-      );
-
-    saveSettings();
-
-    return interaction.reply({
-
-      content:
-        'パネル設定保存完了',
-
-      ephemeral: true
-
-    });
-
-  }
-
-}
-
-// Button
-
-if (
-  interaction.isButton()
-) {
-
-  if (
-    interaction.customId ===
-    'open_ticket'
-  ) {
-
-    return interaction.reply({
-
-      content:
-        'ボタンが押されました',
-
-      ephemeral: true
-
-    });
-
-  }
-
-}
-
-// Slash
-
-if (
-  !interaction.isChatInputCommand()
-) return;
-
-const guild =
-  interaction.guild;
-
-const isOwner =
-  interaction.user.id ===
-  guild.ownerId;
-
-const hasAllowedRole =
-  interaction.member.roles.cache.some(
-    role =>
-
-      settings.allowedRoleIds.includes(
-        role.id
-      )
-  );
-
-if (
-
-  !isOwner &&
-
-  !hasAllowedRole &&
-
-  interaction.commandName !==
-    'コマンド権限許可' &&
-
-  interaction.commandName !==
-    'コマンド権限剥奪'
-
-) {
-
-  return interaction.reply({
-
-    content:
-      '権限なし',
-
-    ephemeral: true
-
-  });
-
-}
-
-// 監視
-
-if (
-  interaction.commandName ===
-  '監視'
-) {
-
-  settings.monitorEnabled =
-    interaction.options.getBoolean(
-      '状態'
-    );
-
-  saveSettings();
-
-  return interaction.reply({
-
-    content:
-      '監視: ' +
-
-      (
-        settings.monitorEnabled
-          ? 'ON'
-          : 'OFF'
-      ),
-
-    ephemeral: true
-
-  });
-
-}
-
-// アラートチャンネル
-
-if (
-  interaction.commandName ===
-  'アラートチャンネル'
-) {
-
-  const channel =
-    interaction.options.getChannel(
-      'チャンネル'
-    );
-
-  settings.alertChannelId =
-    channel.id;
-
-  saveSettings();
-
-  return interaction.reply({
-
-    content:
-      '設定完了',
-
-    ephemeral: true
-
-  });
-
-}
-
-// リンクアラート
-
-if (
-  interaction.commandName ===
-  'リンクアラート'
-) {
-
-  settings.linkAlertEnabled =
-    interaction.options.getBoolean(
-      '状態'
-    );
-
-  saveSettings();
-
-  return interaction.reply({
-
-    content:
-      'リンク監視変更完了',
-
-    ephemeral: true
-
-  });
-
-}
-
-// 新規アカウント
-
-if (
-  interaction.commandName ===
-  '新規アカウントアラート'
-) {
-
-  settings.newAccountAlertEnabled =
-    interaction.options.getBoolean(
-      '状態'
-    );
-
-  saveSettings();
-
-  return interaction.reply({
-
-    content:
-      '新規アカウント監視変更完了',
-
-    ephemeral: true
-
-  });
-
-}
-
-// 設定確認
-
-if (
-  interaction.commandName ===
-  '設定確認'
-) {
-
-  return interaction.reply({
-
-    content:
-
-      '監視: ' +
-      (
-        settings.monitorEnabled
-          ? 'ON'
-          : 'OFF'
-      ) +
-
-      '\n\nリンク監視: ' +
-
-      (
-        settings.linkAlertEnabled
-          ? 'ON'
-          : 'OFF'
-      ) +
-
-      '\n\n新規アカウント監視: ' +
-
-      (
-        settings.newAccountAlertEnabled
-          ? 'ON'
-          : 'OFF'
-      ),
-
-    ephemeral: true
-
-  });
-
-}
-
-// サーバー情報
-
-if (
-  interaction.commandName ===
-  'サーバー情報'
-) {
-
-  const members =
-    guild.members.cache;
-
-  const botCount =
-    members.filter(
-      member =>
-        member.user.bot
-    ).size;
-
-  const userCount =
-    members.filter(
-      member =>
-        !member.user.bot
-    ).size;
-
-  return interaction.reply({
-
-    content:
-
-      'サーバー名:\n' +
-      guild.name +
-
-      '\n\n合計人数:\n' +
-      guild.memberCount +
-
-      '\n\n一般ユーザー:\n' +
-      userCount +
-
-      '\n\nBOT:\n' +
-      botCount,
-
-    ephemeral: true
-
-  });
-
-}
-
-// パネル設定
-
-if (
-  interaction.commandName ===
-  'パネル設定'
-) {
-
-  const modal =
-    new ModalBuilder()
-
-      .setCustomId(
+  'interactionCreate',
+  async interaction => {
+
+    // ===============================
+    // Modal
+    // ===============================
+
+    if (
+      interaction.isModalSubmit()
+    ) {
+
+      if (
+        interaction.customId ===
         'panel_modal'
-      )
+      ) {
 
-      .setTitle(
-        'パネル設定'
+        settings.panelDescription =
+          interaction.fields.getTextInputValue(
+            'panel_description'
+          );
+
+        settings.panelButtonLabel =
+          interaction.fields.getTextInputValue(
+            'panel_button'
+          );
+
+        saveSettings();
+
+        return interaction.reply({
+
+          content:
+            'パネル設定保存完了',
+
+          ephemeral: true
+
+        });
+
+      }
+
+    }
+
+    // ===============================
+    // Button
+    // ===============================
+
+    if (
+      interaction.isButton()
+    ) {
+
+      if (
+        interaction.customId ===
+        'open_ticket'
+      ) {
+
+        return interaction.reply({
+
+          content:
+            'ボタンが押されました',
+
+          ephemeral: true
+
+        });
+
+      }
+
+    }
+
+    // ===============================
+    // Slash Commands
+    // ===============================
+
+    if (
+      !interaction.isChatInputCommand()
+    ) return;
+
+    const guild =
+      interaction.guild;
+
+    const isOwner =
+      interaction.user.id ===
+      guild.ownerId;
+
+    const hasAllowedRole =
+      interaction.member.roles.cache.some(
+        role =>
+
+          settings.allowedRoleIds.includes(
+            role.id
+          )
       );
 
-  const descriptionInput =
-    new TextInputBuilder()
+    // ===============================
+    // Permission
+    // ===============================
 
-      .setCustomId(
-        'panel_description'
-      )
+    if (
 
-      .setLabel('説明')
+      !isOwner &&
 
-      .setStyle(
-        TextInputStyle.Paragraph
-      )
+      !hasAllowedRole &&
 
-      .setRequired(true)
+      interaction.commandName !==
+        'コマンド権限許可' &&
 
-      .setValue(
-        settings.panelDescription
-      );
+      interaction.commandName !==
+        'コマンド権限剥奪'
 
-  const buttonInput =
-    new TextInputBuilder()
+    ) {
 
-      .setCustomId(
-        'panel_button'
-      )
+      return interaction.reply({
 
-      .setLabel(
-        'ボタン名'
-      )
+        content:
+          '権限なし',
 
-      .setStyle(
-        TextInputStyle.Short
-      )
+        ephemeral: true
 
-      .setRequired(true)
+      });
 
-      .setValue(
-        settings.panelButtonLabel
-      );
+    }
 
-  const row1 =
-    new ActionRowBuilder()
+    // ===============================
+    // 権限追加
+    // ===============================
 
-      .addComponents(
-        descriptionInput
-      );
+    if (
+      interaction.commandName ===
+      'コマンド権限許可'
+    ) {
 
-  const row2 =
-    new ActionRowBuilder()
+      if (!isOwner) {
 
-      .addComponents(
-        buttonInput
-      );
+        return interaction.reply({
 
-  modal.addComponents(
-    row1,
-    row2
-  );
+          content:
+            'サーバー所有者限定',
 
-  return interaction.showModal(
-    modal
-  );
+          ephemeral: true
 
-}
+        });
 
-// パネル
+      }
 
-if (
-  interaction.commandName ===
-  'パネル'
-) {
+      const role =
+        interaction.options.getRole(
+          'ロール'
+        );
 
-  const embed =
-    new EmbedBuilder()
+      if (
 
-      .setTitle(
-        'サポートパネル'
-      )
+        !settings.allowedRoleIds.includes(
+          role.id
+        )
 
-      .setDescription(
-        settings.panelDescription
-      )
+      ) {
 
-      .setColor('Blue');
+        settings.allowedRoleIds.push(
+          role.id
+        );
 
-  const row =
-    new ActionRowBuilder()
+        saveSettings();
 
-      .addComponents(
+      }
 
-        new ButtonBuilder()
+      return interaction.reply({
+
+        content:
+          '権限追加完了',
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // 権限削除
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      'コマンド権限剥奪'
+    ) {
+
+      if (!isOwner) {
+
+        return interaction.reply({
+
+          content:
+            'サーバー所有者限定',
+
+          ephemeral: true
+
+        });
+
+      }
+
+      const role =
+        interaction.options.getRole(
+          'ロール'
+        );
+
+      settings.allowedRoleIds =
+        settings.allowedRoleIds.filter(
+          id => id !== role.id
+        );
+
+      saveSettings();
+
+      return interaction.reply({
+
+        content:
+          '権限削除完了',
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // 監視
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      '監視'
+    ) {
+
+      settings.monitorEnabled =
+        interaction.options.getBoolean(
+          '状態'
+        );
+
+      saveSettings();
+
+      return interaction.reply({
+
+        content:
+          settings.monitorEnabled
+            ? '監視 ON'
+            : '監視 OFF',
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // アラートチャンネル
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      'アラートチャンネル'
+    ) {
+
+      const channel =
+        interaction.options.getChannel(
+          'チャンネル'
+        );
+
+      settings.alertChannelId =
+        channel.id;
+
+      saveSettings();
+
+      return interaction.reply({
+
+        content:
+          'アラートチャンネル設定完了',
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // リンクアラート
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      'リンクアラート'
+    ) {
+
+      settings.linkAlertEnabled =
+        interaction.options.getBoolean(
+          '状態'
+        );
+
+      saveSettings();
+
+      return interaction.reply({
+
+        content:
+          settings.linkAlertEnabled
+            ? 'リンク監視 ON'
+            : 'リンク監視 OFF',
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // 新規アカウント
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      '新規アカウントアラート'
+    ) {
+
+      settings.newAccountAlertEnabled =
+        interaction.options.getBoolean(
+          '状態'
+        );
+
+      saveSettings();
+
+      return interaction.reply({
+
+        content:
+          settings.newAccountAlertEnabled
+            ? '新規アカウント監視 ON'
+            : '新規アカウント監視 OFF',
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // 設定確認
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      '設定確認'
+    ) {
+
+      return interaction.reply({
+
+        content:
+
+          '監視: ' +
+
+          (
+            settings.monitorEnabled
+              ? 'ON'
+              : 'OFF'
+          ) +
+
+          '\n\nリンク監視: ' +
+
+          (
+            settings.linkAlertEnabled
+              ? 'ON'
+              : 'OFF'
+          ) +
+
+          '\n\n新規アカウント監視: ' +
+
+          (
+            settings.newAccountAlertEnabled
+              ? 'ON'
+              : 'OFF'
+          ),
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // サーバー情報
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      'サーバー情報'
+    ) {
+
+      const members =
+        guild.members.cache;
+
+      const botCount =
+        members.filter(
+          member =>
+            member.user.bot
+        ).size;
+
+      const userCount =
+        members.filter(
+          member =>
+            !member.user.bot
+        ).size;
+
+      return interaction.reply({
+
+        content:
+
+          'サーバー名:\n' +
+          guild.name +
+
+          '\n\n合計人数:\n' +
+          guild.memberCount +
+
+          '\n\n一般ユーザー:\n' +
+          userCount +
+
+          '\n\nBOT:\n' +
+          botCount +
+
+          '\n\nチャンネル数:\n' +
+          guild.channels.cache.size +
+
+          '\n\nロール数:\n' +
+          guild.roles.cache.size,
+
+        ephemeral: true
+
+      });
+
+    }
+
+    // ===============================
+    // パネル設定
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      'パネル設定'
+    ) {
+
+      const modal =
+        new ModalBuilder()
 
           .setCustomId(
-            'open_ticket'
+            'panel_modal'
+          )
+
+          .setTitle(
+            'パネル設定'
+          );
+
+      const descriptionInput =
+        new TextInputBuilder()
+
+          .setCustomId(
+            'panel_description'
+          )
+
+          .setLabel('説明')
+
+          .setStyle(
+            TextInputStyle.Paragraph
+          )
+
+          .setRequired(true)
+
+          .setValue(
+            settings.panelDescription
+          );
+
+      const buttonInput =
+        new TextInputBuilder()
+
+          .setCustomId(
+            'panel_button'
           )
 
           .setLabel(
-            settings.panelButtonLabel
+            'ボタン名'
           )
 
           .setStyle(
-            ButtonStyle.Success
+            TextInputStyle.Short
           )
 
+          .setRequired(true)
+
+          .setValue(
+            settings.panelButtonLabel
+          );
+
+      const row1 =
+        new ActionRowBuilder()
+
+          .addComponents(
+            descriptionInput
+          );
+
+      const row2 =
+        new ActionRowBuilder()
+
+          .addComponents(
+            buttonInput
+          );
+
+      modal.addComponents(
+        row1,
+        row2
       );
 
-  return interaction.reply({
-
-    embeds: [embed],
-
-    components: [row]
-
-  });
-
-}
-```
-
-}
-);
-
-// ===============================
-// Link Monitor
-// ===============================
-
-client.on(
-'messageCreate',
-async message => {
-
-```
-if (
-  message.author.bot
-) return;
-
-if (
-  !settings.monitorEnabled
-) return;
-
-if (
-
-  settings.linkAlertEnabled &&
-
-  /(https?:\/\/[^\s]+)/g.test(
-    message.content
-  )
-
-) {
-
-  if (
-    settings.alertChannelId
-  ) {
-
-    const channel =
-      message.guild.channels.cache.get(
-        settings.alertChannelId
-      );
-
-    if (channel) {
-
-      channel.send(
-
-        'リンク検知\n\n' +
-
-        'ユーザー:\n' +
-        message.author.tag +
-
-        '\n\n内容:\n' +
-        message.content
-
+      return interaction.showModal(
+        modal
       );
 
     }
 
+    // ===============================
+    // パネル
+    // ===============================
+
+    if (
+      interaction.commandName ===
+      'パネル'
+    ) {
+
+      const embed =
+        new EmbedBuilder()
+
+          .setTitle(
+            'サポートパネル'
+          )
+
+          .setDescription(
+            settings.panelDescription
+          )
+
+          .setColor('Blue');
+
+      const row =
+        new ActionRowBuilder()
+
+          .addComponents(
+
+            new ButtonBuilder()
+
+              .setCustomId(
+                'open_ticket'
+              )
+
+              .setLabel(
+                settings.panelButtonLabel
+              )
+
+              .setStyle(
+                ButtonStyle.Success
+              )
+
+          );
+
+      return interaction.reply({
+
+        embeds: [embed],
+
+        components: [row]
+
+      });
+
+    }
+
   }
+);
 
-}
-```
+// ===============================
+// Message Monitor
+// ===============================
 
-}
+client.on(
+  'messageCreate',
+  async message => {
+
+    if (
+      message.author.bot
+    ) return;
+
+    if (
+      !settings.monitorEnabled
+    ) return;
+
+    if (
+
+      settings.linkAlertEnabled &&
+
+      /(https?:\/\/[^\s]+)/g.test(
+        message.content
+      )
+
+    ) {
+
+      if (
+        settings.alertChannelId
+      ) {
+
+        const channel =
+          message.guild.channels.cache.get(
+            settings.alertChannelId
+          );
+
+        if (channel) {
+
+          channel.send(
+
+            'リンク検知\n\n' +
+
+            'ユーザー:\n' +
+            message.author.tag +
+
+            '\n\n内容:\n' +
+            message.content
+
+          );
+
+        }
+
+      }
+
+    }
+
+  }
 );
 
 // ===============================
@@ -900,63 +1016,61 @@ if (
 // ===============================
 
 client.on(
-'guildMemberAdd',
-async member => {
+  'guildMemberAdd',
+  async member => {
 
-```
-if (
-  !settings.newAccountAlertEnabled
-) return;
+    if (
+      !settings.newAccountAlertEnabled
+    ) return;
 
-if (
-  !settings.alertChannelId
-) return;
+    if (
+      !settings.alertChannelId
+    ) return;
 
-const accountAge =
-  Date.now() -
-  member.user.createdTimestamp;
+    const accountAge =
+      Date.now() -
+      member.user.createdTimestamp;
 
-const days = Math.floor(
+    const days = Math.floor(
 
-  accountAge /
+      accountAge /
 
-  (
-    1000 *
-    60 *
-    60 *
-    24
-  )
-
-);
-
-if (days <= 10) {
-
-  const channel =
-    member.guild.channels.cache.get(
-      settings.alertChannelId
-    );
-
-  if (channel) {
-
-    channel.send(
-
-      '新規アカウント検知\n\n' +
-
-      'ユーザー:\n' +
-      member.user.tag +
-
-      '\n\n作成日数:\n' +
-      days +
-      '日'
+      (
+        1000 *
+        60 *
+        60 *
+        24
+      )
 
     );
+
+    if (days <= 10) {
+
+      const channel =
+        member.guild.channels.cache.get(
+          settings.alertChannelId
+        );
+
+      if (channel) {
+
+        channel.send(
+
+          '新規アカウント検知\n\n' +
+
+          'ユーザー:\n' +
+          member.user.tag +
+
+          '\n\n作成日数:\n' +
+          days +
+          '日'
+
+        );
+
+      }
+
+    }
 
   }
-
-}
-```
-
-}
 );
 
 // ===============================
@@ -964,3 +1078,4 @@ if (days <= 10) {
 // ===============================
 
 client.login(TOKEN);
+```
