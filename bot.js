@@ -15,12 +15,7 @@ const {
 
 const { load, save } = require('./settings');
 
-// ===============================
-// TOKEN
-// ===============================
 const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s';
-
-// ===============================
 
 let settings = load();
 
@@ -34,24 +29,6 @@ const client = new Client({
 });
 
 // ===============================
-// 権限
-// ===============================
-
-function hasPerm(i) {
-  const owner = i.user.id === i.guild.ownerId;
-
-  const admin = i.member.permissions.has(
-    PermissionsBitField.Flags.Administrator
-  );
-
-  const role = i.member.roles.cache.some(r =>
-    settings.allowedRoleIds.includes(r.id)
-  );
-
-  return owner || admin || role;
-}
-
-// ===============================
 // 起動
 // ===============================
 
@@ -61,17 +38,10 @@ client.once('ready', async () => {
 
   const cmds = [
 
-    new SlashCommandBuilder()
-      .setName('パネル')
-      .setDescription('管理パネル表示'),
-
-    new SlashCommandBuilder()
-      .setName('設定確認')
-      .setDescription('状態確認'),
-
-    new SlashCommandBuilder()
-      .setName('サーバー情報')
-      .setDescription('サーバー情報表示')
+    new SlashCommandBuilder().setName('パネル').setDescription('管理パネル'),
+    new SlashCommandBuilder().setName('設定確認').setDescription('状態確認'),
+    new SlashCommandBuilder().setName('サーバー情報').setDescription('情報表示'),
+    new SlashCommandBuilder().setName('チャンネル設定').setDescription('アラート設定')
 
   ].map(c => c.toJSON());
 
@@ -119,10 +89,7 @@ client.on('interactionCreate', async i => {
 
     );
 
-    return i.reply({
-      embeds: [embed],
-      components: [row]
-    });
+    return i.reply({ embeds: [embed], components: [row] });
   }
 
   // =========================
@@ -134,33 +101,97 @@ client.on('interactionCreate', async i => {
       content:
 `監視:${settings.monitorEnabled}
 リンク:${settings.linkAlertEnabled}
-新規:${settings.newAccountAlertEnabled}`,
+新規:${settings.newAccountAlertEnabled}
+チャンネル:${settings.alertChannelId ? '設定済み' : '未設定'}`,
       ephemeral: true
     });
   }
 
   // =========================
-  // サーバー情報
+  // チャンネル設定UI
+  // =========================
+  if (i.isChatInputCommand() && i.commandName === 'チャンネル設定') {
+
+    const embed = new EmbedBuilder()
+      .setTitle('アラートチャンネル')
+      .setDescription(
+        settings.alertChannelId
+          ? `<#${settings.alertChannelId}>`
+          : '未設定'
+      );
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('set_channel')
+        .setLabel('設定')
+        .setStyle(ButtonStyle.Primary),
+
+      new ButtonBuilder()
+        .setCustomId('clear_channel')
+        .setLabel('削除')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return i.reply({ embeds: [embed], components: [row] });
+  }
+
+  // =========================
+  // サーバー情報（完全整理版）
   // =========================
   if (i.isChatInputCommand() && i.commandName === 'サーバー情報') {
 
     const g = i.guild;
 
+    const members = g.memberCount;
     const users = g.members.cache.filter(m => !m.user.bot).size;
     const bots = g.members.cache.filter(m => m.user.bot).size;
 
+    const text = g.channels.cache.filter(c => c.type === 0).size;
+    const voice = g.channels.cache.filter(c => c.type === 2).size;
+    const cat = g.channels.cache.filter(c => c.type === 4).size;
+
+    const boost = g.premiumSubscriptionCount || 0;
+    const level = g.premiumTier;
+
+    const created = g.createdAt.toISOString().split('T')[0];
+
+    const online = g.members.cache.filter(m => m.presence?.status === 'online').size;
+    const offline = members - online;
+
+    const inactivity = Math.min(100, Math.round((bots / members) * 100));
+
     return i.reply({
       content:
-`サーバー名:${g.name}
-合計:${g.memberCount}
-ユーザー:${users}
-Bot:${bots}`,
-      ephemeral: true
+`📊 サーバー情報
+
+👥 メンバー
+総数: ${members}
+ユーザー: ${users}
+Bot: ${bots}
+
+📶 ステータス
+🟢 ${online}
+⚫ ${offline}
+
+💬 チャンネル
+テキスト: ${text}
+ボイス: ${voice}
+カテゴリ: ${cat}
+
+🚀 ブースト
+レベル: ${level}
+回数: ${boost}
+
+📅 作成日
+${created}
+
+📉 過疎度
+${inactivity}%`
     });
   }
 
   // =========================
-  // ボタン処理
+  // ボタン
   // =========================
   if (i.isButton()) {
 
@@ -169,66 +200,91 @@ Bot:${bots}`,
     if (i.customId === 'toggle_monitor') {
       settings.monitorEnabled = !settings.monitorEnabled;
       save(settings);
-
       return i.reply({ content: `監視:${settings.monitorEnabled}`, ephemeral: true });
     }
 
     if (i.customId === 'toggle_link') {
       settings.linkAlertEnabled = !settings.linkAlertEnabled;
       save(settings);
-
       return i.reply({ content: `リンク:${settings.linkAlertEnabled}`, ephemeral: true });
     }
 
     if (i.customId === 'toggle_new') {
       settings.newAccountAlertEnabled = !settings.newAccountAlertEnabled;
       save(settings);
-
       return i.reply({ content: `新規:${settings.newAccountAlertEnabled}`, ephemeral: true });
+    }
+
+    if (i.customId === 'set_channel') {
+
+      const modal = new ModalBuilder()
+        .setCustomId('channel_modal')
+        .setTitle('チャンネル設定');
+
+      const input = new TextInputBuilder()
+        .setCustomId('channel')
+        .setLabel('チャンネルID')
+        .setStyle(TextInputStyle.Short);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+
+      return i.showModal(modal);
+    }
+
+    if (i.customId === 'clear_channel') {
+      settings.alertChannelId = null;
+      save(settings);
+      return i.reply({ content: '削除完了', ephemeral: true });
     }
 
     if (i.customId === 'edit_text') {
 
       const modal = new ModalBuilder()
-        .setCustomId('edit_modal')
+        .setCustomId('text_modal')
         .setTitle('説明編集');
 
       const input = new TextInputBuilder()
         .setCustomId('text')
         .setLabel('説明')
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true);
+        .setStyle(TextInputStyle.Paragraph);
 
-      const row = new ActionRowBuilder().addComponents(input);
-      modal.addComponents(row);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
 
       return i.showModal(modal);
     }
   }
 
   // =========================
-  // モーダル処理
+  // モーダル
   // =========================
-  if (i.isModalSubmit() && i.customId === 'edit_modal') {
+  if (i.isModalSubmit()) {
 
-    settings.panelText = i.fields.getTextInputValue('text');
-    save(settings);
+    settings = load();
 
-    return i.reply({
-      content: '説明更新完了',
-      ephemeral: true
-    });
+    if (i.customId === 'channel_modal') {
+      settings.alertChannelId = i.fields.getTextInputValue('channel');
+      save(settings);
+      return i.reply({ content: 'チャンネル設定完了', ephemeral: true });
+    }
+
+    if (i.customId === 'text_modal') {
+      settings.panelText = i.fields.getTextInputValue('text');
+      save(settings);
+      return i.reply({ content: '更新完了', ephemeral: true });
+    }
   }
 });
 
 // ===============================
-// メッセージ監視
+// リンク監視
 // ===============================
 
 client.on('messageCreate', m => {
 
   if (m.author.bot) return;
   if (!settings.monitorEnabled) return;
+  if (!settings.linkAlertEnabled) return;
+  if (!settings.alertChannelId) return;
 
   if (/(https?:\/\/)/.test(m.content)) {
 
