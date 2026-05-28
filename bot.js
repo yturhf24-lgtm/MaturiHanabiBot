@@ -1,4 +1,8 @@
-js
+// =====================
+// Discord BOT 完成版
+// discord.js v14
+// =====================
+
 const {
   Client,
   GatewayIntentBits,
@@ -19,9 +23,6 @@ const fs = require('fs');
 const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s';
 const SETTINGS = './settings.json';
 
-// =====================
-// owner bypass
-// =====================
 const OWNER_ID = '1266013271518089258';
 
 // =====================
@@ -145,11 +146,9 @@ async function requireAlert(i, s) {
   return true;
 }
 
-function formatDate() {
+function formatDate(date = new Date()) {
 
-  const d = new Date();
-
-  return d.toLocaleString(
+  return date.toLocaleString(
     'ja-JP',
     {
       timeZone: 'Asia/Tokyo',
@@ -199,13 +198,11 @@ client.once('ready', async () => {
 
   const commands = [
 
-    // =====================
     // alert
-    // =====================
     new SlashCommandBuilder()
       .setName('alert')
       .setDescription(
-        '通知送信先チャンネルを設定'
+        '通知チャンネル設定'
       )
       .addChannelOption(o =>
         o.setName('channel')
@@ -215,18 +212,16 @@ client.once('ready', async () => {
           .setRequired(true)
       ),
 
-    // =====================
     // monitor
-    // =====================
     new SlashCommandBuilder()
       .setName('monitor')
       .setDescription(
-        '監視機能をON/OFF'
+        '監視機能 ON/OFF'
       )
       .addStringOption(o =>
         o.setName('type')
           .setDescription(
-            '変更する監視'
+            '監視種類'
           )
           .setRequired(true)
           .addChoices(
@@ -258,23 +253,21 @@ client.once('ready', async () => {
           )
       ),
 
-    // =====================
     // role
-    // =====================
     new SlashCommandBuilder()
       .setName('role')
       .setDescription(
-        'コマンド許可ロール管理'
+        'コマンド権限ロール'
       )
       .addSubcommand(s =>
         s.setName('add')
           .setDescription(
-            '許可ロール追加'
+            'ロール追加'
           )
           .addRoleOption(o =>
             o.setName('role')
               .setDescription(
-                '追加するロール'
+                'ロール'
               )
               .setRequired(true)
           )
@@ -282,13 +275,11 @@ client.once('ready', async () => {
       .addSubcommand(s =>
         s.setName('clear')
           .setDescription(
-            '許可ロール全削除'
+            'ロール全削除'
           )
       ),
 
-    // =====================
     // panel
-    // =====================
     new SlashCommandBuilder()
       .setName('panel')
       .setDescription(
@@ -323,26 +314,22 @@ client.once('ready', async () => {
       .addSubcommand(s =>
         s.setName('create')
           .setDescription(
-            '説明付きパネル生成'
+            'パネル生成'
           )
       ),
 
-    // =====================
     // server
-    // =====================
     new SlashCommandBuilder()
       .setName('server')
       .setDescription(
-        'サーバー情報表示'
+        'サーバー情報'
       ),
 
-    // =====================
     // status
-    // =====================
     new SlashCommandBuilder()
       .setName('status')
       .setDescription(
-        '現在の設定確認'
+        '設定確認'
       )
 
   ].map(c => c.toJSON());
@@ -359,6 +346,7 @@ client.on(
   'interactionCreate',
   async i => {
 
+    // slash
     if (i.isChatInputCommand()) {
 
       const noDefer =
@@ -406,7 +394,7 @@ client.on(
             embeds: [
               okEmbed(
                 'アラート設定',
-                `通知先: ${ch}`
+                `設定先: ${ch}`
               )
             ]
           });
@@ -445,9 +433,6 @@ client.on(
           const enabled =
             mode === 'on';
 
-          // =====================
-          // link
-          // =====================
           if (type === 'link') {
 
             s.linkAlertEnabled =
@@ -467,9 +452,6 @@ client.on(
             });
           }
 
-          // =====================
-          // player
-          // =====================
           if (type === 'player') {
 
             s.playerMonitorEnabled =
@@ -509,7 +491,6 @@ client.on(
           const sub =
             i.options.getSubcommand();
 
-          // add
           if (sub === 'add') {
 
             const role =
@@ -522,6 +503,7 @@ client.on(
                 role.id
               )
             ) {
+
               s.allowedRoles.push(
                 role.id
               );
@@ -533,13 +515,12 @@ client.on(
               embeds: [
                 okEmbed(
                   'ロール追加',
-                  `${role} を追加しました`
+                  `${role} を追加`
                 )
               ]
             });
           }
 
-          // clear
           if (sub === 'clear') {
 
             s.allowedRoles = [];
@@ -576,7 +557,6 @@ client.on(
           const sub =
             i.options.getSubcommand();
 
-          // setchannel
           if (
             sub === 'setchannel'
           ) {
@@ -601,7 +581,6 @@ client.on(
             });
           }
 
-          // setviewchannel
           if (
             sub ===
             'setviewchannel'
@@ -627,7 +606,6 @@ client.on(
             });
           }
 
-          // create
           if (sub === 'create') {
 
             if (
@@ -650,7 +628,7 @@ client.on(
                   'panel_modal'
                 )
                 .setTitle(
-                  'パネル説明入力'
+                  '説明入力'
                 );
 
             const input =
@@ -729,6 +707,27 @@ client.on(
                 'dnd'
             ).size;
 
+          const textChannels =
+            g.channels.cache.filter(
+              c =>
+                c.type ===
+                ChannelType.GuildText
+            ).size;
+
+          const voiceChannels =
+            g.channels.cache.filter(
+              c =>
+                c.type ===
+                ChannelType.GuildVoice
+            ).size;
+
+          const categoryChannels =
+            g.channels.cache.filter(
+              c =>
+                c.type ===
+                ChannelType.GuildCategory
+            ).size;
+
           const embed =
             new EmbedBuilder()
               .setColor(
@@ -745,16 +744,17 @@ client.on(
               .addFields(
                 {
                   name:
-                    'メンバー',
+                    '👥 メンバー',
                   value:
 `総人数: ${g.memberCount}
 一般: ${humans}
 BOT: ${bots}`,
                   inline: true
                 },
+
                 {
                   name:
-                    'ステータス',
+                    '📶 ステータス',
                   value:
 `🟢 オンライン: ${online}
 🌙 退席中: ${idle}
@@ -762,9 +762,43 @@ BOT: ${bots}`,
 ⚫ オフライン: ${offline}`,
                   inline: true
                 },
+
                 {
                   name:
-                    '過疎度',
+                    '📁 チャンネル',
+                  value:
+`テキスト: ${textChannels}
+ボイス: ${voiceChannels}
+カテゴリ: ${categoryChannels}`,
+                  inline: true
+                },
+
+                {
+                  name:
+                    '🚀 ブースト',
+                  value:
+`レベル: ${g.premiumTier}
+回数: ${
+  g.premiumSubscriptionCount ?? 0
+}`,
+                  inline: true
+                },
+
+                {
+                  name:
+                    '📅 作成日',
+                  value:
+                    formatDate(
+                      new Date(
+                        g.createdTimestamp
+                      )
+                    ),
+                  inline: false
+                },
+
+                {
+                  name:
+                    '📉 過疎度',
                   value:
                     getActivityRate(
                       online +
@@ -793,7 +827,7 @@ BOT: ${bots}`,
                 0x5865f2
               )
               .setTitle(
-                '設定一覧'
+                '⚙️ 現在設定'
               )
               .addFields(
                 {
@@ -850,14 +884,6 @@ BOT: ${bots}`,
 
         console.error(e);
 
-        return i.reply({
-          embeds: [
-            errorEmbed(
-              '❌ エラー'
-            )
-          ],
-          ephemeral: true
-        });
       }
     }
 
@@ -868,9 +894,7 @@ BOT: ${bots}`,
 
       const s = load();
 
-      // =====================
       // panel create
-      // =====================
       if (
         i.customId ===
         'panel_modal'
@@ -930,9 +954,7 @@ BOT: ${bots}`,
         });
       }
 
-      // =====================
       // button modal
-      // =====================
       if (
         i.customId ===
         'button_modal'
@@ -948,6 +970,18 @@ BOT: ${bots}`,
             s.panelViewChannelId
           );
 
+        if (!ch) {
+
+          return i.reply({
+            embeds: [
+              errorEmbed(
+                '❌ 回答表示先未設定'
+              )
+            ],
+            ephemeral: true
+          });
+        }
+
         const embed =
           new EmbedBuilder()
             .setColor(
@@ -962,7 +996,7 @@ BOT: ${bots}`,
             .addFields(
               {
                 name:
-                  'ユーザー情報',
+                  '👤 ユーザー情報',
                 value:
 `表示名: ${i.member.displayName}
 名前: ${i.user.username}
@@ -970,7 +1004,7 @@ BOT: ${bots}`,
               },
               {
                 name:
-                  '日時',
+                  '🕒 日時',
                 value:
                   formatDate()
               }
@@ -1065,9 +1099,7 @@ client.on(
       )
     ) {
 
-      // =====================
-      // user warning
-      // =====================
+      // warning
       await m.reply({
         embeds: [
           new EmbedBuilder()
@@ -1093,9 +1125,7 @@ BANされる可能性があります。`
 
       }).catch(() => {});
 
-      // =====================
       // alert
-      // =====================
       const ch =
         m.guild.channels.cache.get(
           s.alertChannelId
@@ -1117,7 +1147,7 @@ BANされる可能性があります。`
           .addFields(
             {
               name:
-                'ユーザー情報',
+                '👤 ユーザー情報',
               value:
 `表示名: ${m.member.displayName}
 名前: ${m.author.username}
@@ -1125,13 +1155,13 @@ BANされる可能性があります。`
             },
             {
               name:
-                'チャンネル',
+                '📍 チャンネル',
               value:
                 `${m.channel}`
             },
             {
               name:
-                '日時',
+                '🕒 日時',
               value:
                 formatDate()
             }
@@ -1186,7 +1216,7 @@ client.on(
         .addFields(
           {
             name:
-              'ユーザー情報',
+              '👤 ユーザー情報',
             value:
 `表示名: ${member.displayName}
 名前: ${member.user.username}
@@ -1194,7 +1224,7 @@ client.on(
           },
           {
             name:
-              '日時',
+              '🕒 日時',
             value:
               formatDate()
           }
@@ -1211,4 +1241,3 @@ client.on(
 // login
 // =====================
 client.login(TOKEN);
-```
