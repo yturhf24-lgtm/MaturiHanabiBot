@@ -1,4 +1,3 @@
-js
 // =====================
 // Discord BOT 完成版
 // discord.js v14
@@ -10,7 +9,7 @@ const {
   SlashCommandBuilder,
   PermissionsBitField,
   EmbedBuilder,
-  ActionRowBuilder,
+ ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ModalBuilder,
@@ -197,6 +196,11 @@ client.once('ready', async () => {
     `${client.user.tag} Ready`
   );
 
+  console.log('====================');
+  console.log('設定読み込み完了');
+  console.log(load());
+  console.log('====================');
+
   const commands = [
 
     // alert
@@ -347,7 +351,6 @@ client.on(
   'interactionCreate',
   async i => {
 
-    // slash
     if (i.isChatInputCommand()) {
 
       const noDefer =
@@ -999,9 +1002,9 @@ BOT: ${bots}`,
                 name:
                   '👤 ユーザー情報',
                 value:
-`表示名: ${i.member.displayName}
-名前: ${i.user.username}
-メンション: ${i.user}`
+`メンション: ${i.user}
+表示名: ${i.member.displayName}
+下名: ${i.user.username}`
               },
               {
                 name:
@@ -1100,7 +1103,6 @@ client.on(
       )
     ) {
 
-      // warning
       await m.reply({
         embeds: [
           new EmbedBuilder()
@@ -1118,15 +1120,8 @@ BANされる可能性があります。`
             )
             .setTimestamp()
         ]
-      }).then(msg => {
+      });
 
-        setTimeout(() => {
-          msg.delete().catch(() => {});
-        }, 10000);
-
-      }).catch(() => {});
-
-      // alert
       const ch =
         m.guild.channels.cache.get(
           s.alertChannelId
@@ -1150,9 +1145,9 @@ BANされる可能性があります。`
               name:
                 '👤 ユーザー情報',
               value:
-`表示名: ${m.member.displayName}
-名前: ${m.author.username}
-メンション: ${m.author}`
+`メンション: ${m.author}
+表示名: ${m.member.displayName}
+下名: ${m.author.username}`
             },
             {
               name:
@@ -1219,14 +1214,14 @@ client.on(
             name:
               '👤 ユーザー情報',
             value:
-`表示名: ${member.displayName}
-名前: ${member.user.username}
-メンション: ${member}`
+`メンション: ${member}
+表示名: ${member.displayName}
+下名: ${member.user.username}`
           },
           {
             name:
               '🕒 日時',
-            value:
+              value:
               formatDate()
           }
         )
@@ -1242,4 +1237,3 @@ client.on(
 // login
 // =====================
 client.login(TOKEN);
-```
