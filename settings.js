@@ -14,16 +14,7 @@ function load() {
     }, null, 2));
   }
 
-  const d = JSON.parse(fs.readFileSync(path));
-
-  return {
-    alertChannelId: d.alertChannelId ?? null,
-    linkAlertEnabled: !!d.linkAlertEnabled,
-    playerMonitorEnabled: !!d.playerMonitorEnabled,
-    allowedRoles: Array.isArray(d.allowedRoles) ? d.allowedRoles : [],
-    panelText: typeof d.panelText === "string" ? d.panelText : "",
-    panelChannelId: d.panelChannelId ?? null
-  };
+  return JSON.parse(fs.readFileSync(path));
 }
 
 function save(data) {
