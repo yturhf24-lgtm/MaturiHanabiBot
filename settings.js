@@ -14,15 +14,15 @@ function load() {
     }, null, 2));
   }
 
-  const data = JSON.parse(fs.readFileSync(path));
+  const d = JSON.parse(fs.readFileSync(path));
 
   return {
-    alertChannelId: data.alertChannelId ?? null,
-    linkAlertEnabled: !!data.linkAlertEnabled,
-    playerMonitorEnabled: !!data.playerMonitorEnabled,
-    allowedRoles: Array.isArray(data.allowedRoles) ? data.allowedRoles : [],
-    panelText: typeof data.panelText === "string" ? data.panelText : "",
-    panelChannelId: data.panelChannelId ?? null
+    alertChannelId: d.alertChannelId ?? null,
+    linkAlertEnabled: !!d.linkAlertEnabled,
+    playerMonitorEnabled: !!d.playerMonitorEnabled,
+    allowedRoles: Array.isArray(d.allowedRoles) ? d.allowedRoles : [],
+    panelText: typeof d.panelText === "string" ? d.panelText : "",
+    panelChannelId: d.panelChannelId ?? null
   };
 }
 
