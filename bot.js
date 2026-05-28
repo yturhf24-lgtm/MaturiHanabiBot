@@ -22,7 +22,7 @@ const {
 const fs = require('fs');
 const path = require('path');
 
-const TOKEN = 'TOKEN';
+const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s';
 const OWNER_ID = '1266013271518089258';
 
 const SETTINGS = path.join(
