@@ -1,4 +1,4 @@
-```js
+js
 const express = require('express');
 const fs = require('fs');
 
@@ -26,11 +26,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
+
   res.send('BOT ONLINE');
+
 });
 
 app.listen(PORT, () => {
-  console.log(`Web Server Start : ${PORT}`);
+
+  console.log(
+    'Web Server Start : ' + PORT
+  );
+
 });
 
 // ===============================
@@ -58,7 +64,10 @@ const TOKEN = process.env.TOKEN;
 
 if (!TOKEN) {
 
-  console.log('TOKEN が設定されていません');
+  console.log(
+    'TOKEN が設定されていません'
+  );
+
   process.exit(1);
 
 }
@@ -67,7 +76,8 @@ if (!TOKEN) {
 // Settings File
 // ===============================
 
-const SETTINGS_FILE = './settings.json';
+const SETTINGS_FILE =
+  './settings.json';
 
 // ===============================
 // Default Settings
@@ -97,7 +107,8 @@ const defaultSettings = {
 // Settings
 // ===============================
 
-let settings = defaultSettings;
+let settings =
+  defaultSettings;
 
 // ===============================
 // Load Settings
@@ -107,7 +118,11 @@ function loadSettings() {
 
   try {
 
-    if (!fs.existsSync(SETTINGS_FILE)) {
+    if (
+      !fs.existsSync(
+        SETTINGS_FILE
+      )
+    ) {
 
       fs.writeFileSync(
 
@@ -121,31 +136,40 @@ function loadSettings() {
 
       );
 
-      settings = defaultSettings;
+      settings =
+        defaultSettings;
 
-      console.log('settings.json 作成');
+      console.log(
+        'settings.json 作成'
+      );
 
       return;
 
     }
 
-    const data = fs.readFileSync(
-      SETTINGS_FILE,
-      'utf8'
+    const data =
+      fs.readFileSync(
+        SETTINGS_FILE,
+        'utf8'
+      );
+
+    settings =
+      JSON.parse(data);
+
+    console.log(
+      'Settings Loaded'
     );
-
-    settings = JSON.parse(data);
-
-    console.log('Settings Loaded');
 
   } catch (err) {
 
     console.error(
-      'Settings Load Error',
-      err
+      'Settings Load Error'
     );
 
-    settings = defaultSettings;
+    console.error(err);
+
+    settings =
+      defaultSettings;
 
   }
 
@@ -173,14 +197,17 @@ function saveSettings() {
 
     );
 
-    console.log('Settings Saved');
+    console.log(
+      'Settings Saved'
+    );
 
   } catch (err) {
 
     console.error(
-      'Settings Save Error',
-      err
+      'Settings Save Error'
     );
+
+    console.error(err);
 
   }
 
@@ -190,258 +217,262 @@ function saveSettings() {
 // Ready
 // ===============================
 
-client.once('ready', async () => {
+client.once(
+  'ready',
+  async () => {
 
-  console.log(
-    `${client.user.tag} Ready`
-  );
+    console.log(
+      client.user.tag +
+      ' Ready'
+    );
 
-  const commands = [
+    const commands = [
 
-    // ===============================
-    // 監視
-    // ===============================
+      // ===============================
+      // 監視
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName('監視')
+        .setName('監視')
 
-      .setDescription(
-        '監視 ON/OFF'
-      )
+        .setDescription(
+          '監視 ON/OFF'
+        )
 
-      .addBooleanOption(option =>
+        .addBooleanOption(option =>
 
-        option
+          option
 
-          .setName('状態')
+            .setName('状態')
 
-          .setDescription(
-            'ON / OFF'
-          )
+            .setDescription(
+              'ON / OFF'
+            )
 
-          .setRequired(true)
+            .setRequired(true)
 
-      ),
+        ),
 
-    // ===============================
-    // アラートチャンネル
-    // ===============================
+      // ===============================
+      // アラートチャンネル
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        'アラートチャンネル'
-      )
+        .setName(
+          'アラートチャンネル'
+        )
 
-      .setDescription(
-        '通知チャンネル設定'
-      )
+        .setDescription(
+          '通知チャンネル設定'
+        )
 
-      .addChannelOption(option =>
+        .addChannelOption(option =>
 
-        option
+          option
 
-          .setName(
-            'チャンネル'
-          )
+            .setName(
+              'チャンネル'
+            )
 
-          .setDescription(
-            '通知先'
-          )
+            .setDescription(
+              '通知先'
+            )
 
-          .addChannelTypes(
-            ChannelType.GuildText
-          )
+            .addChannelTypes(
+              ChannelType.GuildText
+            )
 
-          .setRequired(true)
+            .setRequired(true)
 
-      ),
+        ),
 
-    // ===============================
-    // リンクアラート
-    // ===============================
+      // ===============================
+      // リンクアラート
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        'リンクアラート'
-      )
+        .setName(
+          'リンクアラート'
+        )
 
-      .setDescription(
-        'リンク監視 ON/OFF'
-      )
+        .setDescription(
+          'リンク監視'
+        )
 
-      .addBooleanOption(option =>
+        .addBooleanOption(option =>
 
-        option
+          option
 
-          .setName('状態')
+            .setName('状態')
 
-          .setDescription(
-            'ON / OFF'
-          )
+            .setDescription(
+              'ON / OFF'
+            )
 
-          .setRequired(true)
+            .setRequired(true)
 
-      ),
+        ),
 
-    // ===============================
-    // 新規アカウント
-    // ===============================
+      // ===============================
+      // 新規アカウント
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        '新規アカウントアラート'
-      )
+        .setName(
+          '新規アカウントアラート'
+        )
 
-      .setDescription(
-        '新規アカウント監視'
-      )
+        .setDescription(
+          '新規アカウント監視'
+        )
 
-      .addBooleanOption(option =>
+        .addBooleanOption(option =>
 
-        option
+          option
 
-          .setName('状態')
+            .setName('状態')
 
-          .setDescription(
-            'ON / OFF'
-          )
+            .setDescription(
+              'ON / OFF'
+            )
 
-          .setRequired(true)
+            .setRequired(true)
 
-      ),
+        ),
 
-    // ===============================
-    // 設定確認
-    // ===============================
+      // ===============================
+      // 設定確認
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        '設定確認'
-      )
+        .setName(
+          '設定確認'
+        )
 
-      .setDescription(
-        '現在の設定確認'
-      ),
+        .setDescription(
+          '現在の設定確認'
+        ),
 
-    // ===============================
-    // サーバー情報
-    // ===============================
+      // ===============================
+      // サーバー情報
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        'サーバー情報'
-      )
+        .setName(
+          'サーバー情報'
+        )
 
-      .setDescription(
-        'サーバー情報'
-      ),
+        .setDescription(
+          'サーバー情報'
+        ),
 
-    // ===============================
-    // 権限追加
-    // ===============================
+      // ===============================
+      // 権限追加
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        'コマンド権限許可'
-      )
+        .setName(
+          'コマンド権限許可'
+        )
 
-      .setDescription(
-        'コマンド使用許可'
-      )
+        .setDescription(
+          '権限追加'
+        )
 
-      .addRoleOption(option =>
+        .addRoleOption(option =>
 
-        option
+          option
 
-          .setName('ロール')
+            .setName('ロール')
 
-          .setDescription(
-            '許可するロール'
-          )
+            .setDescription(
+              '許可ロール'
+            )
 
-          .setRequired(true)
+            .setRequired(true)
 
-      ),
+        ),
 
-    // ===============================
-    // 権限削除
-    // ===============================
+      // ===============================
+      // 権限削除
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        'コマンド権限剥奪'
-      )
+        .setName(
+          'コマンド権限剥奪'
+        )
 
-      .setDescription(
-        'コマンド権限削除'
-      )
+        .setDescription(
+          '権限削除'
+        )
 
-      .addRoleOption(option =>
+        .addRoleOption(option =>
 
-        option
+          option
 
-          .setName('ロール')
+            .setName('ロール')
 
-          .setDescription(
-            '削除するロール'
-          )
+            .setDescription(
+              '削除ロール'
+            )
 
-          .setRequired(true)
+            .setRequired(true)
 
-      ),
+        ),
 
-    // ===============================
-    // パネル設定
-    // ===============================
+      // ===============================
+      // パネル設定
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        'パネル設定'
-      )
+        .setName(
+          'パネル設定'
+        )
 
-      .setDescription(
-        'パネル設定'
-      ),
+        .setDescription(
+          'パネル設定'
+        ),
 
-    // ===============================
-    // パネル送信
-    // ===============================
+      // ===============================
+      // パネル送信
+      // ===============================
 
-    new SlashCommandBuilder()
+      new SlashCommandBuilder()
 
-      .setName(
-        'パネル'
-      )
+        .setName(
+          'パネル'
+        )
 
-      .setDescription(
-        'パネル送信'
-      )
+        .setDescription(
+          'パネル送信'
+        )
 
-  ].map(command =>
-    command.toJSON()
-  );
+    ].map(command =>
+      command.toJSON()
+    );
 
-  await client.application.commands.set(
-    commands
-  );
+    await client.application.commands.set(
+      commands
+    );
 
-  console.log(
-    'Slash Commands Loaded'
-  );
+    console.log(
+      'Slash Commands Loaded'
+    );
 
-});
+  }
+);
 
 // ===============================
-// 権限チェック
+// Permission
 // ===============================
 
 function hasPermission(
@@ -553,7 +584,7 @@ client.on(
       }
 
       // ===============================
-      // Slash Command
+      // Slash
       // ===============================
 
       if (
@@ -561,7 +592,7 @@ client.on(
       ) return;
 
       // ===============================
-      // Permission
+      // Permission Check
       // ===============================
 
       if (
@@ -594,7 +625,7 @@ client.on(
       }
 
       // ===============================
-      // コマンド権限許可
+      // 権限追加
       // ===============================
 
       if (
@@ -642,7 +673,8 @@ client.on(
         return interaction.reply({
 
           content:
-            `${role.name} を許可しました`,
+            role.name +
+            ' を許可しました',
 
           ephemeral: true
 
@@ -651,7 +683,7 @@ client.on(
       }
 
       // ===============================
-      // コマンド権限剥奪
+      // 権限削除
       // ===============================
 
       if (
@@ -690,7 +722,8 @@ client.on(
         return interaction.reply({
 
           content:
-            `${role.name} を削除しました`,
+            role.name +
+            ' を削除しました',
 
           ephemeral: true
 
@@ -739,7 +772,6 @@ client.on(
       ) {
 
         const channel =
-
           interaction.options.getChannel(
             'チャンネル'
           );
@@ -752,7 +784,8 @@ client.on(
         return interaction.reply({
 
           content:
-            `${channel} に設定しました`,
+            channel.name +
+            ' に設定しました',
 
           ephemeral: true
 
@@ -835,24 +868,39 @@ client.on(
 
           content:
 
-`監視 : ${
-settings.monitorEnabled ? 'ON' : 'OFF'
-}
+            '監視 : ' +
 
-リンク監視 : ${
-settings.linkAlertEnabled ? 'ON' : 'OFF'
-}
+            (
+              settings.monitorEnabled
+                ? 'ON'
+                : 'OFF'
+            ) +
 
-新規アカウント監視 : ${
-settings.newAccountAlertEnabled ? 'ON' : 'OFF'
-}
+            '\n\nリンク監視 : ' +
 
-アラートチャンネル :
-${
-settings.alertChannelId
-? `<#${settings.alertChannelId}>`
-: '未設定'
-}`,
+            (
+              settings.linkAlertEnabled
+                ? 'ON'
+                : 'OFF'
+            ) +
+
+            '\n\n新規アカウント監視 : ' +
+
+            (
+              settings.newAccountAlertEnabled
+                ? 'ON'
+                : 'OFF'
+            ) +
+
+            '\n\nアラートチャンネル : ' +
+
+            (
+              settings.alertChannelId
+                ? '<#' +
+                  settings.alertChannelId +
+                  '>'
+                : '未設定'
+            ),
 
           ephemeral: true
 
@@ -872,51 +920,50 @@ settings.alertChannelId
         const members =
           interaction.guild.members.cache;
 
-        const bots =
+        const botCount =
           members.filter(
             m => m.user.bot
           ).size;
 
-        const users =
+        const userCount =
           members.filter(
             m => !m.user.bot
           ).size;
 
+        const embed =
+          new EmbedBuilder()
+
+            .setTitle(
+              'サーバー情報'
+            )
+
+            .setColor('Blue')
+
+            .setDescription(
+
+              'サーバー名 :\n' +
+              interaction.guild.name +
+
+              '\n\n合計人数 :\n' +
+              interaction.guild.memberCount +
+
+              '\n\n一般ユーザー :\n' +
+              userCount +
+
+              '\n\nBOT :\n' +
+              botCount +
+
+              '\n\nチャンネル数 :\n' +
+              interaction.guild.channels.cache.size +
+
+              '\n\nロール数 :\n' +
+              interaction.guild.roles.cache.size
+
+            );
+
         return interaction.reply({
 
-          embeds: [
-
-            new EmbedBuilder()
-
-              .setTitle(
-                'サーバー情報'
-              )
-
-              .setColor('Blue')
-
-              .setDescription(
-
-`サーバー名 :
-${interaction.guild.name}
-
-合計人数 :
-${interaction.guild.memberCount}
-
-一般ユーザー :
-${users}
-
-BOT :
-${bots}
-
-チャンネル数 :
-${interaction.guild.channels.cache.size}
-
-ロール数 :
-${interaction.guild.roles.cache.size}`
-
-              )
-
-          ],
+          embeds: [embed],
 
           ephemeral: true
 
@@ -986,18 +1033,23 @@ ${interaction.guild.roles.cache.size}`
               settings.panelButtonLabel
             );
 
-        modal.addComponents(
-
+        const row1 =
           new ActionRowBuilder()
+
             .addComponents(
               description
-            ),
+            );
 
+        const row2 =
           new ActionRowBuilder()
+
             .addComponents(
               button
-            )
+            );
 
+        modal.addComponents(
+          row1,
+          row2
         );
 
         return interaction.showModal(
@@ -1007,7 +1059,7 @@ ${interaction.guild.roles.cache.size}`
       }
 
       // ===============================
-      // パネル
+      // パネル送信
       // ===============================
 
       if (
@@ -1063,30 +1115,38 @@ ${interaction.guild.roles.cache.size}`
 
       console.error(err);
 
-      if (
-        interaction.replied ||
-        interaction.deferred
-      ) {
+      try {
 
-        interaction.followUp({
+        if (
+          interaction.replied ||
+          interaction.deferred
+        ) {
 
-          content:
-            'エラーが発生しました',
+          await interaction.followUp({
 
-          ephemeral: true
+            content:
+              'エラー発生',
 
-        }).catch(() => {});
+            ephemeral: true
 
-      } else {
+          });
 
-        interaction.reply({
+        } else {
 
-          content:
-            'エラーが発生しました',
+          await interaction.reply({
 
-          ephemeral: true
+            content:
+              'エラー発生',
 
-        }).catch(() => {});
+            ephemeral: true
+
+          });
+
+        }
+
+      } catch (e) {
+
+        console.error(e);
 
       }
 
@@ -1131,39 +1191,37 @@ client.on(
       ) {
 
         const channel =
-
           message.guild.channels.cache.get(
             settings.alertChannelId
           );
 
         if (!channel) return;
 
+        const embed =
+          new EmbedBuilder()
+
+            .setTitle(
+              'リンク検知'
+            )
+
+            .setColor('Red')
+
+            .setDescription(
+
+              'ユーザー :\n' +
+              message.author.tag +
+
+              '\n\nチャンネル :\n' +
+              message.channel +
+
+              '\n\n内容 :\n' +
+              message.content
+
+            );
+
         channel.send({
 
-          embeds: [
-
-            new EmbedBuilder()
-
-              .setTitle(
-                'リンク検知'
-              )
-
-              .setColor('Red')
-
-              .setDescription(
-
-`ユーザー :
-${message.author.tag}
-
-チャンネル :
-${message.channel}
-
-内容 :
-${message.content}`
-
-              )
-
-          ]
+          embeds: [embed]
 
         });
 
@@ -1203,45 +1261,46 @@ client.on(
       const days =
         Math.floor(
           age /
-          (1000 * 60 * 60 * 24)
+          (
+            1000 *
+            60 *
+            60 *
+            24
+          )
         );
 
       if (days > 10) return;
 
       const channel =
-
         member.guild.channels.cache.get(
           settings.alertChannelId
         );
 
       if (!channel) return;
 
+      const embed =
+        new EmbedBuilder()
+
+          .setTitle(
+            '新規アカウント検知'
+          )
+
+          .setColor('Orange')
+
+          .setDescription(
+
+            'ユーザー :\n' +
+            member.user.tag +
+
+            '\n\n作成日数 :\n' +
+            days +
+            '日'
+
+          );
+
       channel.send({
 
-        embeds: [
-
-          new EmbedBuilder()
-
-            .setTitle(
-              '新規アカウント検知'
-            )
-
-            .setColor('Orange')
-
-            .setDescription(
-
-`ユーザー :
-${member.user.tag}
-
-作成日数 :
-${days}日
-
-ID :
-${member.id}`
-
-            )
-
-        ]
+        embeds: [embed]
 
       });
 
@@ -1261,14 +1320,18 @@ ${member.id}`
 process.on(
   'unhandledRejection',
   error => {
+
     console.error(error);
+
   }
 );
 
 process.on(
   'uncaughtException',
   error => {
+
     console.error(error);
+
   }
 );
 
@@ -1277,4 +1340,3 @@ process.on(
 // ===============================
 
 client.login(TOKEN);
-```
