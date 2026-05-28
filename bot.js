@@ -2,7 +2,6 @@ const {
   Client,
   GatewayIntentBits,
   SlashCommandBuilder,
-  ChannelType,
   PermissionsBitField,
   ActionRowBuilder,
   ButtonBuilder,
@@ -12,13 +11,8 @@ const {
 
 const { load, save } = require('./settings');
 
-const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s';
+const TOKEN = 'YOUR_TOKEN_HERE';
 
-let settings = load();
-
-// =====================
-// Client
-// =====================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -30,12 +24,10 @@ const client = new Client({
 });
 
 // =====================
-// 共通関数
+// 安全関数
 // =====================
-function isAllowed(i, settings) {
-  if (i.member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
-  if (!settings.allowedRoles?.length) return false;
-  return i.member.roles.cache.some(r => settings.allowedRoles.includes(r.id));
+function safeStr(v, fallback = "") {
+  return typeof v === "string" ? v : fallback;
 }
 
 function requireChannel(i, settings) {
@@ -44,6 +36,12 @@ function requireChannel(i, settings) {
     return false;
   }
   return true;
+}
+
+function isAllowed(i, settings) {
+  if (i.member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+  if (!settings.allowedRoles?.length) return false;
+  return i.member.roles.cache.some(r => settings.allowedRoles.includes(r.id));
 }
 
 // =====================
@@ -59,7 +57,7 @@ client.once('ready', async () => {
       .setDescription('アラート設定')
       .addSubcommandGroup(g =>
         g.setName('channel')
-          .setDescription('チャンネル設定')
+          .setDescription('チャンネル')
           .addSubcommand(s =>
             s.setName('set')
               .setDescription('設定')
@@ -68,37 +66,30 @@ client.once('ready', async () => {
               )
           )
           .addSubcommand(s =>
-            s.setName('clear').setDescription('削除')
+            s.setName('clear')
+              .setDescription('削除')
           )
       ),
 
     new SlashCommandBuilder()
       .setName('monitor')
-      .setDescription('監視設定')
+      .setDescription('監視')
       .addSubcommandGroup(g =>
         g.setName('link')
-          .setDescription('リンク監視')
-          .addSubcommand(s =>
-            s.setName('on').setDescription('ON')
-          )
-          .addSubcommand(s =>
-            s.setName('off').setDescription('OFF')
-          )
+          .setDescription('リンク')
+          .addSubcommand(s => s.setName('on').setDescription('ON'))
+          .addSubcommand(s => s.setName('off').setDescription('OFF'))
       )
       .addSubcommandGroup(g =>
         g.setName('player')
-          .setDescription('参加監視')
-          .addSubcommand(s =>
-            s.setName('on').setDescription('ON')
-          )
-          .addSubcommand(s =>
-            s.setName('off').setDescription('OFF')
-          )
+          .setDescription('参加')
+          .addSubcommand(s => s.setName('on').setDescription('ON'))
+          .addSubcommand(s => s.setName('off').setDescription('OFF'))
       ),
 
     new SlashCommandBuilder()
       .setName('role')
-      .setDescription('ロール制御')
+      .setDescription('ロール')
       .addSubcommand(s =>
         s.setName('add')
           .addRoleOption(o =>
@@ -111,11 +102,11 @@ client.once('ready', async () => {
 
     new SlashCommandBuilder()
       .setName('panel')
-      .setDescription('説明系')
+      .setDescription('パネル')
       .addSubcommand(s =>
         s.setName('channel')
           .addChannelOption(o =>
-            o.setName('channel').setRequired(true)
+            o.setName('channel').setDescription('チャンネル').setRequired(true)
           )
       )
       .addSubcommand(s =>
@@ -124,7 +115,7 @@ client.once('ready', async () => {
 
     new SlashCommandBuilder()
       .setName('サーバー情報')
-      .setDescription('情報表示'),
+      .setDescription('情報'),
 
     new SlashCommandBuilder()
       .setName('設定確認')
@@ -136,16 +127,15 @@ client.once('ready', async () => {
 });
 
 // =====================
-// コマンド処理
+// interaction
 // =====================
 client.on('interactionCreate', async i => {
-
   if (!i.isChatInputCommand()) return;
 
-  settings = load();
+  let settings = load();
 
   // =====================
-  // alert channel
+  // alert
   // =====================
   if (i.commandName === 'alert') {
 
@@ -154,9 +144,8 @@ client.on('interactionCreate', async i => {
 
     if (group === 'channel') {
 
-      if (!isAllowed(i, settings)) {
+      if (!isAllowed(i, settings))
         return i.reply({ content: "権限なし", ephemeral: true });
-      }
 
       if (sub === 'set') {
         const ch = i.options.getChannel('channel');
@@ -186,17 +175,23 @@ client.on('interactionCreate', async i => {
     if (!requireChannel(i, settings)) return;
 
     if (group === 'link') {
-      settings.linkAlertEnabled = (sub === 'on');
+      settings.linkAlertEnabled = sub === 'on';
       save(settings);
 
-      return i.reply({ content: `リンク監視:${settings.linkAlertEnabled}`, ephemeral: true });
+      return i.reply({
+        content: `リンク:${settings.linkAlertEnabled}`,
+        ephemeral: true
+      });
     }
 
     if (group === 'player') {
-      settings.playerMonitorEnabled = (sub === 'on');
+      settings.playerMonitorEnabled = sub === 'on';
       save(settings);
 
-      return i.reply({ content: `プレイヤー監視:${settings.playerMonitorEnabled}`, ephemeral: true });
+      return i.reply({
+        content: `参加:${settings.playerMonitorEnabled}`,
+        ephemeral: true
+      });
     }
   }
 
@@ -205,9 +200,8 @@ client.on('interactionCreate', async i => {
   // =====================
   if (i.commandName === 'role') {
 
-    if (!isAllowed(i, settings)) {
+    if (!isAllowed(i, settings))
       return i.reply({ content: "権限なし", ephemeral: true });
-    }
 
     const sub = i.options.getSubcommand();
 
@@ -226,7 +220,7 @@ client.on('interactionCreate', async i => {
       settings.allowedRoles = [];
       save(settings);
 
-      return i.reply({ content: "全削除完了", ephemeral: true });
+      return i.reply({ content: "削除完了", ephemeral: true });
     }
   }
 
@@ -238,26 +232,24 @@ client.on('interactionCreate', async i => {
     const sub = i.options.getSubcommand();
 
     if (sub === 'channel') {
-
       const ch = i.options.getChannel('channel');
 
       settings.panelChannelId = ch.id;
       save(settings);
 
-      return i.reply({ content: "チャンネル設定完了", ephemeral: true });
+      return i.reply({ content: "設定完了", ephemeral: true });
     }
 
     if (sub === 'post') {
 
-      if (!settings.panelChannelId) {
+      if (!settings.panelChannelId)
         return i.reply({ content: "チャンネル未設定", ephemeral: true });
-      }
 
       const ch = i.guild.channels.cache.get(settings.panelChannelId);
       if (!ch) return;
 
       const embed = new EmbedBuilder()
-        .setDescription(settings.panelText || "未設定");
+        .setDescription(safeStr(settings.panelText, "未設定"));
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -283,22 +275,19 @@ client.on('interactionCreate', async i => {
     const users = g.members.cache.filter(m => !m.user.bot).size;
     const bots = g.members.cache.filter(m => m.user.bot).size;
 
-    const online = g.members.cache.filter(m => m.presence?.status === 'online').size;
-
     const embed = new EmbedBuilder()
       .setTitle(g.name)
       .setThumbnail(g.iconURL())
       .addFields(
-        { name: "メンバー", value: `総:${members}\n人:${users}\nBot:${bots}`, inline: true },
-        { name: "オンライン", value: `${online}`, inline: true },
-        { name: "ブースト", value: `${g.premiumSubscriptionCount}`, inline: true }
+        { name: "人数", value: `総:${members}\n人:${users}\nBot:${bots}`, inline: true },
+        { name: "ブースト", value: `${g.premiumSubscriptionCount ?? 0}`, inline: true }
       );
 
     return i.reply({ embeds: [embed] });
   }
 
   // =====================
-  // setting check
+  // settings
   // =====================
   if (i.commandName === '設定確認') {
 
@@ -306,14 +295,14 @@ client.on('interactionCreate', async i => {
       ephemeral: true,
       content:
 `リンク:${settings.linkAlertEnabled}
-プレイヤー:${settings.playerMonitorEnabled}
+参加:${settings.playerMonitorEnabled}
 チャンネル:${settings.alertChannelId ?? "未設定"}`
     });
   }
 });
 
 // =====================
-// リンク監視
+// link monitor
 // =====================
 client.on('messageCreate', m => {
 
@@ -333,5 +322,4 @@ client.on('messageCreate', m => {
   }
 });
 
-// =====================
 client.login(TOKEN);
