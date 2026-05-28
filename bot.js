@@ -24,41 +24,37 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences
   ]
 });
 
-// ===============================
+// =====================
 // 起動
-// ===============================
-
+// =====================
 client.once('ready', async () => {
-
   console.log(client.user.tag + ' Ready');
 
   const cmds = [
-
-    new SlashCommandBuilder().setName('パネル').setDescription('管理パネル'),
-    new SlashCommandBuilder().setName('設定確認').setDescription('状態確認'),
+    new SlashCommandBuilder().setName('パネル').setDescription('管理UI'),
+    new SlashCommandBuilder().setName('設定確認').setDescription('設定確認'),
     new SlashCommandBuilder().setName('サーバー情報').setDescription('情報表示'),
-    new SlashCommandBuilder().setName('チャンネル設定').setDescription('アラート設定')
-
+    new SlashCommandBuilder().setName('チャンネル設定').setDescription('チャンネル設定')
   ].map(c => c.toJSON());
 
   await client.application.commands.set(cmds);
 });
 
-// ===============================
-// コマンド
-// ===============================
-
+// =====================
+// コマンド処理
+// =====================
 client.on('interactionCreate', async i => {
 
   settings = load();
 
-  // =========================
+  // ───────────────
   // パネル
-  // =========================
+  // ───────────────
   if (i.isChatInputCommand() && i.commandName === 'パネル') {
 
     const embed = new EmbedBuilder()
@@ -66,35 +62,18 @@ client.on('interactionCreate', async i => {
       .setDescription(settings.panelText);
 
     const row = new ActionRowBuilder().addComponents(
-
-      new ButtonBuilder()
-        .setCustomId('toggle_monitor')
-        .setLabel('監視')
-        .setStyle(ButtonStyle.Primary),
-
-      new ButtonBuilder()
-        .setCustomId('toggle_link')
-        .setLabel('リンク')
-        .setStyle(ButtonStyle.Secondary),
-
-      new ButtonBuilder()
-        .setCustomId('toggle_new')
-        .setLabel('新規')
-        .setStyle(ButtonStyle.Secondary),
-
-      new ButtonBuilder()
-        .setCustomId('edit_text')
-        .setLabel('説明編集')
-        .setStyle(ButtonStyle.Success)
-
+      new ButtonBuilder().setCustomId('monitor').setLabel('監視').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('link').setLabel('リンク').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('new').setLabel('新規').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('edit').setLabel('説明編集').setStyle(ButtonStyle.Success)
     );
 
     return i.reply({ embeds: [embed], components: [row] });
   }
 
-  // =========================
+  // ───────────────
   // 設定確認
-  // =========================
+  // ───────────────
   if (i.isChatInputCommand() && i.commandName === '設定確認') {
 
     return i.reply({
@@ -107,37 +86,26 @@ client.on('interactionCreate', async i => {
     });
   }
 
-  // =========================
-  // チャンネル設定UI
-  // =========================
+  // ───────────────
+  // チャンネル設定
+  // ───────────────
   if (i.isChatInputCommand() && i.commandName === 'チャンネル設定') {
 
     const embed = new EmbedBuilder()
       .setTitle('アラートチャンネル')
-      .setDescription(
-        settings.alertChannelId
-          ? `<#${settings.alertChannelId}>`
-          : '未設定'
-      );
+      .setDescription(settings.alertChannelId ? `<#${settings.alertChannelId}>` : '未設定');
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('set_channel')
-        .setLabel('設定')
-        .setStyle(ButtonStyle.Primary),
-
-      new ButtonBuilder()
-        .setCustomId('clear_channel')
-        .setLabel('削除')
-        .setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId('set_channel').setLabel('設定').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('clear_channel').setLabel('削除').setStyle(ButtonStyle.Danger)
     );
 
     return i.reply({ embeds: [embed], components: [row] });
   }
 
-  // =========================
-  // サーバー情報（完全整理版）
-  // =========================
+  // ───────────────
+  // サーバー情報（完成UI）
+  // ───────────────
   if (i.isChatInputCommand() && i.commandName === 'サーバー情報') {
 
     const g = i.guild;
@@ -160,56 +128,66 @@ client.on('interactionCreate', async i => {
 
     const inactivity = Math.min(100, Math.round((bots / members) * 100));
 
-    return i.reply({
-      content:
-`📊 サーバー情報
+    const embed = new EmbedBuilder()
+      .setTitle(`${g.name} サーバー情報`)
+      .setThumbnail(g.iconURL({ dynamic: true }))
+      .addFields(
+        {
+          name: 'メンバー',
+          value: `総数:${members}\nユーザー:${users}\nBot:${bots}`,
+          inline: true
+        },
+        {
+          name: 'ステータス',
+          value: `🟢${online}\n⚫${offline}`,
+          inline: true
+        },
+        {
+          name: 'チャンネル',
+          value: `テキスト:${text}\nボイス:${voice}\nカテゴリ:${cat}`,
+          inline: true
+        },
+        {
+          name: 'ブースト',
+          value: `Lv:${level}\n回数:${boost}`,
+          inline: true
+        },
+        {
+          name: '作成日',
+          value: created,
+          inline: false
+        },
+        {
+          name: '過疎度',
+          value: `${inactivity}%`,
+          inline: false
+        }
+      )
+      .setColor(0x2b2d31);
 
-👥 メンバー
-総数: ${members}
-ユーザー: ${users}
-Bot: ${bots}
-
-📶 ステータス
-🟢 ${online}
-⚫ ${offline}
-
-💬 チャンネル
-テキスト: ${text}
-ボイス: ${voice}
-カテゴリ: ${cat}
-
-🚀 ブースト
-レベル: ${level}
-回数: ${boost}
-
-📅 作成日
-${created}
-
-📉 過疎度
-${inactivity}%`
-    });
+    return i.reply({ embeds: [embed] });
   }
 
-  // =========================
+  // ───────────────
   // ボタン
-  // =========================
+  // ───────────────
   if (i.isButton()) {
 
     settings = load();
 
-    if (i.customId === 'toggle_monitor') {
+    if (i.customId === 'monitor') {
       settings.monitorEnabled = !settings.monitorEnabled;
       save(settings);
       return i.reply({ content: `監視:${settings.monitorEnabled}`, ephemeral: true });
     }
 
-    if (i.customId === 'toggle_link') {
+    if (i.customId === 'link') {
       settings.linkAlertEnabled = !settings.linkAlertEnabled;
       save(settings);
       return i.reply({ content: `リンク:${settings.linkAlertEnabled}`, ephemeral: true });
     }
 
-    if (i.customId === 'toggle_new') {
+    if (i.customId === 'new') {
       settings.newAccountAlertEnabled = !settings.newAccountAlertEnabled;
       save(settings);
       return i.reply({ content: `新規:${settings.newAccountAlertEnabled}`, ephemeral: true });
@@ -237,7 +215,7 @@ ${inactivity}%`
       return i.reply({ content: '削除完了', ephemeral: true });
     }
 
-    if (i.customId === 'edit_text') {
+    if (i.customId === 'edit') {
 
       const modal = new ModalBuilder()
         .setCustomId('text_modal')
@@ -254,9 +232,9 @@ ${inactivity}%`
     }
   }
 
-  // =========================
+  // ───────────────
   // モーダル
-  // =========================
+  // ───────────────
   if (i.isModalSubmit()) {
 
     settings = load();
@@ -264,7 +242,7 @@ ${inactivity}%`
     if (i.customId === 'channel_modal') {
       settings.alertChannelId = i.fields.getTextInputValue('channel');
       save(settings);
-      return i.reply({ content: 'チャンネル設定完了', ephemeral: true });
+      return i.reply({ content: '設定完了', ephemeral: true });
     }
 
     if (i.customId === 'text_modal') {
@@ -275,10 +253,9 @@ ${inactivity}%`
   }
 });
 
-// ===============================
+// =====================
 // リンク監視
-// ===============================
-
+// =====================
 client.on('messageCreate', m => {
 
   if (m.author.bot) return;
@@ -295,8 +272,5 @@ client.on('messageCreate', m => {
   }
 });
 
-// ===============================
-// login
-// ===============================
-
+// =====================
 client.login(TOKEN);
