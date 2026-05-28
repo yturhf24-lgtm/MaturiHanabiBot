@@ -19,6 +19,11 @@ const TOKEN = 'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj
 const SETTINGS = './settings.json';
 
 // =====================
+// owner bypass
+// =====================
+const OWNER_ID = '1266013271518089258';
+
+// =====================
 // settings
 // =====================
 function load() {
@@ -28,6 +33,7 @@ function load() {
     const def = {
       alertChannelId: null,
       panelChannelId: null,
+      panelViewChannelId: null,
       allowedRoles: [],
       linkAlertEnabled: false,
       playerMonitorEnabled: false
@@ -69,14 +75,15 @@ const client = new Client({
 });
 
 // =====================
-// embed util
+// embeds
 // =====================
 function okEmbed(title, desc) {
 
   return new EmbedBuilder()
     .setColor(0x57f287)
     .setTitle(title)
-    .setDescription(desc);
+    .setDescription(desc)
+    .setTimestamp();
 }
 
 function errorEmbed(desc) {
@@ -84,7 +91,8 @@ function errorEmbed(desc) {
   return new EmbedBuilder()
     .setColor(0xed4245)
     .setTitle('エラー')
-    .setDescription(desc);
+    .setDescription(desc)
+    .setTimestamp();
 }
 
 function infoEmbed(title, desc) {
@@ -92,7 +100,8 @@ function infoEmbed(title, desc) {
   return new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(title)
-    .setDescription(desc);
+    .setDescription(desc)
+    .setTimestamp();
 }
 
 // =====================
@@ -100,12 +109,18 @@ function infoEmbed(title, desc) {
 // =====================
 function isAdmin(i, s) {
 
+  // owner bypass
+  if (i.user.id === OWNER_ID)
+    return true;
+
+  // admin
   if (
     i.member.permissions.has(
       PermissionsBitField.Flags.Administrator
     )
   ) return true;
 
+  // roles
   if (!s.allowedRoles.length)
     return false;
 
@@ -132,36 +147,96 @@ async function requireAlert(i, s) {
   return true;
 }
 
+function formatDate() {
+
+  const d = new Date();
+
+  const week = [
+    '日',
+    '月',
+    '火',
+    '水',
+    '木',
+    '金',
+    '土'
+  ];
+
+  return `${d.getFullYear()}年 ${
+    d.getMonth() + 1
+  }月 ${
+    d.getDate()
+  }日 (${week[d.getDay()]})
+${d.getHours()}時 ${
+    d.getMinutes()
+  }分 ${
+    d.getSeconds()
+  }秒`;
+}
+
+function getActivityRate(
+  online,
+  total
+) {
+
+  if (!total) return '不明';
+
+  const rate =
+    Math.floor(
+      (online / total) * 100
+    );
+
+  if (rate >= 70)
+    return `超活発 (${rate}%)`;
+
+  if (rate >= 40)
+    return `普通 (${rate}%)`;
+
+  if (rate >= 20)
+    return `少し過疎 (${rate}%)`;
+
+  return `過疎 (${rate}%)`;
+}
+
 // =====================
 // ready
 // =====================
 client.once('ready', async () => {
 
-  console.log(`${client.user.tag} Ready`);
+  console.log(
+    `${client.user.tag} Ready`
+  );
 
   const commands = [
 
+    // =====================
     // alert
+    // =====================
     new SlashCommandBuilder()
       .setName('alert')
       .setDescription(
-        'アラートチャンネル設定'
+        '通知を送るチャンネルを設定'
       )
       .addChannelOption(o =>
         o.setName('channel')
-          .setDescription('チャンネル')
+          .setDescription(
+            '通知先チャンネル'
+          )
           .setRequired(true)
       ),
 
+    // =====================
     // monitor
+    // =====================
     new SlashCommandBuilder()
       .setName('monitor')
       .setDescription(
-        '監視ON/OFF'
+        '監視機能のON/OFF'
       )
       .addStringOption(o =>
         o.setName('type')
-          .setDescription('種類')
+          .setDescription(
+            '変更する監視'
+          )
           .setRequired(true)
           .addChoices(
             {
@@ -173,43 +248,83 @@ client.once('ready', async () => {
               value: 'player'
             }
           )
+      )
+      .addStringOption(o =>
+        o.setName('mode')
+          .setDescription(
+            'ON または OFF'
+          )
+          .setRequired(true)
+          .addChoices(
+            {
+              name: 'ON',
+              value: 'on'
+            },
+            {
+              name: 'OFF',
+              value: 'off'
+            }
+          )
       ),
 
+    // =====================
     // role
+    // =====================
     new SlashCommandBuilder()
       .setName('role')
       .setDescription(
-        '許可ロール管理'
+        'コマンド許可ロール管理'
       )
       .addSubcommand(s =>
         s.setName('add')
-          .setDescription('追加')
+          .setDescription(
+            '許可ロール追加'
+          )
           .addRoleOption(o =>
             o.setName('role')
-              .setDescription('ロール')
+              .setDescription(
+                '追加するロール'
+              )
               .setRequired(true)
           )
       )
       .addSubcommand(s =>
         s.setName('clear')
-          .setDescription('全削除')
+          .setDescription(
+            '許可ロール全削除'
+          )
       ),
 
+    // =====================
     // panel
+    // =====================
     new SlashCommandBuilder()
       .setName('panel')
       .setDescription(
-        '説明パネル'
+        'パネル管理'
       )
       .addSubcommand(s =>
         s.setName('setchannel')
           .setDescription(
-            'チャンネル設定'
+            'パネル送信先設定'
           )
           .addChannelOption(o =>
             o.setName('channel')
               .setDescription(
-                'チャンネル'
+                '送信先'
+              )
+              .setRequired(true)
+          )
+      )
+      .addSubcommand(s =>
+        s.setName('setviewchannel')
+          .setDescription(
+            '回答表示先設定'
+          )
+          .addChannelOption(o =>
+            o.setName('channel')
+              .setDescription(
+                '表示先'
               )
               .setRequired(true)
           )
@@ -217,22 +332,26 @@ client.once('ready', async () => {
       .addSubcommand(s =>
         s.setName('create')
           .setDescription(
-            'パネル生成'
+            '説明付きパネル生成'
           )
       ),
 
+    // =====================
     // server
+    // =====================
     new SlashCommandBuilder()
       .setName('server')
       .setDescription(
-        'サーバー情報'
+        'サーバー情報表示'
       ),
 
+    // =====================
     // status
+    // =====================
     new SlashCommandBuilder()
       .setName('status')
       .setDescription(
-        '設定確認'
+        '現在の設定確認'
       )
 
   ].map(c => c.toJSON());
@@ -256,7 +375,8 @@ client.on(
 
       const noDefer =
         i.commandName === 'panel' &&
-        i.options.getSubcommand() === 'create';
+        i.options.getSubcommand() ===
+          'create';
 
       if (!noDefer) {
 
@@ -298,7 +418,7 @@ client.on(
             embeds: [
               okEmbed(
                 'アラート設定',
-                `設定: ${ch}`
+                `通知先: ${ch}`
               )
             ]
           });
@@ -329,11 +449,19 @@ client.on(
               'type'
             );
 
+          const mode =
+            i.options.getString(
+              'mode'
+            );
+
+          const enabled =
+            mode === 'on';
+
           // link
           if (type === 'link') {
 
             s.linkAlertEnabled =
-              !s.linkAlertEnabled;
+              enabled;
 
             save(s);
 
@@ -341,7 +469,7 @@ client.on(
               embeds: [
                 infoEmbed(
                   'リンク監視',
-                  s.linkAlertEnabled
+                  enabled
                     ? '✅ ON'
                     : '❌ OFF'
                 )
@@ -353,7 +481,7 @@ client.on(
           if (type === 'player') {
 
             s.playerMonitorEnabled =
-              !s.playerMonitorEnabled;
+              enabled;
 
             save(s);
 
@@ -361,7 +489,7 @@ client.on(
               embeds: [
                 infoEmbed(
                   '参加監視',
-                  s.playerMonitorEnabled
+                  enabled
                     ? '✅ ON'
                     : '❌ OFF'
                 )
@@ -413,7 +541,7 @@ client.on(
               embeds: [
                 okEmbed(
                   'ロール追加',
-                  `${role} を追加`
+                  `${role} を追加しました`
                 )
               ]
             });
@@ -474,7 +602,33 @@ client.on(
             return i.editReply({
               embeds: [
                 okEmbed(
-                  'パネル設定',
+                  'パネル送信先',
+                  `設定: ${ch}`
+                )
+              ]
+            });
+          }
+
+          // setviewchannel
+          if (
+            sub ===
+            'setviewchannel'
+          ) {
+
+            const ch =
+              i.options.getChannel(
+                'channel'
+              );
+
+            s.panelViewChannelId =
+              ch.id;
+
+            save(s);
+
+            return i.editReply({
+              embeds: [
+                okEmbed(
+                  '回答表示先',
                   `設定: ${ch}`
                 )
               ]
@@ -491,7 +645,7 @@ client.on(
               return i.reply({
                 embeds: [
                   errorEmbed(
-                    '❌ パネルチャンネル未設定'
+                    '❌ パネル送信先未設定'
                   )
                 ],
                 ephemeral: true
@@ -504,7 +658,7 @@ client.on(
                   'panel_modal'
                 )
                 .setTitle(
-                  '説明入力'
+                  'パネル説明入力'
                 );
 
             const input =
@@ -622,7 +776,7 @@ client.on(
                   name:
                     'メンバー',
                   value:
-`総数: ${g.memberCount}
+`総人数: ${g.memberCount}
 一般: ${humans}
 BOT: ${bots}`,
                   inline: true
@@ -639,12 +793,24 @@ BOT: ${bots}`,
                 },
                 {
                   name:
+                    '過疎度',
+                  value:
+                    getActivityRate(
+                      online +
+                        idle +
+                        dnd,
+                      g.memberCount
+                    ),
+                  inline: true
+                },
+                {
+                  name:
                     'チャンネル',
                   value:
 `テキスト: ${text}
 ボイス: ${voice}
 カテゴリ: ${category}`,
-                  inline: true
+                  inline: false
                 },
                 {
                   name:
@@ -664,7 +830,8 @@ BOT: ${bots}`,
 )}:F>`,
                   inline: false
                 }
-              );
+              )
+              .setTimestamp();
 
           return i.editReply({
             embeds: [embed]
@@ -691,8 +858,7 @@ BOT: ${bots}`,
                   value:
                     s.alertChannelId
                       ? `<#${s.alertChannelId}>`
-                      : 'OFF',
-                  inline: false
+                      : '未設定'
                 },
                 {
                   name:
@@ -714,14 +880,22 @@ BOT: ${bots}`,
                 },
                 {
                   name:
-                    'パネルチャンネル',
+                    'パネル送信先',
                   value:
                     s.panelChannelId
                       ? `<#${s.panelChannelId}>`
-                      : '未設定',
-                  inline: false
+                      : '未設定'
+                },
+                {
+                  name:
+                    '回答表示先',
+                  value:
+                    s.panelViewChannelId
+                      ? `<#${s.panelViewChannelId}>`
+                      : '未設定'
                 }
-              );
+              )
+              .setTimestamp();
 
           return i.editReply({
             embeds: [embed]
@@ -764,7 +938,9 @@ BOT: ${bots}`,
 
       const s = load();
 
+      // =====================
       // panel modal
+      // =====================
       if (
         i.customId ===
         'panel_modal'
@@ -797,9 +973,13 @@ BOT: ${bots}`,
             .setColor(
               0x2b2d31
             )
+            .setTitle(
+              '受付パネル'
+            )
             .setDescription(
               text
-            );
+            )
+            .setTimestamp();
 
         const row =
           new ActionRowBuilder()
@@ -809,7 +989,7 @@ BOT: ${bots}`,
                   'panel_button'
                 )
                 .setLabel(
-                  '送信'
+                  '入力'
                 )
                 .setStyle(
                   ButtonStyle.Primary
@@ -824,7 +1004,7 @@ BOT: ${bots}`,
         return i.reply({
           embeds: [
             okEmbed(
-              'パネル',
+              'パネル生成',
               '送信しました'
             )
           ],
@@ -832,7 +1012,9 @@ BOT: ${bots}`,
         });
       }
 
+      // =====================
       // button modal
+      // =====================
       if (
         i.customId ===
         'button_modal'
@@ -843,11 +1025,73 @@ BOT: ${bots}`,
             'button_text'
           );
 
+        if (
+          !s.panelViewChannelId
+        ) {
+
+          return i.reply({
+            embeds: [
+              errorEmbed(
+                '❌ 表示先未設定'
+              )
+            ],
+            ephemeral: true
+          });
+        }
+
+        const ch =
+          i.guild.channels.cache.get(
+            s.panelViewChannelId
+          );
+
+        if (!ch) {
+
+          return i.reply({
+            embeds: [
+              errorEmbed(
+                '❌ チャンネルなし'
+              )
+            ],
+            ephemeral: true
+          });
+        }
+
+        const embed =
+          new EmbedBuilder()
+            .setColor(
+              0x5865f2
+            )
+            .setTitle(
+              '新しい送信'
+            )
+            .setDescription(
+              msg
+            )
+            .addFields(
+              {
+                name:
+                  'ユーザー',
+                value:
+                  `${i.user.tag}`
+              },
+              {
+                name:
+                  '日時',
+                value:
+                  formatDate()
+              }
+            )
+            .setTimestamp();
+
+        await ch.send({
+          embeds: [embed]
+        });
+
         return i.reply({
           embeds: [
-            infoEmbed(
-              '送信内容',
-              msg
+            okEmbed(
+              '送信完了',
+              '送信しました'
             )
           ],
           ephemeral: true
@@ -871,7 +1115,7 @@ BOT: ${bots}`,
               'button_modal'
             )
             .setTitle(
-              '入力'
+              '内容入力'
             );
 
         const input =
@@ -957,8 +1201,15 @@ client.on(
                 'チャンネル',
               value:
                 `${m.channel}`
+            },
+            {
+              name:
+                '日時',
+              value:
+                formatDate()
             }
-          );
+          )
+          .setTimestamp();
 
       ch.send({
         embeds: [embed]
@@ -1004,7 +1255,16 @@ client.on(
         )
         .setThumbnail(
           member.user.displayAvatarURL()
-        );
+        )
+        .addFields(
+          {
+            name:
+              '日時',
+            value:
+              formatDate()
+          }
+        )
+        .setTimestamp();
 
     ch.send({
       embeds: [embed]
