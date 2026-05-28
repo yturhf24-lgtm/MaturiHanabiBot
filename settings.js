@@ -1,24 +1,130 @@
-const fs = require('fs');
+// =====================
+// 保存機能追加
+// オフライン→オンラインでも設定保持
+// =====================
 
-const path = './settings.json';
+// これを追加
 
-function load() {
-  if (!fs.existsSync(path)) {
-    fs.writeFileSync(path, JSON.stringify({
-      alertChannelId: null,
-      linkAlertEnabled: false,
-      playerMonitorEnabled: false,
-      allowedRoles: [],
-      panelText: "",
-      panelChannelId: null
-    }, null, 2));
+client.on('ready', () => {
+
+  const s = load();
+
+  console.log('====================');
+  console.log('設定読み込み完了');
+  console.log(s);
+  console.log('====================');
+
+});
+
+// =====================
+// 自動保存関数
+// =====================
+function autoSave(s) {
+
+  fs.writeFileSync(
+    SETTINGS,
+    JSON.stringify(s, null, 2)
+  );
+
+}
+
+// =====================
+// monitor の保存修正
+// =====================
+
+// monitor の中をこれに変更
+
+if (i.commandName === 'monitor') {
+
+  if (!isAdmin(i, s)) {
+
+    return i.editReply({
+      embeds: [
+        errorEmbed(
+          '❌ 権限なし'
+        )
+      ]
+    });
   }
 
-  return JSON.parse(fs.readFileSync(path));
+  if (
+    !(await requireAlert(i, s))
+  ) return;
+
+  const type =
+    i.options.getString(
+      'type'
+    );
+
+  const mode =
+    i.options.getString(
+      'mode'
+    );
+
+  const enabled =
+    mode === 'on';
+
+  // =====================
+  // link
+  // =====================
+  if (type === 'link') {
+
+    s.linkAlertEnabled =
+      enabled;
+
+    autoSave(s);
+
+    return i.editReply({
+      embeds: [
+        infoEmbed(
+          'リンク監視',
+          enabled
+            ? '✅ ON'
+            : '❌ OFF'
+        )
+      ]
+    });
+  }
+
+  // =====================
+  // player
+  // =====================
+  if (type === 'player') {
+
+    s.playerMonitorEnabled =
+      enabled;
+
+    autoSave(s);
+
+    return i.editReply({
+      embeds: [
+        infoEmbed(
+          '参加監視',
+          enabled
+            ? '✅ ON'
+            : '❌ OFF'
+        )
+      ]
+    });
+  }
 }
 
-function save(data) {
-  fs.writeFileSync(path, JSON.stringify(data, null, 2));
-}
+// =====================
+// alert 保存修正
+// =====================
 
-module.exports = { load, save };
+s.alertChannelId = ch.id;
+
+autoSave(s);
+
+// =====================
+// role 保存修正
+// =====================
+
+autoSave(s);
+
+// =====================
+// panel 保存修正
+// =====================
+
+autoSave(s);
