@@ -1,4 +1,3 @@
-js
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -10,7 +9,7 @@ const {
 } = require("discord.js");
 
 // =====================
-// TOKENだけ入れる
+// TOKEN
 // =====================
 const TOKEN = "MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s";
 
@@ -26,7 +25,7 @@ function getClientId(token) {
 const CLIENT_ID = getClientId(TOKEN);
 
 // =====================
-// Express（Render用）
+// Express
 // =====================
 const app = express();
 
@@ -54,9 +53,12 @@ const client = new Client({
 client.commands = new Collection();
 
 // =====================
-// コマンド読み込み
+// commands 読み込み
 // =====================
-const commandsPath = path.join(__dirname, "commands");
+const commandsPath = path.join(
+  __dirname,
+  "commands"
+);
 
 if (!fs.existsSync(commandsPath)) {
   fs.mkdirSync(commandsPath);
@@ -68,7 +70,9 @@ const commandFiles = fs
 
 for (const file of commandFiles) {
 
-  const command = require(`./commands/${file}`);
+  const command = require(
+    `./commands/${file}`
+  );
 
   client.commands.set(
     command.data.name,
@@ -79,64 +83,73 @@ for (const file of commandFiles) {
 }
 
 // =====================
-// スラッシュコマンド
+// interaction
 // =====================
-client.on("interactionCreate", async interaction => {
+client.on(
+  "interactionCreate",
+  async interaction => {
 
-  if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand())
+      return;
 
-  const command = client.commands.get(
-    interaction.commandName
-  );
+    const command = client.commands.get(
+      interaction.commandName
+    );
 
-  if (!command) return;
+    if (!command) return;
 
-  try {
+    try {
 
-    await command.execute(interaction);
+      await command.execute(interaction);
 
-  } catch (err) {
+    } catch (err) {
 
-    console.error(err);
+      console.error(err);
 
-    if (interaction.replied || interaction.deferred) {
+      if (
+        interaction.replied ||
+        interaction.deferred
+      ) {
 
-      await interaction.followUp({
-        content: "❌ エラーが発生しました",
-        ephemeral: true
-      });
+        await interaction.followUp({
+          content:
+            "❌ エラーが発生しました",
+          ephemeral: true
+        });
 
-    } else {
+      } else {
 
-      await interaction.reply({
-        content: "❌ エラーが発生しました",
-        ephemeral: true
-      });
+        await interaction.reply({
+          content:
+            "❌ エラーが発生しました",
+          ephemeral: true
+        });
 
+      }
     }
   }
-});
+);
 
 // =====================
 // 起動
 // =====================
 client.once("ready", () => {
 
-  console.log("=================================");
-  console.log(`🤖 Logged in as ${client.user.tag}`);
-  console.log(`🆔 Bot ID : ${client.user.id}`);
-  console.log(`📡 Guilds : ${client.guilds.cache.size}`);
-  console.log("=================================");
+  console.log("=================");
+  console.log(
+    `🤖 ${client.user.tag}`
+  );
+  console.log("=================");
 
 });
 
 // =====================
-// ログイン
+// Login
 // =====================
 client.login(TOKEN);
 
+// export
 module.exports = {
-  CLIENT_ID,
-  TOKEN
+  TOKEN,
+  CLIENT_ID
 };
-```
