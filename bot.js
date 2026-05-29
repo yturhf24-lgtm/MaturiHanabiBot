@@ -1,7 +1,7 @@
 // =====================
 // Discord BOT 完全版
 // discord.js v14
-// 保存対応 + サーバー情報 + パネル
+// サーバー別保存対応
 // =====================
 
 const {
@@ -31,9 +31,9 @@ const SETTINGS = path.join(
 );
 
 // =====================
-// settings
+// default guild settings
 // =====================
-function defaultSettings() {
+function defaultGuild() {
 
   return {
     alertChannelId: null,
@@ -45,25 +45,19 @@ function defaultSettings() {
   };
 }
 
-function load() {
+// =====================
+// load/save
+// =====================
+function loadAllSettings() {
 
   try {
 
     if (!fs.existsSync(SETTINGS)) {
 
-      const def =
-        defaultSettings();
-
       fs.writeFileSync(
         SETTINGS,
-        JSON.stringify(
-          def,
-          null,
-          2
-        )
+        JSON.stringify({}, null, 2)
       );
-
-      return def;
     }
 
     return JSON.parse(
@@ -73,15 +67,13 @@ function load() {
       )
     );
 
-  } catch (e) {
+  } catch {
 
-    console.error(e);
-
-    return defaultSettings();
+    return {};
   }
 }
 
-function save(data) {
+function saveAllSettings(data) {
 
   fs.writeFileSync(
     SETTINGS,
@@ -91,10 +83,36 @@ function save(data) {
       2
     )
   );
+}
 
-  console.log(
-    '設定保存完了'
-  );
+function getGuildSettings(guildId) {
+
+  const data =
+    loadAllSettings();
+
+  if (!data[guildId]) {
+
+    data[guildId] =
+      defaultGuild();
+
+    saveAllSettings(data);
+  }
+
+  return data[guildId];
+}
+
+function saveGuildSettings(
+  guildId,
+  settings
+) {
+
+  const data =
+    loadAllSettings();
+
+  data[guildId] =
+    settings;
+
+  saveAllSettings(data);
 }
 
 // =====================
@@ -111,7 +129,7 @@ const client = new Client({
 });
 
 // =====================
-// embeds
+// embed util
 // =====================
 function okEmbed(
   title,
@@ -246,11 +264,8 @@ client.once(
       `${client.user.tag} Ready`
     );
 
-    console.log(load());
-
     const commands = [
 
-      // alert
       new SlashCommandBuilder()
         .setName('alert')
         .setDescription(
@@ -264,7 +279,6 @@ client.once(
             .setRequired(true)
         ),
 
-      // monitor
       new SlashCommandBuilder()
         .setName('monitor')
         .setDescription(
@@ -309,79 +323,12 @@ client.once(
             )
         ),
 
-      // role
-      new SlashCommandBuilder()
-        .setName('role')
-        .setDescription(
-          '権限ロール管理'
-        )
-        .addSubcommand(s =>
-          s.setName('add')
-            .setDescription(
-              'ロール追加'
-            )
-            .addRoleOption(o =>
-              o.setName('role')
-                .setDescription(
-                  'ロール'
-                )
-                .setRequired(true)
-            )
-        )
-        .addSubcommand(s =>
-          s.setName('clear')
-            .setDescription(
-              'ロール全削除'
-            )
-        ),
-
-      // panel
-      new SlashCommandBuilder()
-        .setName('panel')
-        .setDescription(
-          'パネル管理'
-        )
-        .addSubcommand(s =>
-          s.setName('setchannel')
-            .setDescription(
-              'パネル送信先'
-            )
-            .addChannelOption(o =>
-              o.setName('channel')
-                .setDescription(
-                  'チャンネル'
-                )
-                .setRequired(true)
-            )
-        )
-        .addSubcommand(s =>
-          s.setName('setviewchannel')
-            .setDescription(
-              '回答表示先'
-            )
-            .addChannelOption(o =>
-              o.setName('channel')
-                .setDescription(
-                  'チャンネル'
-                )
-                .setRequired(true)
-            )
-        )
-        .addSubcommand(s =>
-          s.setName('create')
-            .setDescription(
-              'パネル生成'
-            )
-        ),
-
-      // server
       new SlashCommandBuilder()
         .setName('server')
         .setDescription(
           'サーバー情報'
         ),
 
-      // status
       new SlashCommandBuilder()
         .setName('status')
         .setDescription(
@@ -403,406 +350,149 @@ client.on(
   'interactionCreate',
   async i => {
 
+    if (
+      !i.isChatInputCommand()
+    ) return;
+
+    await i.deferReply({
+      ephemeral: true
+    });
+
+    const s =
+      getGuildSettings(
+        i.guild.id
+      );
+
     // =====================
-    // slash
+    // alert
     // =====================
     if (
-      i.isChatInputCommand()
+      i.commandName ===
+      'alert'
     ) {
 
-      const noDefer =
-        i.commandName ===
-          'panel' &&
-        i.options.getSubcommand() ===
-          'create';
-
-      if (!noDefer) {
-
-        await i.deferReply({
-          ephemeral: true
-        });
-      }
-
-      const s = load();
-
-      // =====================
-      // alert
-      // =====================
       if (
-        i.commandName ===
-        'alert'
+        !isAdmin(i, s)
       ) {
-
-        if (
-          !isAdmin(i, s)
-        ) {
-
-          return i.editReply({
-            embeds: [
-              errorEmbed(
-                '❌ 権限なし'
-              )
-            ]
-          });
-        }
-
-        const ch =
-          i.options.getChannel(
-            'channel'
-          );
-
-        s.alertChannelId =
-          ch.id;
-
-        save(s);
 
         return i.editReply({
           embeds: [
-            okEmbed(
-              'アラート設定',
-              `${ch}`
+            errorEmbed(
+              '❌ 権限なし'
             )
           ]
         });
       }
 
-      // =====================
-      // monitor
-      // =====================
+      const ch =
+        i.options.getChannel(
+          'channel'
+        );
+
+      s.alertChannelId =
+        ch.id;
+
+      saveGuildSettings(
+        i.guild.id,
+        s
+      );
+
+      return i.editReply({
+        embeds: [
+          okEmbed(
+            'アラート設定',
+            `${ch}`
+          )
+        ]
+      });
+    }
+
+    // =====================
+    // monitor
+    // =====================
+    if (
+      i.commandName ===
+      'monitor'
+    ) {
+
       if (
-        i.commandName ===
-        'monitor'
+        !isAdmin(i, s)
       ) {
-
-        if (
-          !isAdmin(i, s)
-        ) {
-
-          return i.editReply({
-            embeds: [
-              errorEmbed(
-                '❌ 権限なし'
-              )
-            ]
-          });
-        }
-
-        if (
-          !(await requireAlert(
-            i,
-            s
-          ))
-        ) return;
-
-        const type =
-          i.options.getString(
-            'type'
-          );
-
-        const mode =
-          i.options.getString(
-            'mode'
-          );
-
-        const enabled =
-          mode === 'on';
-
-        if (
-          type === 'link'
-        ) {
-
-          s.linkAlertEnabled =
-            enabled;
-
-          save(s);
-
-          return i.editReply({
-            embeds: [
-              infoEmbed(
-                'リンク監視',
-                enabled
-                  ? '✅ ON'
-                  : '❌ OFF'
-              )
-            ]
-          });
-        }
-
-        if (
-          type === 'player'
-        ) {
-
-          s.playerMonitorEnabled =
-            enabled;
-
-          save(s);
-
-          return i.editReply({
-            embeds: [
-              infoEmbed(
-                '参加監視',
-                enabled
-                  ? '✅ ON'
-                  : '❌ OFF'
-              )
-            ]
-          });
-        }
-      }
-
-      // =====================
-      // role
-      // =====================
-      if (
-        i.commandName ===
-        'role'
-      ) {
-
-        if (
-          !isAdmin(i, s)
-        ) {
-
-          return i.editReply({
-            embeds: [
-              errorEmbed(
-                '❌ 権限なし'
-              )
-            ]
-          });
-        }
-
-        const sub =
-          i.options.getSubcommand();
-
-        if (
-          sub === 'add'
-        ) {
-
-          const role =
-            i.options.getRole(
-              'role'
-            );
-
-          if (
-            !s.allowedRoles.includes(
-              role.id
-            )
-          ) {
-
-            s.allowedRoles.push(
-              role.id
-            );
-
-            save(s);
-          }
-
-          return i.editReply({
-            embeds: [
-              okEmbed(
-                'ロール追加',
-                `${role}`
-              )
-            ]
-          });
-        }
-
-        if (
-          sub === 'clear'
-        ) {
-
-          s.allowedRoles = [];
-
-          save(s);
-
-          return i.editReply({
-            embeds: [
-              okEmbed(
-                'ロール削除',
-                '全削除完了'
-              )
-            ]
-          });
-        }
-      }
-
-      // =====================
-      // server
-      // =====================
-      if (
-        i.commandName ===
-        'server'
-      ) {
-
-        const g =
-          i.guild;
-
-        await g.members.fetch();
-
-        const humans =
-          g.members.cache.filter(
-            m => !m.user.bot
-          ).size;
-
-        const bots =
-          g.members.cache.filter(
-            m => m.user.bot
-          ).size;
-
-        const online =
-          g.members.cache.filter(
-            m =>
-              m.presence?.status ===
-              'online'
-          ).size;
-
-        const offline =
-          g.members.cache.filter(
-            m =>
-              !m.presence ||
-              m.presence.status ===
-                'offline'
-          ).size;
-
-        const idle =
-          g.members.cache.filter(
-            m =>
-              m.presence?.status ===
-              'idle'
-          ).size;
-
-        const dnd =
-          g.members.cache.filter(
-            m =>
-              m.presence?.status ===
-              'dnd'
-          ).size;
-
-        const textChannels =
-          g.channels.cache.filter(
-            c =>
-              c.type ===
-              ChannelType.GuildText
-          ).size;
-
-        const voiceChannels =
-          g.channels.cache.filter(
-            c =>
-              c.type ===
-              ChannelType.GuildVoice
-          ).size;
-
-        const categoryChannels =
-          g.channels.cache.filter(
-            c =>
-              c.type ===
-              ChannelType.GuildCategory
-          ).size;
-
-        const embed =
-          new EmbedBuilder()
-            .setColor(
-              0x2b2d31
-            )
-            .setTitle(
-              `${g.name} サーバー情報`
-            )
-            .setThumbnail(
-              g.iconURL({
-                dynamic: true
-              })
-            )
-           // =====================
-// server embed fields
-// 全 inline 追加版
-// =====================
-
-.addFields(
-  {
-    name:
-      '👥 メンバー',
-    value:
-`総人数: ${g.memberCount}
-一般: ${humans}
-BOT: ${bots}`,
-    inline: true
-  },
-
-  {
-    name:
-      '📶 ステータス',
-    value:
-`🟢 オンライン: ${online}
-🌙 退席中: ${idle}
-⛔ 取り込み中: ${dnd}
-⚫ オフライン: ${offline}`,
-    inline: true
-  },
-
-  {
-    name:
-      '📁 チャンネル',
-    value:
-`テキスト: ${textChannels}
-ボイス: ${voiceChannels}
-カテゴリ: ${categoryChannels}`,
-    inline: true
-  },
-
-  {
-    name:
-      '🚀 ブースト',
-    value:
-`レベル: ${g.premiumTier}
-回数: ${
-  g.premiumSubscriptionCount ?? 0
-}`,
-    inline: true
-  },
-
-  {
-    name:
-      '📉 過疎度',
-    value:
-      getActivityRate(
-        online +
-          idle +
-          dnd,
-        g.memberCount
-      ),
-    inline: true
-  },
-
-  {
-    name:
-      '📅 作成日',
-    value:
-      formatDate(
-        new Date(
-          g.createdTimestamp
-        )
-      ),
-    inline: false
-  }
-)
-            .setTimestamp();
 
         return i.editReply({
-          embeds: [embed]
+          embeds: [
+            errorEmbed(
+              '❌ 権限なし'
+            )
+          ]
         });
       }
 
-      // =====================
-      // status
-      // =====================
       if (
-        i.commandName ===
-        'status'
+        !(await requireAlert(
+          i,
+          s
+        ))
+      ) return;
+
+      const type =
+        i.options.getString(
+          'type'
+        );
+
+      const mode =
+        i.options.getString(
+          'mode'
+        );
+
+      const enabled =
+        mode === 'on';
+
+      if (
+        type === 'link'
       ) {
 
-        const check =
-          load();
+        s.linkAlertEnabled =
+          enabled;
+      }
 
-        const embed =
+      if (
+        type === 'player'
+      ) {
+
+        s.playerMonitorEnabled =
+          enabled;
+      }
+
+      saveGuildSettings(
+        i.guild.id,
+        s
+      );
+
+      return i.editReply({
+        embeds: [
+          infoEmbed(
+            '監視設定',
+            `${type} : ${
+              enabled
+                ? 'ON'
+                : 'OFF'
+            }`
+          )
+        ]
+      });
+    }
+
+    // =====================
+    // status
+    // =====================
+    if (
+      i.commandName ===
+      'status'
+    ) {
+
+      return i.editReply({
+        embeds: [
           new EmbedBuilder()
             .setColor(
               0x5865f2
@@ -815,15 +505,15 @@ BOT: ${bots}`,
                 name:
                   'アラート',
                 value:
-                  check.alertChannelId
-                    ? `<#${check.alertChannelId}>`
+                  s.alertChannelId
+                    ? `<#${s.alertChannelId}>`
                     : '未設定'
               },
               {
                 name:
                   'リンク監視',
                 value:
-                  check.linkAlertEnabled
+                  s.linkAlertEnabled
                     ? 'ON'
                     : 'OFF',
                 inline: true
@@ -832,17 +522,175 @@ BOT: ${bots}`,
                 name:
                   '参加監視',
                 value:
-                  check.playerMonitorEnabled
+                  s.playerMonitorEnabled
                     ? 'ON'
                     : 'OFF',
                 inline: true
               }
-            );
+            )
+        ]
+      });
+    }
 
-        return i.editReply({
-          embeds: [embed]
-        });
-      }
+    // =====================
+    // server
+    // =====================
+    if (
+      i.commandName ===
+      'server'
+    ) {
+
+      const g =
+        i.guild;
+
+      await g.members.fetch();
+
+      const humans =
+        g.members.cache.filter(
+          m => !m.user.bot
+        ).size;
+
+      const bots =
+        g.members.cache.filter(
+          m => m.user.bot
+        ).size;
+
+      const online =
+        g.members.cache.filter(
+          m =>
+            m.presence?.status ===
+            'online'
+        ).size;
+
+      const offline =
+        g.members.cache.filter(
+          m =>
+            !m.presence ||
+            m.presence.status ===
+              'offline'
+        ).size;
+
+      const idle =
+        g.members.cache.filter(
+          m =>
+            m.presence?.status ===
+            'idle'
+        ).size;
+
+      const dnd =
+        g.members.cache.filter(
+          m =>
+            m.presence?.status ===
+            'dnd'
+        ).size;
+
+      const textChannels =
+        g.channels.cache.filter(
+          c =>
+            c.type ===
+            ChannelType.GuildText
+        ).size;
+
+      const voiceChannels =
+        g.channels.cache.filter(
+          c =>
+            c.type ===
+            ChannelType.GuildVoice
+        ).size;
+
+      const categoryChannels =
+        g.channels.cache.filter(
+          c =>
+            c.type ===
+            ChannelType.GuildCategory
+        ).size;
+
+      const embed =
+        new EmbedBuilder()
+          .setColor(
+            0x2b2d31
+          )
+          .setTitle(
+            `${g.name} サーバー情報`
+          )
+          .setThumbnail(
+            g.iconURL({
+              dynamic: true
+            })
+          )
+          .addFields(
+            {
+              name:
+                '👥 メンバー',
+              value:
+`総人数: ${g.memberCount}
+一般: ${humans}
+BOT: ${bots}`,
+              inline: true
+            },
+
+            {
+              name:
+                '📶 ステータス',
+              value:
+`🟢 オンライン: ${online}
+🌙 退席中: ${idle}
+⛔ 取り込み中: ${dnd}
+⚫ オフライン: ${offline}`,
+              inline: true
+            },
+
+            {
+              name:
+                '📁 チャンネル',
+              value:
+`テキスト: ${textChannels}
+ボイス: ${voiceChannels}
+カテゴリ: ${categoryChannels}`,
+              inline: true
+            },
+
+            {
+              name:
+                '🚀 ブースト',
+              value:
+`レベル: ${g.premiumTier}
+回数: ${
+  g.premiumSubscriptionCount ?? 0
+}`,
+              inline: true
+            },
+
+            {
+              name:
+                '📉 過疎度',
+              value:
+                getActivityRate(
+                  online +
+                    idle +
+                    dnd,
+                  g.memberCount
+                ),
+              inline: true
+            },
+
+            {
+              name:
+                '📅 作成日',
+              value:
+                formatDate(
+                  new Date(
+                    g.createdTimestamp
+                  )
+                ),
+              inline: false
+            }
+          )
+          .setTimestamp();
+
+      return i.editReply({
+        embeds: [embed]
+      });
     }
   }
 );
@@ -860,7 +708,10 @@ client.on(
     if (!m.guild)
       return;
 
-    const s = load();
+    const s =
+      getGuildSettings(
+        m.guild.id
+      );
 
     if (
       !s.linkAlertEnabled
@@ -876,24 +727,63 @@ client.on(
       )
     ) {
 
-      await m.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(
-              0xed4245
-            )
-            .setTitle(
-              '⚠️ リンク監視'
-            )
-            .setDescription(
+      const warn =
+        await m.reply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(
+                0xed4245
+              )
+              .setTitle(
+                '⚠️ リンク監視'
+              )
+              .setDescription(
 `リンクは監視されています。
 
 危険なリンクを送信した場合、
 BANされる可能性があります。`
-            )
-        ]
-      });
+              )
+          ]
+        }).catch(() => null);
 
+      // 10秒後削除
+      const timeout =
+        setTimeout(() => {
+
+          warn?.delete()
+            .catch(() => {});
+
+        }, 10000);
+
+      // 元リンク消えたら即削除
+      const listener =
+        deleted => {
+
+          if (
+            deleted.id ===
+            m.id
+          ) {
+
+            clearTimeout(
+              timeout
+            );
+
+            warn?.delete()
+              .catch(() => {});
+
+            client.off(
+              'messageDelete',
+              listener
+            );
+          }
+        };
+
+      client.on(
+        'messageDelete',
+        listener
+      );
+
+      // alert
       const ch =
         m.guild.channels.cache.get(
           s.alertChannelId
@@ -950,7 +840,10 @@ client.on(
   'guildMemberAdd',
   async member => {
 
-    const s = load();
+    const s =
+      getGuildSettings(
+        member.guild.id
+      );
 
     if (
       !s.playerMonitorEnabled
