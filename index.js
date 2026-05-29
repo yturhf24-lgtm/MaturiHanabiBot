@@ -1,8 +1,4 @@
 require("dotenv").config();
-
-const express = require("express");
-const app = express();
-
 const {
   Client,
   GatewayIntentBits,
@@ -12,22 +8,6 @@ const {
 const fs = require("fs");
 const path = require("path");
 
-// =====================
-// Render用PORT
-// =====================
-const port = process.env.PORT || 3000;
-
-app.get("/", (req, res) => {
-  res.send("Bot is running");
-});
-
-app.listen(port, () => {
-  console.log(`🌐 Listening on port ${port}`);
-});
-
-// =====================
-// Discord Bot
-// =====================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -40,18 +20,14 @@ client.commands = new Collection();
 
 // コマンド読み込み
 const commandsPath = path.join(__dirname, "commands");
+const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
 
-// ★安全対策：フォルダ存在チェック
-if (fs.existsSync(commandsPath)) {
-  const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
-
-  for (const file of commandFiles) {
-    const command = require(`./commands/${file}`);
-    client.commands.set(command.data.name, command);
-  }
+for (const file of commandFiles) {
+  const cmd = require(`./commands/${file}`);
+  client.commands.set(cmd.data.name, cmd);
 }
 
-// interaction
+// interaction処理
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -69,10 +45,9 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-// ready
+// 起動
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 });
 
-// login
 client.login(process.env.MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s);
