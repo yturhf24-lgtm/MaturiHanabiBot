@@ -1,5 +1,6 @@
-require("dotenv").config();
+# 📁 index.js
 
+js
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
@@ -9,6 +10,22 @@ const {
   GatewayIntentBits,
   Collection
 } = require("discord.js");
+
+// =====================
+// TOKENだけ入れる
+// =====================
+const TOKEN = "MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s";
+
+// =====================
+// CLIENT_ID自動取得
+// =====================
+function getClientId(token) {
+  return Buffer
+    .from(token.split(".")[0], "base64")
+    .toString();
+}
+
+const CLIENT_ID = getClientId(TOKEN);
 
 // =====================
 // Express（Render用）
@@ -118,4 +135,10 @@ client.once("ready", () => {
 // =====================
 // ログイン
 // =====================
-client.login(process.env.MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s);
+client.login(TOKEN);
+
+module.exports = {
+  CLIENT_ID,
+  TOKEN
+};
+```
