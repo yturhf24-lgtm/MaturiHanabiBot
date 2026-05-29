@@ -1,6 +1,3 @@
-# 📁 commands/server.js（完成版）
-
-```js id="final_server_info_command"
 const {
   SlashCommandBuilder,
   EmbedBuilder
@@ -8,28 +5,18 @@ const {
 
 module.exports = {
 
-  // =====================
-  // コマンド情報
-  // =====================
   data: new SlashCommandBuilder()
     .setName("server")
     .setDescription("サーバー情報を表示"),
 
-  // =====================
-  // 実行
-  // =====================
   async execute(interaction) {
 
     const g = interaction.guild;
 
-    // メンバー取得
     await g.members.fetch();
 
     const members = g.members.cache;
 
-    // =====================
-    // メンバー
-    // =====================
     const total = members.size;
 
     const bots = members.filter(
@@ -38,9 +25,6 @@ module.exports = {
 
     const humans = total - bots;
 
-    // =====================
-    // ステータス
-    // =====================
     const online = members.filter(
       m => m.presence?.status === "online"
     ).size;
@@ -56,9 +40,6 @@ module.exports = {
     const offline =
       total - (online + idle + dnd);
 
-    // =====================
-    // チャンネル
-    // =====================
     const text = g.channels.cache.filter(
       c => c.type === 0
     ).size;
@@ -71,9 +52,7 @@ module.exports = {
       c => c.type === 4
     ).size;
 
-    // =====================
-    // 過疎度（250）
-    // =====================
+    // 過疎度
     const active =
       online + idle + dnd;
 
@@ -98,15 +77,9 @@ module.exports = {
     else if (rate >= 60)
       activity = "普通";
 
-    // =====================
-    // 作成日
-    // =====================
     const created =
       `<t:${Math.floor(g.createdTimestamp / 1000)}:F>`;
 
-    // =====================
-    // Embed
-    // =====================
     const embed = new EmbedBuilder()
 
       .setColor(0x5865f2)
@@ -178,13 +151,9 @@ BOT: ${bots}`,
 
       .setTimestamp();
 
-    // =====================
-    // 返信
-    // =====================
     await interaction.reply({
       embeds: [embed]
     });
 
   }
 };
-```
