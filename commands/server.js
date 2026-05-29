@@ -1,5 +1,3 @@
-# 📁 utils/checkAdmin.js
-
 js id="separate_admin_check"
 const {
   PermissionFlagsBits
