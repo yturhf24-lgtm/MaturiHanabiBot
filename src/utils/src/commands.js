@@ -2,31 +2,34 @@ const {
   SlashCommandBuilder,
   EmbedBuilder,
   ChannelType
-} = require("discord.js");
+} = require('discord.js');
 
 // =====================
 // コマンド登録
 // =====================
-function registerCommands() {
+async function registerCommands(client) {
 
-  return [
+  const commands = [
     new SlashCommandBuilder()
-      .setName("server")
-      .setDescription("サーバー情報を表示")
+      .setName('server')
+      .setDescription('サーバー情報表示')
       .setDescriptionLocalizations({
-        ja: "サーバー情報表示"
+        ja: 'サーバー情報表示'
       })
   ].map(c => c.toJSON());
+
+  await client.application.commands.set(commands);
+
+  console.log('✅ /server 登録完了');
 }
 
 // =====================
-// 実行部分
+// 実行
 // =====================
-async function handleServerCommand(interaction) {
+async function handleServer(interaction) {
 
   const g = interaction.guild;
 
-  // メンバー取得（正確化）
   await g.members.fetch().catch(() => {});
 
   const total = g.memberCount;
@@ -42,19 +45,28 @@ async function handleServerCommand(interaction) {
   const voice = g.channels.cache.filter(c => c.type === ChannelType.GuildVoice).size;
   const category = g.channels.cache.filter(c => c.type === ChannelType.GuildCategory).size;
 
-  // 過疎度（最大200%）
   const active = online + idle + dnd;
-  const rate = total ? Math.min(200, Math.floor((active / total) * 200)) : 0;
 
-  let activityText = "過疎";
-  if (rate >= 120) activityText = "超活発";
-  else if (rate >= 80) activityText = "普通";
-  else if (rate >= 40) activityText = "少し過疎";
+  const rate = total
+    ? Math.min(200, Math.floor((active / total) * 200))
+    : 0;
 
+  let activity = "過疎";
+  if (rate >= 120) activity = "超活発";
+  else if (rate >= 80) activity = "普通";
+  else if (rate >= 40) activity = "少し過疎";
+
+  // =====================
+  // EMBED
+  // =====================
   const embed = new EmbedBuilder()
     .setColor(0x2b2d31)
-    .setTitle(`${g.name} サーバー情報`)
+
+    // ⭐ 完全自動でサーバー名取得
+    .setTitle(`${interaction.guild.name} サーバー情報`)
+
     .setThumbnail(g.iconURL({ dynamic: true }))
+
     .addFields(
 
       {
@@ -62,8 +74,7 @@ async function handleServerCommand(interaction) {
         value:
 `総人数: ${total}
 一般: ${humans}
-BOT: ${bots}`,
-        inline: false
+BOT: ${bots}`
       },
 
       {
@@ -72,8 +83,7 @@ BOT: ${bots}`,
 `🟢 オンライン: ${online}
 🌙 退席中: ${idle}
 ⛔ 取り込み中: ${dnd}
-⚫ オフライン: ${offline}`,
-        inline: false
+⚫ オフライン: ${offline}`
       },
 
       {
@@ -81,22 +91,19 @@ BOT: ${bots}`,
         value:
 `テキスト: ${text}
 ボイス: ${voice}
-カテゴリ: ${category}`,
-        inline: false
+カテゴリ: ${category}`
       },
 
       {
         name: "🚀 ブースト",
         value:
 `レベル: ${g.premiumTier}
-回数: ${g.premiumSubscriptionCount ?? 0}`,
-        inline: false
+回数: ${g.premiumSubscriptionCount ?? 0}`
       },
 
       {
         name: "📉 過疎度",
-        value: `${activityText} (${rate}%)`,
-        inline: false
+        value: `${activity} (${rate}%)`
       },
 
       {
@@ -110,14 +117,12 @@ BOT: ${bots}`,
           hour: "2-digit",
           minute: "2-digit",
           second: "2-digit"
-        }),
-        inline: false
+        })
       }
 
     )
     .setTimestamp();
 
-  // 👇 全員表示（ephemeralなし）
   return interaction.reply({
     embeds: [embed]
   });
@@ -125,5 +130,5 @@ BOT: ${bots}`,
 
 module.exports = {
   registerCommands,
-  handleServerCommand
+  handleServer
 };
