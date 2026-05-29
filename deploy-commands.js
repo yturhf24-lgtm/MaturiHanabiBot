@@ -1,5 +1,3 @@
-require("dotenv").config();
-
 const {
   REST,
   Routes
@@ -7,8 +5,16 @@ const {
 
 const fs = require("fs");
 
+const {
+  TOKEN,
+  CLIENT_ID
+} = require("./index");
+
 const commands = [];
 
+// =====================
+// commands 読み込み
+// =====================
 const commandFiles = fs
   .readdirSync("./commands")
   .filter(file => file.endsWith(".js"));
@@ -22,26 +28,34 @@ for (const file of commandFiles) {
   );
 }
 
+// =====================
+// REST
+// =====================
 const rest = new REST({
   version: "10"
-}).setToken(process.env.DISCORD_TOKEN);
+}).setToken(TOKEN);
 
+// =====================
+// 完全上書き保存
+// =====================
 (async () => {
 
   try {
 
-    console.log("💾 コマンド保存中...");
+    console.log("🧹 古いコマンド上書き中...");
 
+    // applicationCommands は body を丸ごと置換する
+    // つまり「完全上書き」
     await rest.put(
       Routes.applicationCommands(
-        process.env.CLIENT_ID
+        CLIENT_ID
       ),
       {
         body: commands
       }
     );
 
-    console.log("✅ 保存完了");
+    console.log("✅ 最新コマンドで上書き完了");
 
   } catch (err) {
 
