@@ -1,5 +1,5 @@
 // =====================
-// Discord BOT 完全版
+// Discord BOT 完成版
 // discord.js v14
 // サーバー別保存対応
 // =====================
@@ -10,12 +10,6 @@ const {
   SlashCommandBuilder,
   PermissionsBitField,
   EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   ChannelType
 } = require('discord.js');
 
@@ -31,14 +25,12 @@ const SETTINGS = path.join(
 );
 
 // =====================
-// default guild settings
+// default settings
 // =====================
 function defaultGuild() {
 
   return {
     alertChannelId: null,
-    panelChannelId: null,
-    panelViewChannelId: null,
     allowedRoles: [],
     linkAlertEnabled: false,
     playerMonitorEnabled: false
@@ -85,11 +77,37 @@ function saveAllSettings(data) {
   );
 }
 
+// =====================
+// guild settings
+// =====================
 function getGuildSettings(guildId) {
 
   const data =
     loadAllSettings();
 
+  // =====================
+  // 旧形式自動変換
+  // =====================
+  if (
+    data.alertChannelId !== undefined
+  ) {
+
+    data[guildId] = {
+      ...defaultGuild(),
+      ...data
+    };
+
+    delete data.alertChannelId;
+    delete data.allowedRoles;
+    delete data.linkAlertEnabled;
+    delete data.playerMonitorEnabled;
+
+    saveAllSettings(data);
+  }
+
+  // =====================
+  // guild create
+  // =====================
   if (!data[guildId]) {
 
     data[guildId] =
@@ -152,25 +170,14 @@ function errorEmbed(desc) {
     .setTimestamp();
 }
 
-function infoEmbed(
-  title,
-  desc
-) {
-
-  return new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(title)
-    .setDescription(desc)
-    .setTimestamp();
-}
-
 // =====================
 // util
 // =====================
 function isAdmin(i, s) {
 
-  if (i.user.id === OWNER_ID)
-    return true;
+  if (
+    i.user.id === OWNER_ID
+  ) return true;
 
   if (
     i.member.permissions.has(
@@ -178,35 +185,15 @@ function isAdmin(i, s) {
     )
   ) return true;
 
-  if (!s.allowedRoles.length)
-    return false;
+  if (
+    !s.allowedRoles.length
+  ) return false;
 
   return i.member.roles.cache.some(r =>
     s.allowedRoles.includes(
       r.id
     )
   );
-}
-
-async function requireAlert(
-  i,
-  s
-) {
-
-  if (!s.alertChannelId) {
-
-    await i.editReply({
-      embeds: [
-        errorEmbed(
-          '❌ アラートチャンネル未設定'
-        )
-      ]
-    });
-
-    return false;
-  }
-
-  return true;
 }
 
 function formatDate(
@@ -266,10 +253,11 @@ client.once(
 
     const commands = [
 
+      // alert
       new SlashCommandBuilder()
         .setName('alert')
         .setDescription(
-          '通知チャンネル設定'
+          'アラートチャンネル設定'
         )
         .addChannelOption(o =>
           o.setName('channel')
@@ -279,6 +267,7 @@ client.once(
             .setRequired(true)
         ),
 
+      // monitor
       new SlashCommandBuilder()
         .setName('monitor')
         .setDescription(
@@ -313,26 +302,32 @@ client.once(
             .setRequired(true)
             .addChoices(
               {
-                name: 'ON',
-                value: 'on'
+                name:
+                  'ON',
+                value:
+                  'on'
               },
               {
-                name: 'OFF',
-                value: 'off'
+                name:
+                  'OFF',
+                value:
+                  'off'
               }
             )
         ),
 
-      new SlashCommandBuilder()
-        .setName('server')
-        .setDescription(
-          'サーバー情報'
-        ),
-
+      // status
       new SlashCommandBuilder()
         .setName('status')
         .setDescription(
           '現在設定'
+        ),
+
+      // server
+      new SlashCommandBuilder()
+        .setName('server')
+        .setDescription(
+          'サーバー情報'
         )
 
     ].map(c => c.toJSON());
@@ -429,11 +424,17 @@ client.on(
       }
 
       if (
-        !(await requireAlert(
-          i,
-          s
-        ))
-      ) return;
+        !s.alertChannelId
+      ) {
+
+        return i.editReply({
+          embeds: [
+            errorEmbed(
+              '❌ アラート未設定'
+            )
+          ]
+        });
+      }
 
       const type =
         i.options.getString(
@@ -471,7 +472,7 @@ client.on(
 
       return i.editReply({
         embeds: [
-          infoEmbed(
+          okEmbed(
             '監視設定',
             `${type} : ${
               enabled
@@ -755,7 +756,7 @@ BANされる可能性があります。`
 
         }, 10000);
 
-      // 元リンク消えたら即削除
+      // 元リンク削除
       const listener =
         deleted => {
 
@@ -870,9 +871,6 @@ client.on(
         )
         .setDescription(
 `${member} が参加しました`
-        )
-        .setThumbnail(
-          member.user.displayAvatarURL()
         )
         .addFields(
           {
