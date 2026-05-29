@@ -1,15 +1,44 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, Collection } = require("discord.js");
+
+const express = require("express");
+const app = express();
+
+const {
+  Client,
+  GatewayIntentBits,
+  Collection
+} = require("discord.js");
+
 const fs = require("fs");
 const path = require("path");
 
+// =====================
+// EXPRESS（Render用）
+// =====================
+const port = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Bot is running");
+});
+
+app.listen(port, () => {
+  console.log(`🌐 Web server listening on port ${port}`);
+});
+
+// =====================
+// DISCORD BOT
+// =====================
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences
+  ]
 });
 
 client.commands = new Collection();
 
-// ===== コマンド読み込み =====
+// コマンド読み込み
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
 
@@ -18,7 +47,7 @@ for (const file of commandFiles) {
   client.commands.set(command.data.name, command);
 }
 
-// ===== interaction =====
+// interaction
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -29,13 +58,17 @@ client.on("interactionCreate", async (interaction) => {
     await command.execute(interaction);
   } catch (err) {
     console.error(err);
-    await interaction.reply({ content: "エラー", ephemeral: true });
+    await interaction.reply({
+      content: "エラーが発生しました",
+      ephemeral: true
+    });
   }
 });
 
-// ===== login =====
+// ready
 client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`🤖 Logged in as ${client.user.tag}`);
 });
 
+// login
 client.login(process.env.MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s);
