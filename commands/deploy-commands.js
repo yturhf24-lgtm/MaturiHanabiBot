@@ -15,14 +15,14 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log("🧹 古いコマンド完全上書き中...");
+    console.log("💾 コマンド保存中...（完全上書き）");
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
 
-    console.log("✅ 上書き完了（古いコマンド削除済み）");
+    console.log("✅ 保存完了（これが唯一の正解）");
   } catch (err) {
     console.error(err);
   }
