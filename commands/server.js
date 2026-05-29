@@ -1,6 +1,6 @@
 # 📁 utils/checkAdmin.js
 
-```js id="separate_admin_check"
+js id="separate_admin_check"
 const {
   PermissionFlagsBits
 } = require("discord.js");
