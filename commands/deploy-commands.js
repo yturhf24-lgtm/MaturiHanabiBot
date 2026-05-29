@@ -4,9 +4,9 @@ const fs = require("fs");
 
 const commands = [];
 
-const commandFiles = fs.readdirSync("./commands").filter(f => f.endsWith(".js"));
+const files = fs.readdirSync("./commands").filter(f => f.endsWith(".js"));
 
-for (const file of commandFiles) {
+for (const file of files) {
   const cmd = require(`./commands/${file}`);
   commands.push(cmd.data.toJSON());
 }
@@ -15,15 +15,15 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log("登録中...");
+    console.log("🧹 古いコマンド完全上書き中...");
 
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands }
     );
 
-    console.log("完了");
-  } catch (e) {
-    console.error(e);
+    console.log("✅ 上書き完了（古いコマンド削除済み）");
+  } catch (err) {
+    console.error(err);
   }
 })();
