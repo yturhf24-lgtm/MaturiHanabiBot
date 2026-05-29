@@ -140,7 +140,7 @@ BOT: ${bots}`,
         {
           name: "📅 作成日",
           value: created,
-          inline: true
+          inline: false
         }
 
       )
