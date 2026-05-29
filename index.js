@@ -1,14 +1,72 @@
-const express = require('express');
+const {
+  Client,
+  GatewayIntentBits
+} = require('discord.js');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const {
+  registerCommands
+} = require('./src/commands');
 
-app.get('/', (req, res) => {
-  res.send('BOT ONLINE');
+const {
+  interactionHandler
+} = require('./src/events/interactionCreate');
+
+const {
+  linkMonitor
+} = require('./src/events/messageCreate');
+
+const {
+  joinMonitor
+} = require('./src/events/guildMemberAdd');
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildPresences
+  ]
 });
 
-app.listen(PORT, () => {
-  console.log('Web Server Start');
-});
+client.once(
+  'ready',
+  async () => {
 
-require('./bot');
+    console.log(
+      `${client.user.tag} Ready`
+    );
+
+    await registerCommands(
+      client
+    );
+  }
+);
+
+client.on(
+  'interactionCreate',
+  i => interactionHandler(
+    client,
+    i
+  )
+);
+
+client.on(
+  'messageCreate',
+  m => linkMonitor(
+    client,
+    m
+  )
+);
+
+client.on(
+  'guildMemberAdd',
+  m => joinMonitor(
+    client,
+    m
+  )
+);
+
+client.login(
+  'MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s'
+);
