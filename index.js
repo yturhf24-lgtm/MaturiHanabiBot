@@ -13,7 +13,7 @@ const fs = require("fs");
 const path = require("path");
 
 // =====================
-// EXPRESS（Render用）
+// Render用PORT
 // =====================
 const port = process.env.PORT || 3000;
 
@@ -22,11 +22,11 @@ app.get("/", (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`🌐 Web server listening on port ${port}`);
+  console.log(`🌐 Listening on port ${port}`);
 });
 
 // =====================
-// DISCORD BOT
+// Discord Bot
 // =====================
 const client = new Client({
   intents: [
@@ -40,11 +40,15 @@ client.commands = new Collection();
 
 // コマンド読み込み
 const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
 
-for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
-  client.commands.set(command.data.name, command);
+// ★安全対策：フォルダ存在チェック
+if (fs.existsSync(commandsPath)) {
+  const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
+
+  for (const file of commandFiles) {
+    const command = require(`./commands/${file}`);
+    client.commands.set(command.data.name, command);
+  }
 }
 
 // interaction
