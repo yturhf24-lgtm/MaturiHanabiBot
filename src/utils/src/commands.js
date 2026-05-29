@@ -1,430 +1,129 @@
 const {
   SlashCommandBuilder,
   EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle
-} = require('discord.js');
-
-const fs = require('fs');
-const path = require('path');
-
-const DB_PATH = path.join(__dirname, 'guildConfig.json');
+  ChannelType
+} = require("discord.js");
 
 // =====================
-// グローバル管理者
+// コマンド登録
 // =====================
-const GLOBAL_ADMINS = ["1266013271518089258"];
+function registerCommands() {
 
-// =====================
-// メモリ
-// =====================
-const warnMap = new Map();
-
-// =====================
-// DB
-// =====================
-function loadDB() {
-  if (!fs.existsSync(DB_PATH)) return {};
-  return JSON.parse(fs.readFileSync(DB_PATH));
-}
-
-function saveDB(db) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-}
-
-function getGuild(db, id) {
-  if (!db[id]) {
-    db[id] = {
-      roles: [],
-      logChannel: null,
-      alertChannel: null,
-      panelChannel: null,
-      panelTargetChannel: null,
-      realtimeLog: false,
-      monitor: {
-        link: false,
-        join: false
-      }
-    };
-  }
-  return db[id];
+  return [
+    new SlashCommandBuilder()
+      .setName("server")
+      .setDescription("サーバー情報を表示")
+      .setDescriptionLocalizations({
+        ja: "サーバー情報表示"
+      })
+  ].map(c => c.toJSON());
 }
 
 // =====================
-// 言語
+// 実行部分
 // =====================
-const LANG = {
-  server: { ja: "サーバー情報", en: "Server Info" },
-  panel: { ja: "パネル", en: "Panel" },
-  send: { ja: "送信", en: "Send" },
-};
+async function handleServerCommand(interaction) {
 
-// =====================
-// 時間
-// =====================
-function getTime() {
-  const d = new Date();
-  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日${d.toLocaleString('ja-JP',{weekday:'long'})} ${d.toTimeString().split(' ')[0]}`;
-}
+  const g = interaction.guild;
 
-const isAdmin = (id) => GLOBAL_ADMINS.includes(id);
+  // メンバー取得（正確化）
+  await g.members.fetch().catch(() => {});
 
-// =====================
-// リンク判定
-// =====================
-function hasLink(text) {
-  return /(https?:\/\/|discord\.gg)/i.test(text);
-}
+  const total = g.memberCount;
+  const bots = g.members.cache.filter(m => m.user.bot).size;
+  const humans = total - bots;
 
-// =====================
-// ログ
-// =====================
-function sendLog(ch, embed) {
-  if (!ch) return;
-  ch.send({ embeds: [embed] }).catch(()=>{});
-}
+  const online = g.members.cache.filter(m => m.presence?.status === "online").size;
+  const idle = g.members.cache.filter(m => m.presence?.status === "idle").size;
+  const dnd = g.members.cache.filter(m => m.presence?.status === "dnd").size;
+  const offline = total - (online + idle + dnd);
 
-// =====================
-// リンク警告（5秒削除）
-// =====================
-async function sendWarn(channel) {
+  const text = g.channels.cache.filter(c => c.type === ChannelType.GuildText).size;
+  const voice = g.channels.cache.filter(c => c.type === ChannelType.GuildVoice).size;
+  const category = g.channels.cache.filter(c => c.type === ChannelType.GuildCategory).size;
+
+  // 過疎度（最大200%）
+  const active = online + idle + dnd;
+  const rate = total ? Math.min(200, Math.floor((active / total) * 200)) : 0;
+
+  let activityText = "過疎";
+  if (rate >= 120) activityText = "超活発";
+  else if (rate >= 80) activityText = "普通";
+  else if (rate >= 40) activityText = "少し過疎";
 
   const embed = new EmbedBuilder()
-    .setTitle("🚨 リンク検知")
-    .setDescription("リンクは監視されています。危険なリンクはBAN対象です。")
-    .setColor(0xff0000)
-    .setFooter({ text: getTime() });
-
-  const msg = await channel.send({ embeds: [embed] });
-
-  setTimeout(() => msg.delete().catch(()=>{}), 5000);
-
-  return msg;
-}
-
-// =====================
-// COMMANDS
-// =====================
-async function registerCommands(client) {
-
-  const commands = [
-
-    new SlashCommandBuilder()
-      .setName('server')
-      .setDescription('サーバー情報')
-      .addStringOption(o =>
-        o.setName('lang')
-          .addChoices(
-            { name:'日本語', value:'ja' },
-            { name:'English', value:'en' }
-          )
-      ),
-
-    new SlashCommandBuilder()
-      .setName('monitor')
-      .setDescription('監視ON/OFF')
-      .addStringOption(o =>
-        o.setName('type')
-          .addChoices(
-            { name:'リンク', value:'link' },
-            { name:'参加', value:'join' }
-          )
-          .setRequired(true)
-      )
-      .addStringOption(o =>
-        o.setName('mode')
-          .addChoices(
-            { name:'ON', value:'on' },
-            { name:'OFF', value:'off' }
-          )
-          .setRequired(true)
-      ),
-
-    new SlashCommandBuilder()
-      .setName('alert')
-      .setDescription('アラート設定')
-      .addChannelOption(o =>
-        o.setName('channel').setRequired(true)
-      ),
-
-    new SlashCommandBuilder()
-      .setName('realtimelog')
-      .setDescription('リアルタイムログON')
-      .addChannelOption(o =>
-        o.setName('channel').setRequired(true)
-      ),
-
-    new SlashCommandBuilder()
-      .setName('panel')
-      .setDescription('パネル作成')
-      .addChannelOption(o =>
-        o.setName('channel').setRequired(true)
-      )
-
-  ].map(c => c.toJSON());
-
-  await client.application.commands.set(commands);
-}
-
-// =====================
-// SERVER EMBED
-// =====================
-function serverEmbed(guild, lang='ja') {
-
-  return new EmbedBuilder()
-    .setTitle(`📊 ${LANG.server[lang]} - ${guild.name}`)
-    .setColor(0x00b0f4)
+    .setColor(0x2b2d31)
+    .setTitle(`${g.name} サーバー情報`)
+    .setThumbnail(g.iconURL({ dynamic: true }))
     .addFields(
-      { name:"👥 Members", value:`${guild.memberCount}` },
-      { name:"📅 Created", value: guild.createdAt.toLocaleString('ja-JP') }
-    );
-}
 
-// =====================
-// MESSAGE EVENT
-// =====================
-async function onMessage(message, client) {
-
-  if (message.author.bot) return;
-
-  const db = loadDB();
-  const data = getGuild(db, message.guild.id);
-
-  // =====================
-  // リアルタイムログ
-  // =====================
-  if (data.realtimeLog && data.logChannel) {
-
-    const ch = message.guild.channels.cache.get(data.logChannel);
-
-    const embed = new EmbedBuilder()
-      .setTitle("🟡 Message Log")
-      .addFields(
-        { name:"User", value:`<@${message.author.id}>` },
-        { name:"Channel", value:`<#${message.channel.id}>` },
-        { name:"Content", value:message.content || "none" },
-        { name:"Time", value:getTime() }
-      );
-
-    sendLog(ch, embed);
-  }
-
-  // =====================
-  // LINK MONITOR
-  // =====================
-  if (data.monitor.link && hasLink(message.content)) {
-
-    await message.delete().catch(()=>{});
-
-    const warnMsg = await sendWarn(message.channel);
-    warnMap.set(message.id, warnMsg.id);
-
-    const embed = new EmbedBuilder()
-      .setTitle("🚨 LINK ALERT")
-      .addFields(
-        { name:"User", value:`<@${message.author.id}>` },
-        { name:"Channel", value:`<#${message.channel.id}>` },
-        { name:"Time", value:getTime() }
-      )
-      .setColor(0xff0000);
-
-    const alert = message.guild.channels.cache.get(data.alertChannel);
-    const log = message.guild.channels.cache.get(data.logChannel);
-
-    sendLog(alert, embed);
-    sendLog(log, embed);
-  }
-}
-
-// =====================
-// DELETE SYNC
-// =====================
-function registerDelete(client) {
-
-  client.on('messageDelete', async (msg) => {
-
-    const warnId = warnMap.get(msg.id);
-    if (!warnId) return;
-
-    try {
-      const m = await msg.channel.messages.fetch(warnId);
-      if (m) await m.delete().catch(()=>{});
-    } catch {}
-
-    warnMap.delete(msg.id);
-  });
-}
-
-// =====================
-// JOIN EVENT
-// =====================
-function registerJoin(client) {
-
-  client.on('guildMemberAdd', member => {
-
-    const db = loadDB();
-    const data = getGuild(db, member.guild.id);
-
-    if (!data.monitor.join) return;
-
-    const embed = new EmbedBuilder()
-      .setTitle("👤 JOIN ALERT")
-      .addFields(
-        { name:"User", value:`<@${member.id}>` },
-        { name:"Name", value:member.user.username },
-        { name:"Time", value:getTime() }
-      );
-
-    const alert = member.guild.channels.cache.get(data.alertChannel);
-    const log = member.guild.channels.cache.get(data.logChannel);
-
-    sendLog(alert, embed);
-    sendLog(log, embed);
-  });
-}
-
-// =====================
-// INTERACTION
-// =====================
-async function handleInteraction(interaction) {
-
-  if (!interaction.isChatInputCommand()) return;
-
-  const db = loadDB();
-  const guild = interaction.guild;
-  const data = getGuild(db, guild.id);
-
-  const lang = interaction.options.getString('lang') || 'ja';
-
-  if (!isAdmin(interaction.user.id)) {
-    return interaction.reply({ content:"❌ No permission", ephemeral:true });
-  }
-
-  // =====================
-  // SERVER
-  // =====================
-  if (interaction.commandName === 'server') {
-    return interaction.reply({ embeds:[serverEmbed(guild, lang)] });
-  }
-
-  // =====================
-  // MONITOR
-  // =====================
-  if (interaction.commandName === 'monitor') {
-
-    const type = interaction.options.getString('type');
-    const mode = interaction.options.getString('mode');
-
-    data.monitor[type] = mode === 'on';
-    saveDB(db);
-
-    return interaction.reply(`📡 ${type} => ${mode}`);
-  }
-
-  // =====================
-  // ALERT
-  // =====================
-  if (interaction.commandName === 'alert') {
-
-    const ch = interaction.options.getChannel('channel');
-    data.alertChannel = ch.id;
-
-    saveDB(db);
-
-    return interaction.reply(`🚨 alert set`);
-  }
-
-  // =====================
-  // REALTIME LOG
-  // =====================
-  if (interaction.commandName === 'realtimelog') {
-
-    const ch = interaction.options.getChannel('channel');
-
-    data.realtimeLog = true;
-    data.logChannel = ch.id;
-
-    saveDB(db);
-
-    return interaction.reply(`📡 realtime log ON`);
-  }
-
-  // =====================
-  // PANEL CREATE
-  // =====================
-  if (interaction.commandName === 'panel') {
-
-    const ch = interaction.options.getChannel('channel');
-
-    data.panelChannel = ch.id;
-    data.panelTargetChannel = ch.id;
-
-    saveDB(db);
-
-    const embed = new EmbedBuilder()
-      .setTitle("📌 Panel")
-      .setDescription("ボタンを押して送信");
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("panel_open")
-        .setLabel("送信")
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    await ch.send({ embeds:[embed], components:[row] });
-
-    return interaction.reply("📌 panel created");
-  }
-}
-
-// =====================
-// PANEL SYSTEM
-// =====================
-function registerPanel(client) {
-
-  client.on("interactionCreate", async (i) => {
-
-    if (i.isButton() && i.customId === "panel_open") {
-
-      const modal = new ModalBuilder()
-        .setCustomId("panel_modal")
-        .setTitle("送信");
-
-      const input = new TextInputBuilder()
-        .setCustomId("text")
-        .setLabel("内容")
-        .setStyle(TextInputStyle.Paragraph);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-      await i.showModal(modal);
-    }
-
-    if (i.isModalSubmit() && i.customId === "panel_modal") {
-
-      const text = i.fields.getTextInputValue("text");
-
-      const embed = new EmbedBuilder()
-        .setTitle("📨 Panel Send")
-        .setDescription(text);
-
-      await i.channel.send({ embeds:[embed] });
-
-      return i.reply({ content:"✅ sent", ephemeral:true });
-    }
+      {
+        name: "👥 メンバー",
+        value:
+`総人数: ${total}
+一般: ${humans}
+BOT: ${bots}`,
+        inline: false
+      },
+
+      {
+        name: "📶 ステータス",
+        value:
+`🟢 オンライン: ${online}
+🌙 退席中: ${idle}
+⛔ 取り込み中: ${dnd}
+⚫ オフライン: ${offline}`,
+        inline: false
+      },
+
+      {
+        name: "📁 チャンネル",
+        value:
+`テキスト: ${text}
+ボイス: ${voice}
+カテゴリ: ${category}`,
+        inline: false
+      },
+
+      {
+        name: "🚀 ブースト",
+        value:
+`レベル: ${g.premiumTier}
+回数: ${g.premiumSubscriptionCount ?? 0}`,
+        inline: false
+      },
+
+      {
+        name: "📉 過疎度",
+        value: `${activityText} (${rate}%)`,
+        inline: false
+      },
+
+      {
+        name: "📅 作成日",
+        value: new Date(g.createdTimestamp).toLocaleString("ja-JP", {
+          timeZone: "Asia/Tokyo",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          weekday: "long",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit"
+        }),
+        inline: false
+      }
+
+    )
+    .setTimestamp();
+
+  // 👇 全員表示（ephemeralなし）
+  return interaction.reply({
+    embeds: [embed]
   });
 }
 
 module.exports = {
   registerCommands,
-  handleInteraction,
-  onMessage,
-  registerDelete,
-  registerJoin,
-  registerPanel
+  handleServerCommand
 };
