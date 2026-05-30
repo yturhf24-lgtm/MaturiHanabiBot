@@ -1,3 +1,4 @@
+js
 const {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -9,41 +10,24 @@ const {
 } = require("../utils/checkAdmin");
 
 module.exports = {
-
-  data:
-    new SlashCommandBuilder()
-
-      .setName("server")
-
-      .setDescription(
-        "サーバー情報"
-      ),
+  data: new SlashCommandBuilder()
+    .setName("server")
+    .setDescription("サーバー情報"),
 
   async execute(interaction) {
 
-    // 管理者または特別許可ID
-    if (
-      !checkAdmin(interaction)
-    ) {
-
+    if (!checkAdmin(interaction)) {
       return interaction.reply({
-
-        content:
-          "❌ 管理者専用コマンドです",
-
+        content: "❌ 管理者専用コマンドです",
         ephemeral: true
-
       });
-
     }
 
-    const g =
-      interaction.guild;
+    const g = interaction.guild;
 
     await g.members.fetch();
 
-    const total =
-      g.memberCount;
+    const total = g.memberCount;
 
     const bots =
       g.members.cache.filter(
@@ -55,23 +39,17 @@ module.exports = {
 
     const online =
       g.members.cache.filter(
-        m =>
-          m.presence?.status ===
-          "online"
+        m => m.presence?.status === "online"
       ).size;
 
     const idle =
       g.members.cache.filter(
-        m =>
-          m.presence?.status ===
-          "idle"
+        m => m.presence?.status === "idle"
       ).size;
 
     const dnd =
       g.members.cache.filter(
-        m =>
-          m.presence?.status ===
-          "dnd"
+        m => m.presence?.status === "dnd"
       ).size;
 
     const offline =
@@ -103,7 +81,6 @@ module.exports = {
           ChannelType.GuildCategory
       ).size;
 
-    // 過疎度
     const active =
       online +
       idle +
@@ -111,119 +88,91 @@ module.exports = {
 
     const rate =
       total
-        ? Math.min(
-            250,
-            Math.floor(
-              (
-                active /
-                total
-              ) * 250
-            )
+        ? Math.floor(
+            (
+              active /
+              total
+            ) * 100
           )
         : 0;
 
     let activity =
       "過疎";
 
-    if (rate >= 180)
+    if (rate >= 90)
       activity =
         "超活発";
 
-    else if (rate >= 120)
+    else if (rate >= 75)
       activity =
         "活発";
 
-    else if (rate >= 100)
-      activity =
-        "やばい";
-
-    else if (rate >= 60)
+    else if (rate >= 50)
       activity =
         "普通";
+
+    else if (rate >= 25)
+      activity =
+        "やや過疎";
 
     const embed =
       new EmbedBuilder()
 
         .setColor(
-          0x5865f2
+          0x2b2d31
         )
 
         .setTitle(
-          `📊 ${g.name} サーバー情報`
+          `${g.name} サーバー情報`
         )
 
         .setThumbnail(
           g.iconURL({
-            dynamic: true
+            dynamic: true,
+            size: 1024
           })
         )
 
         .addFields(
 
           {
-            name:
-              "👥 メンバー",
-
+            name: "メンバー",
             value:
-`総人数: ${total}
-一般: ${humans}
-BOT: ${bots}`,
-
+`総数: ${total}
+ユーザー: ${humans}
+Bot: ${bots}`,
             inline: true
           },
 
           {
-            name:
-              "📶 ステータス",
-
+            name: "ステータス",
             value:
-`🟢 オンライン: ${online}
-🌙 退席中: ${idle}
-⛔ 取り込み中: ${dnd}
-⚫ オフライン: ${offline}`,
-
+`🟢 ${online}
+🌙 ${idle}
+⛔ ${dnd}
+⚫ ${offline}`,
             inline: true
           },
 
           {
-            name:
-              "📁 チャンネル",
-
+            name: "チャンネル",
             value:
 `テキスト: ${text}
 ボイス: ${voice}
 カテゴリ: ${category}`,
-
             inline: true
           },
 
           {
-            name:
-              "🚀 ブースト",
-
+            name: "ブースト",
             value:
 `レベル: ${g.premiumTier}
-回数: ${
-  g.premiumSubscriptionCount || 0
-}`,
-
+回数: ${g.premiumSubscriptionCount || 0}`,
             inline: true
           },
 
           {
-            name:
-              "📉 過疎度",
-
-            value:
-`${activity} (${rate}/250)`,
-
-            inline: true
-          },
-
-          {
-            name:
-              "📅 作成日",
-
+            name: "作成日",
             value:
               new Date(
                 g.createdTimestamp
@@ -235,11 +184,9 @@ BOT: ${bots}`,
                   year:
                     "numeric",
                   month:
-                    "long",
+                    "2-digit",
                   day:
-                    "numeric",
-                  weekday:
-                    "long",
+                    "2-digit",
                   hour:
                     "2-digit",
                   minute:
@@ -248,24 +195,20 @@ BOT: ${bots}`,
                     "2-digit"
                 }
               ),
-
             inline: false
+          },
+
+          {
+            name: "過疎度",
+            value:
+`${rate}% (${activity})`,
+            inline: true
           }
 
-        )
-
-        .setFooter({
-
-          text: g.name
-
-        })
-
-        .setTimestamp();
+        );
 
     await interaction.reply({
-
       embeds: [embed]
-
     });
 
   }
