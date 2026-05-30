@@ -5,7 +5,6 @@ const {
 const OWNER_ID = "1266013271518089258";
 
 function checkAdmin(interaction) {
-
   const isAdmin =
     interaction.member.permissions.has(
       PermissionFlagsBits.Administrator
