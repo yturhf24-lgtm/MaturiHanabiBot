@@ -5,15 +5,14 @@ const {
 const OWNER_ID = "1266013271518089258";
 
 function checkAdmin(interaction) {
-  const isAdmin =
+
+  return (
     interaction.member.permissions.has(
       PermissionFlagsBits.Administrator
-    );
+    ) ||
+    interaction.user.id === OWNER_ID
+  );
 
-  const isOwner =
-    interaction.user.id === OWNER_ID;
-
-  return isAdmin || isOwner;
 }
 
 module.exports = {
