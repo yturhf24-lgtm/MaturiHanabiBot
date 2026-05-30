@@ -25,7 +25,9 @@ module.exports = {
 
     const g = interaction.guild;
 
-    await g.members.fetch();
+    if (!g.members.cache.size) {
+      await g.members.fetch();
+    }
 
     const total = g.memberCount;
 
@@ -53,7 +55,9 @@ module.exports = {
       ).size;
 
     const offline =
-      total - (online + idle + dnd);
+      g.members.cache.filter(
+        m => !m.presence || m.presence.status === "offline"
+      ).size;
 
     const text =
       g.channels.cache.filter(
@@ -69,6 +73,9 @@ module.exports = {
       g.channels.cache.filter(
         c => c.type === ChannelType.GuildCategory
       ).size;
+
+    const roles =
+      g.roles.cache.size - 1; // @everyone 제외
 
     const active =
       online + idle + dnd;
@@ -100,7 +107,7 @@ module.exports = {
           g.iconURL({
             dynamic: true,
             size: 1024
-          })
+          }) || null
         )
         .addFields(
           {
@@ -129,6 +136,11 @@ Bot: ${bots}`,
             inline: true
           },
           {
+            name: "🏷️ ロール",
+            value: `総数: ${roles}`,
+            inline: true
+          },
+          {
             name: "🚀 ブースト",
             value:
 `レベル: ${g.premiumTier}
@@ -139,7 +151,7 @@ Bot: ${bots}`,
             name: "📅 作成日",
             value:
               new Date(
-                g.createdTimestamp
+                g.createdAt
               ).toLocaleString(
                 "ja-JP",
                 {
