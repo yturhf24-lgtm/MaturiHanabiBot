@@ -6,43 +6,28 @@ const {
 
 const {
   checkAdmin
-} = require("../utils/checkAdmin");
+} = require("./utils/checkAdmin");
 
 module.exports = {
 
-  data:
-    new SlashCommandBuilder()
-
-      .setName("server")
-
-      .setDescription(
-        "サーバー情報"
-      ),
+  data: new SlashCommandBuilder()
+    .setName("server")
+    .setDescription("サーバー情報"),
 
   async execute(interaction) {
 
-    if (
-      !checkAdmin(interaction)
-    ) {
-
+    if (!checkAdmin(interaction)) {
       return interaction.reply({
-
-        content:
-          "❌ 管理者専用コマンドです",
-
+        content: "❌ 管理者専用コマンドです",
         ephemeral: true
-
       });
-
     }
 
-    const g =
-      interaction.guild;
+    const g = interaction.guild;
 
     await g.members.fetch();
 
-    const total =
-      g.memberCount;
+    const total = g.memberCount;
 
     const bots =
       g.members.cache.filter(
@@ -54,194 +39,125 @@ module.exports = {
 
     const online =
       g.members.cache.filter(
-        m =>
-          m.presence?.status ===
-          "online"
+        m => m.presence?.status === "online"
       ).size;
 
     const idle =
       g.members.cache.filter(
-        m =>
-          m.presence?.status ===
-          "idle"
+        m => m.presence?.status === "idle"
       ).size;
 
     const dnd =
       g.members.cache.filter(
-        m =>
-          m.presence?.status ===
-          "dnd"
+        m => m.presence?.status === "dnd"
       ).size;
 
     const offline =
-      total -
-      (
-        online +
-        idle +
-        dnd
-      );
+      total - (online + idle + dnd);
 
     const text =
       g.channels.cache.filter(
-        c =>
-          c.type ===
-          ChannelType.GuildText
+        c => c.type === ChannelType.GuildText
       ).size;
 
     const voice =
       g.channels.cache.filter(
-        c =>
-          c.type ===
-          ChannelType.GuildVoice
+        c => c.type === ChannelType.GuildVoice
       ).size;
 
     const category =
       g.channels.cache.filter(
-        c =>
-          c.type ===
-          ChannelType.GuildCategory
+        c => c.type === ChannelType.GuildCategory
       ).size;
 
     const active =
-      online +
-      idle +
-      dnd;
+      online + idle + dnd;
 
     const rate =
       total
         ? Math.floor(
-            (
-              active /
-              total
-            ) * 100
+            (active / total) * 100
           )
         : 0;
 
-    let activity =
-      "過疎";
+    let activity = "過疎";
 
-    if (rate >= 90)
-      activity =
-        "超活発";
-
-    else if (rate >= 75)
-      activity =
-        "活発";
-
-    else if (rate >= 50)
-      activity =
-        "普通";
-
-    else if (rate >= 25)
-      activity =
-        "やや過疎";
+    if (rate >= 90) {
+      activity = "超活発";
+    } else if (rate >= 75) {
+      activity = "活発";
+    } else if (rate >= 50) {
+      activity = "普通";
+    } else if (rate >= 25) {
+      activity = "やや過疎";
+    }
 
     const embed =
       new EmbedBuilder()
-
-        .setColor(
-          0x2b2d31
-        )
-
-        .setTitle(
-          `${g.name} サーバー情報`
-        )
-
+        .setColor(0x2b2d31)
+        .setTitle(`${g.name} サーバー情報`)
         .setThumbnail(
           g.iconURL({
             dynamic: true,
             size: 1024
           })
         )
-
         .addFields(
-
           {
-            name:
-              "👥 メンバー",
-
+            name: "👥 メンバー",
             value:
 `総数: ${total}
 ユーザー: ${humans}
 Bot: ${bots}`,
-
             inline: true
           },
-
           {
-            name:
-              "📶 ステータス",
-
+            name: "📶 ステータス",
             value:
 `🟢 ${online}
 🌙 ${idle}
 ⛔ ${dnd}
 ⚫ ${offline}`,
-
             inline: true
           },
-
           {
-            name:
-              "📁 チャンネル",
-
+            name: "📁 チャンネル",
             value:
 `テキスト: ${text}
 ボイス: ${voice}
 カテゴリ: ${category}`,
-
             inline: true
           },
-
           {
-            name:
-              "🚀 ブースト",
-
+            name: "🚀 ブースト",
             value:
 `レベル: ${g.premiumTier}
-回数: ${
-  g.premiumSubscriptionCount || 0
-}`,
-
+回数: ${g.premiumSubscriptionCount || 0}`,
             inline: false
           },
-
           {
-            name:
-              "📅 作成日",
-
+            name: "📅 作成日",
             value:
               new Date(
                 g.createdTimestamp
               ).toLocaleString(
                 "ja-JP",
                 {
-                  timeZone:
-                    "Asia/Tokyo"
+                  timeZone: "Asia/Tokyo"
                 }
               ),
-
             inline: false
           },
-
           {
-            name:
-              "📉 過疎度",
-
-            value:
-`${rate}% (${activity})`,
-
+            name: "📉 過疎度",
+            value: `${rate}% (${activity})`,
             inline: false
           }
-
         );
 
     await interaction.reply({
-
       embeds: [embed]
-
     });
 
   }
-
 };
