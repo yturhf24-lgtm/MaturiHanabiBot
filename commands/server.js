@@ -133,7 +133,7 @@ Bot: ${bots}`,
             value:
 `レベル: ${g.premiumTier}
 回数: ${g.premiumSubscriptionCount || 0}`,
-            inline: false
+            inline: true
           },
           {
             name: "📅 作成日",
@@ -151,7 +151,7 @@ Bot: ${bots}`,
           {
             name: "📉 過疎度",
             value: `${rate}% (${activity})`,
-            inline: false
+            inline: true
           }
         );
 
