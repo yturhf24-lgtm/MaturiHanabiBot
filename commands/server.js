@@ -9,24 +9,40 @@ const {
 } = require("../utils/checkAdmin");
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("server")
-    .setDescription("サーバー情報"),
+
+  data:
+    new SlashCommandBuilder()
+
+      .setName("server")
+
+      .setDescription(
+        "サーバー情報"
+      ),
 
   async execute(interaction) {
 
-    if (!checkAdmin(interaction)) {
+    if (
+      !checkAdmin(interaction)
+    ) {
+
       return interaction.reply({
-        content: "❌ 管理者専用コマンドです",
+
+        content:
+          "❌ 管理者専用コマンドです",
+
         ephemeral: true
+
       });
+
     }
 
-    const g = interaction.guild;
+    const g =
+      interaction.guild;
 
     await g.members.fetch();
 
-    const total = g.memberCount;
+    const total =
+      g.memberCount;
 
     const bots =
       g.members.cache.filter(
@@ -38,17 +54,23 @@ module.exports = {
 
     const online =
       g.members.cache.filter(
-        m => m.presence?.status === "online"
+        m =>
+          m.presence?.status ===
+          "online"
       ).size;
 
     const idle =
       g.members.cache.filter(
-        m => m.presence?.status === "idle"
+        m =>
+          m.presence?.status ===
+          "idle"
       ).size;
 
     const dnd =
       g.members.cache.filter(
-        m => m.presence?.status === "dnd"
+        m =>
+          m.presence?.status ===
+          "dnd"
       ).size;
 
     const offline =
@@ -135,43 +157,59 @@ module.exports = {
         .addFields(
 
           {
-            name: "メンバー",
+            name:
+              "👥 メンバー",
+
             value:
 `総数: ${total}
 ユーザー: ${humans}
 Bot: ${bots}`,
+
             inline: true
           },
 
           {
-            name: "ステータス",
+            name:
+              "📶 ステータス",
+
             value:
 `🟢 ${online}
 🌙 ${idle}
 ⛔ ${dnd}
 ⚫ ${offline}`,
+
             inline: true
           },
 
           {
-            name: "チャンネル",
+            name:
+              "📁 チャンネル",
+
             value:
 `テキスト: ${text}
 ボイス: ${voice}
 カテゴリ: ${category}`,
+
             inline: true
           },
 
           {
-            name: "ブースト",
+            name:
+              "🚀 ブースト",
+
             value:
 `レベル: ${g.premiumTier}
-回数: ${g.premiumSubscriptionCount || 0}`,
-            inline: true
+回数: ${
+  g.premiumSubscriptionCount || 0
+}`,
+
+            inline: false
           },
 
           {
-            name: "作成日",
+            name:
+              "📅 作成日",
+
             value:
               new Date(
                 g.createdTimestamp
@@ -179,36 +217,31 @@ Bot: ${bots}`,
                 "ja-JP",
                 {
                   timeZone:
-                    "Asia/Tokyo",
-                  year:
-                    "numeric",
-                  month:
-                    "2-digit",
-                  day:
-                    "2-digit",
-                  hour:
-                    "2-digit",
-                  minute:
-                    "2-digit",
-                  second:
-                    "2-digit"
+                    "Asia/Tokyo"
                 }
               ),
+
             inline: false
           },
 
           {
-            name: "過疎度",
+            name:
+              "📉 過疎度",
+
             value:
 `${rate}% (${activity})`,
-            inline: true
+
+            inline: false
           }
 
         );
 
     await interaction.reply({
+
       embeds: [embed]
+
     });
 
   }
+
 };
