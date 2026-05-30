@@ -1,51 +1,9 @@
-js id="separate_admin_check"
-const {
-  PermissionFlagsBits
-} = require("discord.js");
-
-// =====================
-// 特別許可ユーザー
-// =====================
-const OWNER_ID =
-  "1266013271518089258";
-
-// =====================
-// 管理者チェック
-// =====================
-function checkAdmin(interaction) {
-
-  const isAdmin =
-    interaction.member.permissions.has(
-      PermissionFlagsBits.Administrator
-    );
-
-  const isOwner =
-    interaction.user.id === OWNER_ID;
-
-  return (
-    isAdmin ||
-    isOwner
-  );
-}
-
-module.exports = {
-  checkAdmin
-};
-```
-
----
-
-# 📁 commands/server.js
-
-```js id="server_with_external_admin"
 const {
   SlashCommandBuilder,
-  EmbedBuilder
+  EmbedBuilder,
+  ChannelType
 } = require("discord.js");
 
-// =====================
-// 管理者チェック
-// =====================
 const {
   checkAdmin
 } = require("../utils/checkAdmin");
@@ -63,9 +21,7 @@ module.exports = {
 
   async execute(interaction) {
 
-    // =====================
-    // 権限チェック
-    // =====================
+    // 管理者または特別許可ID
     if (
       !checkAdmin(interaction)
     ) {
@@ -86,14 +42,11 @@ module.exports = {
 
     await g.members.fetch();
 
-    const members =
-      g.members.cache;
-
     const total =
-      members.size;
+      g.memberCount;
 
     const bots =
-      members.filter(
+      g.members.cache.filter(
         m => m.user.bot
       ).size;
 
@@ -101,21 +54,21 @@ module.exports = {
       total - bots;
 
     const online =
-      members.filter(
+      g.members.cache.filter(
         m =>
           m.presence?.status ===
           "online"
       ).size;
 
     const idle =
-      members.filter(
+      g.members.cache.filter(
         m =>
           m.presence?.status ===
           "idle"
       ).size;
 
     const dnd =
-      members.filter(
+      g.members.cache.filter(
         m =>
           m.presence?.status ===
           "dnd"
@@ -131,22 +84,26 @@ module.exports = {
 
     const text =
       g.channels.cache.filter(
-        c => c.type === 0
+        c =>
+          c.type ===
+          ChannelType.GuildText
       ).size;
 
     const voice =
       g.channels.cache.filter(
-        c => c.type === 2
+        c =>
+          c.type ===
+          ChannelType.GuildVoice
       ).size;
 
     const category =
       g.channels.cache.filter(
-        c => c.type === 4
+        c =>
+          c.type ===
+          ChannelType.GuildCategory
       ).size;
 
-    // =====================
     // 過疎度
-    // =====================
     const active =
       online +
       idle +
@@ -184,15 +141,6 @@ module.exports = {
       activity =
         "普通";
 
-    const created =
-      `<t:${Math.floor(
-        g.createdTimestamp /
-        1000
-      )}:F>`;
-
-    // =====================
-    // Embed
-    // =====================
     const embed =
       new EmbedBuilder()
 
@@ -277,7 +225,29 @@ BOT: ${bots}`,
               "📅 作成日",
 
             value:
-              created,
+              new Date(
+                g.createdTimestamp
+              ).toLocaleString(
+                "ja-JP",
+                {
+                  timeZone:
+                    "Asia/Tokyo",
+                  year:
+                    "numeric",
+                  month:
+                    "long",
+                  day:
+                    "numeric",
+                  weekday:
+                    "long",
+                  hour:
+                    "2-digit",
+                  minute:
+                    "2-digit",
+                  second:
+                    "2-digit"
+                }
+              ),
 
             inline: false
           }
