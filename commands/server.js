@@ -78,11 +78,7 @@ Bot: ${bots}`,
         },
         {
           name: "📶 ステータス",
-          value:
-`🟢 ${online}
-🌙 ${idle}
-⛔ ${dnd}
-⚫ ${offline}`,
+          value: `🟢${online} 🌙${idle} ⛔${dnd} ⚫${offline}`,
           inline: true
         },
         {
