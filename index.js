@@ -1,3 +1,6 @@
+const express = require("express");
+const app = express();
+
 const {
   Client,
   GatewayIntentBits,
@@ -7,39 +10,36 @@ const {
 const fs = require("fs");
 const path = require("path");
 
+const PORT = process.env.PORT || 10000;
+
+app.get("/", (req, res) => {
+  res.send("Bot Online");
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Web Server Ready : ${PORT}`);
+});
+
 const client = new Client({
-
   intents: [
-
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
-
   ]
-
 });
 
 client.commands = new Collection();
 
 const commandFiles = fs
-
   .readdirSync(
-    path.join(
-      __dirname,
-      "commands"
-    )
+    path.join(__dirname, "commands")
   )
-
-  .filter(
-    file =>
-      file.endsWith(".js")
+  .filter(file =>
+    file.endsWith(".js")
   );
 
-for (
-  const file
-  of commandFiles
-) {
+for (const file of commandFiles) {
 
   const command =
     require(
@@ -119,25 +119,15 @@ client.on(
       ) {
 
         await interaction.followUp({
-
-          content:
-            "❌ エラー",
-
-          ephemeral:
-            true
-
+          content: "❌ エラー",
+          ephemeral: true
         });
 
       } else {
 
         await interaction.reply({
-
-          content:
-            "❌ エラー",
-
-          ephemeral:
-            true
-
+          content: "❌ エラー",
+          ephemeral: true
         });
 
       }
