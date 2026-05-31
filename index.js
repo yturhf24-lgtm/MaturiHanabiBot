@@ -1,105 +1,44 @@
-const express = require("express");
-
 const {
   Client,
   GatewayIntentBits,
-  Collection,
-  REST,
-  Routes
+  Collection
 } = require("discord.js");
 
 const fs = require("fs");
 const path = require("path");
 
-// =====================
-// TOKEN
-// =====================
-const TOKEN = "MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s";
-
-// =====================
-// CLIENT_ID自動取得
-// =====================
-function getClientId(token) {
-
-  return Buffer
-    .from(
-      token.split(".")[0],
-      "base64"
-    )
-    .toString();
-
-}
-
-const CLIENT_ID =
-  getClientId(TOKEN);
-
-// =====================
-// Express
-// =====================
-const app = express();
-
-const PORT =
-  process.env.PORT || 3000;
-
-app.get("/", (req, res) => {
-
-  res.send("Bot Running");
-
-});
-
-app.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-
-    console.log(
-      `🌐 PORT ${PORT}`
-    );
-
-  }
-);
-
-// =====================
-// Discord Client
-// =====================
 const client = new Client({
 
   intents: [
+
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildPresences
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+
   ]
 
 });
 
-client.commands =
-  new Collection();
+client.commands = new Collection();
 
-// =====================
-// commands読み込み
-// =====================
-const commandsPath =
-  path.join(
-    __dirname,
-    "commands"
+const commandFiles = fs
+
+  .readdirSync(
+    path.join(
+      __dirname,
+      "commands"
+    )
+  )
+
+  .filter(
+    file =>
+      file.endsWith(".js")
   );
 
-if (
-  !fs.existsSync(commandsPath)
-) {
-
-  fs.mkdirSync(commandsPath);
-
-}
-
-const commandFiles =
-  fs.readdirSync(commandsPath)
-    .filter(file =>
-      file.endsWith(".js")
-    );
-
 for (
-  const file of commandFiles
+  const file
+  of commandFiles
 ) {
 
   const command =
@@ -107,20 +46,48 @@ for (
       `./commands/${file}`
     );
 
-  client.commands.set(
-    command.data.name,
-    command
-  );
+  if (
+    command.data &&
+    command.execute
+  ) {
 
-  console.log(
-    `📂 ${file}`
-  );
+    client.commands.set(
+      command.data.name,
+      command
+    );
+
+  }
 
 }
 
-// =====================
-// SlashCommand
-// =====================
+client.once(
+  "ready",
+  async () => {
+
+    try {
+
+      await client.application.commands.set(
+
+        client.commands.map(
+          cmd =>
+            cmd.data.toJSON()
+        )
+
+      );
+
+      console.log(
+        `✅ ${client.user.tag}`
+      );
+
+    } catch (err) {
+
+      console.error(err);
+
+    }
+
+  }
+);
+
 client.on(
   "interactionCreate",
   async interaction => {
@@ -146,57 +113,60 @@ client.on(
 
       console.error(err);
 
+      if (
+        interaction.replied ||
+        interaction.deferred
+      ) {
+
+        await interaction.followUp({
+
+          content:
+            "❌ エラー",
+
+          ephemeral:
+            true
+
+        });
+
+      } else {
+
+        await interaction.reply({
+
+          content:
+            "❌ エラー",
+
+          ephemeral:
+            true
+
+        });
+
+      }
+
     }
 
   }
 );
 
-// =====================
-// Ready
-// =====================
-client.once(
-  "ready",
-  async () => {
-
-    console.log(
-      `🤖 ${client.user.tag}`
-    );
+client.on(
+  "guildMemberAdd",
+  async member => {
 
     try {
 
-      const commands = [];
+      const monitor =
+        require(
+          "./commands/monitor"
+        );
 
-      client.commands.forEach(
-        command => {
+      if (
+        monitor.memberJoin
+      ) {
 
-          commands.push(
-            command.data.toJSON()
-          );
+        await monitor.memberJoin(
+          member
+        );
 
-        }
-      );
-
-      const rest =
-        new REST({
-          version: "10"
-        }).setToken(TOKEN);
-
-      // 完全上書き
-      await rest.put(
-
-        Routes.applicationCommands(
-          CLIENT_ID
-        ),
-
-        {
-          body: commands
-        }
-
-      );
-
-      console.log(
-        "✅ Commands Updated"
-      );
+      }
 
     } catch (err) {
 
@@ -207,7 +177,6 @@ client.once(
   }
 );
 
-// =====================
-// Login
-// =====================
-client.login(TOKEN);
+client.login(
+  "MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s"
+);
