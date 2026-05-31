@@ -6,7 +6,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3",
-    "express": "^4.19.2"
+    "discord.js": "^14.21.0",
+    "express": "^5.1.0"
   }
 }
