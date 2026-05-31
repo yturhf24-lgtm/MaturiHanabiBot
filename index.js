@@ -1,24 +1,10 @@
-const express = require("express");
-const app = express();
+const fs = require("fs");
 
 const {
   Client,
-  GatewayIntentBits,
-  Collection
+  Collection,
+  GatewayIntentBits
 } = require("discord.js");
-
-const fs = require("fs");
-const path = require("path");
-
-const PORT = process.env.PORT || 10000;
-
-app.get("/", (req, res) => {
-  res.send("Bot Online");
-});
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Web Server Ready : ${PORT}`);
-});
 
 const client = new Client({
   intents: [
@@ -29,64 +15,39 @@ const client = new Client({
   ]
 });
 
-client.commands = new Collection();
+client.commands =
+  new Collection();
 
-const commandFiles = fs
-  .readdirSync(
-    path.join(__dirname, "commands")
-  )
-  .filter(file =>
-    file.endsWith(".js")
-  );
+const commandFiles =
+  fs.readdirSync("./commands")
+    .filter(file =>
+      file.endsWith(".js")
+    );
 
 for (const file of commandFiles) {
 
   const command =
-    require(
-      `./commands/${file}`
-    );
+    require(`./commands/${file}`);
 
-  if (
-    command.data &&
-    command.execute
-  ) {
-
-    client.commands.set(
-      command.data.name,
-      command
-    );
-
-  }
-
+  client.commands.set(
+    command.data.name,
+    command
+  );
 }
 
-client.once(
-  "ready",
-  async () => {
+client.once("ready", async () => {
 
-    try {
+  await client.application.commands.set(
+    client.commands.map(
+      command =>
+        command.data.toJSON()
+    )
+  );
 
-      await client.application.commands.set(
-
-        client.commands.map(
-          cmd =>
-            cmd.data.toJSON()
-        )
-
-      );
-
-      console.log(
-        `✅ ${client.user.tag}`
-      );
-
-    } catch (err) {
-
-      console.error(err);
-
-    }
-
-  }
-);
+  console.log(
+    `${client.user.tag} 起動`
+  );
+});
 
 client.on(
   "interactionCreate",
@@ -113,60 +74,10 @@ client.on(
 
       console.error(err);
 
-      if (
-        interaction.replied ||
-        interaction.deferred
-      ) {
-
-        await interaction.followUp({
-          content: "❌ エラー",
-          ephemeral: true
-        });
-
-      } else {
-
-        await interaction.reply({
-          content: "❌ エラー",
-          ephemeral: true
-        });
-
-      }
-
     }
-
-  }
-);
-
-client.on(
-  "guildMemberAdd",
-  async member => {
-
-    try {
-
-      const monitor =
-        require(
-          "./commands/monitor"
-        );
-
-      if (
-        monitor.memberJoin
-      ) {
-
-        await monitor.memberJoin(
-          member
-        );
-
-      }
-
-    } catch (err) {
-
-      console.error(err);
-
-    }
-
   }
 );
 
 client.login(
-  "MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s"
+  process.env.MTM1MzM5MzE5NDQxNDYzNzE5OA.GdeWGI.JTZzWSofzKmx8eGepOQ_tY1Xw4RniNj4YXOv2s
 );
