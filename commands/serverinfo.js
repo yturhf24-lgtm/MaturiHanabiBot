@@ -18,7 +18,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setTitle("📊 サーバー情報")
-            .setColor(0x0099FF)
+            .setColor(0x0099ff)
             .addFields(
                 {
                     name: "サーバー名",
