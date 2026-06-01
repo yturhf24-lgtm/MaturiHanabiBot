@@ -129,13 +129,13 @@ module.exports = {
         inline: false
     },
     {
-        name: "🟢 ステータス",
+        name: "🌐 ステータス",
         value:
             `🟢 オンライン: ${online}\n` +
             `🌙 退席中: ${idle}\n` +
             `⛔ 取り込み中: ${dnd}\n` +
             `⚫ オフライン: ${offline}`,
-        inline: false
+        inline: true
     },
     {
         name: "👥 メンバー",
@@ -161,7 +161,7 @@ module.exports = {
     {
         name: "🎭 ロール数",
         value: `${guild.roles.cache.size}`,
-        inline: true
+        inline: false
     },
     {
         name: "📊 過疎度",
