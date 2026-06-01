@@ -151,17 +151,17 @@ module.exports = {
             `テキスト: ${textChannels}\n` +
             `ボイス: ${voiceChannels}\n` +
             `カテゴリ: ${categories}`,
-        inline: true
+        inline: false
     },
     {
         name: "😀 絵文字数",
         value: `${guild.emojis.cache.size}`,
-        inline: true
+        inline: false
     },
     {
         name: "🎭 ロール数",
         value: `${guild.roles.cache.size}`,
-        inline: true
+        inline: false
     },
     {
         name: "📊 過疎度",
