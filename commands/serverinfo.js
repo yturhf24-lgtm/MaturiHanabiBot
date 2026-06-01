@@ -1,3 +1,4 @@
+```js
 const {
     SlashCommandBuilder,
     EmbedBuilder,
@@ -90,14 +91,15 @@ module.exports = {
 
         const activity =
             Math.round(
-                (online + idle + dnd) /
-                Math.max(humans, 1) *
-                100
+                ((online + idle + dnd) /
+                Math.max(humans, 1)) * 100
             );
 
-        let activityText = "過疎";
+        let activityText = "超過疎";
 
-        if (activity >= 70) {
+        if (activity >= 80) {
+            activityText = "超活発";
+        } else if (activity >= 60) {
             activityText = "活発";
         } else if (activity >= 40) {
             activityText = "普通";
@@ -148,18 +150,29 @@ module.exports = {
                     inline: true
                 },
                 {
-                    name: "📅 作成日",
-                    value:
-                        `<t:${Math.floor(
-                            guild.createdTimestamp / 1000
-                        )}:F>`,
-                    inline: false
+                    name: "👑 オーナー",
+                    value: `<@${guild.ownerId}>`,
+                    inline: true
+                },
+                {
+                    name: "😀 絵文字数",
+                    value: `${guild.emojis.cache.size}`,
+                    inline: true
+                },
+                {
+                    name: "🎭 ロール数",
+                    value: `${guild.roles.cache.size}`,
+                    inline: true
                 },
                 {
                     name: "📊 過疎度",
-                    value:
-                        `${activity}% (${activityText})`,
+                    value: `${activity}% (${activityText})`,
                     inline: true
+                },
+                {
+                    name: "📅 作成日",
+                    value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`,
+                    inline: false
                 }
             )
             .setFooter({
@@ -172,3 +185,4 @@ module.exports = {
         });
     }
 };
+```
