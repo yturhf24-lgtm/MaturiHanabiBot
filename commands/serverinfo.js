@@ -115,65 +115,65 @@ module.exports = {
                     size: 1024
                 })
             )
-            .addFields(
-                {
-                    name: "👥 メンバー",
-                    value:
-                        `総数: ${members}\n` +
-                        `ユーザー: ${humans}\n` +
-                        `Bot: ${bots}`,
-                    inline: true
-                },
-                {
-                    name: "🟢 ステータス",
-                    value:
-                        `🟢 オンライン: ${online}\n` +
-                        `🌙 退席中: ${idle}\n` +
-                        `⛔ 取り込み中: ${dnd}\n` +
-                        `⚫ オフライン: ${offline}`,
-                    inline: true
-                },
-                {
-                    name: "📁 チャンネル",
-                    value:
-                        `テキスト: ${textChannels}\n` +
-                        `ボイス: ${voiceChannels}\n` +
-                        `カテゴリ: ${categories}`,
-                    inline: true
-                },
-                {
-                    name: "🚀 ブースト",
-                    value:
-                        `レベル: ${boostLevel}\n` +
-                        `回数: ${boostCount}`,
-                    inline: true
-                },
-                {
-                    name: "👑 オーナー",
-                    value: `<@${guild.ownerId}>`,
-                    inline: true
-                },
-                {
-                    name: "😀 絵文字数",
-                    value: `${guild.emojis.cache.size}`,
-                    inline: true
-                },
-                {
-                    name: "🎭 ロール数",
-                    value: `${guild.roles.cache.size}`,
-                    inline: true
-                },
-                {
-                    name: "📊 過疎度",
-                    value: `${activity}% (${activityText})`,
-                    inline: true
-                },
-                {
-                    name: "📅 作成日",
-                    value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`,
-                    inline: false
-                }
-            )
+.addFields(
+    {
+        name: "👑 オーナー",
+        value: `<@${guild.ownerId}>`,
+        inline: true
+    },
+    {
+        name: "🚀 ブースト",
+        value:
+            `レベル: ${boostLevel}\n` +
+            `回数: ${boostCount}`,
+        inline: true
+    },
+    {
+        name: "🟢 ステータス",
+        value:
+            `🟢 オンライン: ${online}\n` +
+            `🌙 退席中: ${idle}\n` +
+            `⛔ 取り込み中: ${dnd}\n` +
+            `⚫ オフライン: ${offline}`,
+        inline: true
+    },
+    {
+        name: "👥 メンバー",
+        value:
+            `総数: ${members}\n` +
+            `ユーザー: ${humans}\n` +
+            `Bot: ${bots}`,
+        inline: true
+    },
+    {
+        name: "📁 チャンネル",
+        value:
+            `テキスト: ${textChannels}\n` +
+            `ボイス: ${voiceChannels}\n` +
+            `カテゴリ: ${categories}`,
+        inline: true
+    },
+    {
+        name: "😀 絵文字数",
+        value: `${guild.emojis.cache.size}`,
+        inline: true
+    },
+    {
+        name: "🎭 ロール数",
+        value: `${guild.roles.cache.size}`,
+        inline: true
+    },
+    {
+        name: "📊 過疎度",
+        value: `${activity}% (${activityText})`,
+        inline: true
+    },
+    {
+        name: "📅 作成日",
+        value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`,
+        inline: false
+    }
+)
             .setFooter({
                 text: `サーバーID: ${guild.id}`
             })
