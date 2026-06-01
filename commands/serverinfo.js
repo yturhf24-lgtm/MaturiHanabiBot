@@ -119,14 +119,14 @@ module.exports = {
     {
         name: "👑 オーナー",
         value: `<@${guild.ownerId}>`,
-        inline: false
+        inline: true
     },
     {
         name: "🚀 ブースト",
         value:
             `レベル: ${boostLevel}\n` +
             `回数: ${boostCount}`,
-        inline: false
+        inline: true
     },
     {
         name: "🌐 ステータス",
