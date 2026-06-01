@@ -151,7 +151,7 @@ module.exports = {
             `テキスト: ${textChannels}\n` +
             `ボイス: ${voiceChannels}\n` +
             `カテゴリ: ${categories}`,
-        inline: false
+        inline: true
     },
     {
         name: "😀 絵文字数",
