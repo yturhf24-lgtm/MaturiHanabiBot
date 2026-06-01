@@ -119,14 +119,14 @@ module.exports = {
     {
         name: "👑 オーナー",
         value: `<@${guild.ownerId}>`,
-        inline: true
+        inline: false
     },
     {
         name: "🚀 ブースト",
         value:
             `レベル: ${boostLevel}\n` +
             `回数: ${boostCount}`,
-        inline: true
+        inline: false
     },
     {
         name: "🟢 ステータス",
@@ -135,7 +135,7 @@ module.exports = {
             `🌙 退席中: ${idle}\n` +
             `⛔ 取り込み中: ${dnd}\n` +
             `⚫ オフライン: ${offline}`,
-        inline: true
+        inline: false
     },
     {
         name: "👥 メンバー",
@@ -143,7 +143,7 @@ module.exports = {
             `総数: ${members}\n` +
             `ユーザー: ${humans}\n` +
             `Bot: ${bots}`,
-        inline: true
+        inline: false
     },
     {
         name: "📁 チャンネル",
@@ -166,7 +166,7 @@ module.exports = {
     {
         name: "📊 過疎度",
         value: `${activity}% (${activityText})`,
-        inline: true
+        inline: false
     },
     {
         name: "📅 作成日",
