@@ -1,0 +1,76 @@
+```js
+client.on("interactionCreate", async interaction => {
+
+    if (interaction.isModalSubmit()) {
+
+        if (interaction.customId === "button_create") {
+
+            const name =
+                interaction.fields.getTextInputValue(
+                    "button_name"
+                );
+
+            const desc =
+                interaction.fields.getTextInputValue(
+                    "button_desc"
+                );
+
+            const msg =
+                interaction.fields.getTextInputValue(
+                    "button_message"
+                );
+
+            const embed = new EmbedBuilder()
+                .setColor("#2B2D31")
+                .setTitle(name)
+                .setDescription(desc);
+
+            const button =
+                new ButtonBuilder()
+                    .setCustomId(
+                        `custom_${Buffer.from(msg).toString("base64")}`
+                    )
+                    .setLabel(name)
+                    .setStyle(ButtonStyle.Primary);
+
+            const row =
+                new ActionRowBuilder()
+                    .addComponents(button);
+
+            await interaction.reply({
+                content: "ボタンを作成しました。",
+                ephemeral: true
+            });
+
+            await interaction.channel.send({
+                embeds: [embed],
+                components: [row]
+            });
+        }
+    }
+
+    if (interaction.isButton()) {
+
+        if (
+            interaction.customId.startsWith(
+                "custom_"
+            )
+        ) {
+
+            const msg =
+                Buffer.from(
+                    interaction.customId.replace(
+                        "custom_",
+                        ""
+                    ),
+                    "base64"
+                ).toString();
+
+            await interaction.reply({
+                content: msg,
+                ephemeral: true
+            });
+        }
+    }
+});
+```
