@@ -143,7 +143,7 @@ module.exports = {
             `総数: ${members}\n` +
             `ユーザー: ${humans}\n` +
             `Bot: ${bots}`,
-        inline: false
+        inline: true
     },
     {
         name: "📁 チャンネル",
@@ -156,12 +156,12 @@ module.exports = {
     {
         name: "😀 絵文字数",
         value: `${guild.emojis.cache.size}`,
-        inline: false
+        inline: true
     },
     {
         name: "🎭 ロール数",
         value: `${guild.roles.cache.size}`,
-        inline: false
+        inline: true
     },
     {
         name: "📊 過疎度",
