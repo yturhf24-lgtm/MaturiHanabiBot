@@ -1,83 +1,123 @@
 require("dotenv").config();
 
-const express = require("express");
 const fs = require("fs");
 const path = require("path");
+const express = require("express");
 
 const {
     Client,
     Collection,
     GatewayIntentBits,
-    Events
+    Events,
+    REST,
+    Routes
 } = require("discord.js");
 
-// Render用Webサーバー
 const app = express();
-const PORT = process.env.PORT || 10000;
 
 app.get("/", (req, res) => {
     res.send("Bot Online");
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Web Server Running : ${PORT}`);
+app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
+    console.log(`Web Server Running : ${process.env.PORT || 10000}`);
 });
 
-// Discord Bot
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences
     ]
 });
 
 client.commands = new Collection();
 
+const commands = [];
 const commandsPath = path.join(__dirname, "commands");
 
-if (fs.existsSync(commandsPath)) {
-    const commandFiles = fs
-        .readdirSync(commandsPath)
-        .filter(file => file.endsWith(".js"));
+const commandFiles = fs
+    .readdirSync(commandsPath)
+    .filter(file => file.endsWith(".js"));
 
-    for (const file of commandFiles) {
-        const command = require(path.join(commandsPath, file));
+for (const file of commandFiles) {
 
-        if (command.data && command.execute) {
-            client.commands.set(command.data.name, command);
-        }
-    }
+    const command = require(
+        path.join(commandsPath, file)
+    );
+
+    client.commands.set(
+        command.data.name,
+        command
+    );
+
+    commands.push(
+        command.data.toJSON()
+    );
 }
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
+
     console.log(`${client.user.tag} 起動完了`);
-});
-
-client.on(Events.InteractionCreate, async interaction => {
-
-    if (!interaction.isChatInputCommand()) return;
-
-    const command = client.commands.get(interaction.commandName);
-
-    if (!command) return;
 
     try {
-        await command.execute(interaction);
-    } catch (error) {
 
-        console.error(error);
+        const rest = new REST({
+            version: "10"
+        }).setToken(process.env.TOKEN);
 
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({
-                content: "エラーが発生しました。",
-                ephemeral: true
-            });
-        } else {
+        await rest.put(
+            Routes.applicationCommands(
+                process.env.CLIENT_ID
+            ),
+            {
+                body: commands
+            }
+        );
+
+        console.log(
+            `${commands.length}個のコマンド登録完了`
+        );
+
+    } catch (err) {
+
+        console.error(err);
+
+    }
+});
+
+client.on(
+    Events.InteractionCreate,
+    async interaction => {
+
+        if (
+            !interaction.isChatInputCommand()
+        ) return;
+
+        const command =
+            client.commands.get(
+                interaction.commandName
+            );
+
+        if (!command) return;
+
+        try {
+
+            await command.execute(
+                interaction
+            );
+
+        } catch (error) {
+
+            console.error(error);
+
             await interaction.reply({
-                content: "エラーが発生しました。",
+                content:
+                    "エラーが発生しました。",
                 ephemeral: true
             });
         }
     }
-});
+);
 
 client.login(process.env.TOKEN);
