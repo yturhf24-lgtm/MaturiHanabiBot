@@ -156,7 +156,7 @@ module.exports = {
     {
         name: "😀 絵文字数",
         value: `${guild.emojis.cache.size}`,
-        inline: true
+        inline: false
     },
     {
         name: "🎭 ロール数",
