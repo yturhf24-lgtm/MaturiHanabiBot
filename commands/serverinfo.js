@@ -1,4 +1,3 @@
-```js
 const {
     SlashCommandBuilder,
     EmbedBuilder,
@@ -185,4 +184,3 @@ module.exports = {
         });
     }
 };
-```
