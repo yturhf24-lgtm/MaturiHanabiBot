@@ -9,7 +9,7 @@ const {
 
 const ALLOWED_USERS = [
     "1266013271518089258",
-    ""
+    "1323527061410676787"
 ];
 
 module.exports = {
