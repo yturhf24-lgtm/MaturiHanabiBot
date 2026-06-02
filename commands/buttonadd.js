@@ -4,21 +4,31 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ActionRowBuilder,
-    EmbedBuilder,
-    ButtonBuilder,
-    ButtonStyle
+    ActionRowBuilder
 } = require("discord.js");
+
+const ALLOWED_USERS = [
+    "1266013271518089258",
+    ""
+];
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("buttonadd")
-        .setDescription("ボタンを作成")
-        .setDefaultMemberPermissions(
-            PermissionFlagsBits.Administrator
-        ),
+        .setDescription("ボタン、説明を作成")
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
     async execute(interaction) {
+
+        const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+        const isAllowedUser = ALLOWED_USERS.includes(interaction.user.id);
+
+        if (!isAdmin && !isAllowedUser) {
+            return interaction.reply({
+                content: "このコマンドは使用できません",
+                ephemeral: true
+            });
+        }
 
         const modal = new ModalBuilder()
             .setCustomId("button_create")
