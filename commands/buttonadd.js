@@ -22,7 +22,7 @@ module.exports = {
 
         const modal = new ModalBuilder()
             .setCustomId("button_create")
-            .setTitle("ボタン作成");
+            .setTitle("ボタン、説明作成");
 
         const buttonName = new TextInputBuilder()
             .setCustomId("button_name")
