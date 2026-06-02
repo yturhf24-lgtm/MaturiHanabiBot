@@ -14,7 +14,8 @@ const {
     EmbedBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ActionRowBuilder
+    ActionRowBuilder,
+    MessageFlags
 } = require("discord.js");
 
 const app = express();
@@ -46,7 +47,6 @@ const commandFiles = fs
 
 for (const file of commandFiles) {
     const command = require(path.join(commandsPath, file));
-
     client.commands.set(command.data.name, command);
     commands.push(command.data.toJSON());
 }
@@ -96,7 +96,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 await interaction.reply({
                     content: "ボタン作成完了",
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
 
                 await interaction.channel.send({
@@ -117,7 +117,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 await interaction.reply({
                     content: msg,
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
 
                 return;
@@ -129,7 +129,7 @@ client.on(Events.InteractionCreate, async interaction => {
         if (interaction.isRepliable()) {
             await interaction.reply({
                 content: "エラーが発生しました。",
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             }).catch(() => {});
         }
     }
