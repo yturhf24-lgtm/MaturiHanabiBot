@@ -10,7 +10,11 @@ const {
     GatewayIntentBits,
     Events,
     REST,
-    Routes
+    Routes,
+    EmbedBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ActionRowBuilder
 } = require("discord.js");
 
 const app = express();
@@ -41,83 +45,94 @@ const commandFiles = fs
     .filter(file => file.endsWith(".js"));
 
 for (const file of commandFiles) {
+    const command = require(path.join(commandsPath, file));
 
-    const command = require(
-        path.join(commandsPath, file)
-    );
-
-    client.commands.set(
-        command.data.name,
-        command
-    );
-
-    commands.push(
-        command.data.toJSON()
-    );
+    client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
 }
 
 client.once(Events.ClientReady, async () => {
-
     console.log(`${client.user.tag} 起動完了`);
 
     try {
-
-        const rest = new REST({
-            version: "10"
-        }).setToken(process.env.TOKEN);
+        const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
         await rest.put(
-            Routes.applicationCommands(
-                process.env.CLIENT_ID
-            ),
-            {
-                body: commands
-            }
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: commands }
         );
 
-        console.log(
-            `${commands.length}個のコマンド登録完了`
-        );
-
+        console.log(`${commands.length}個のコマンド登録完了`);
     } catch (err) {
-
         console.error(err);
-
     }
 });
 
-client.on(
-    Events.InteractionCreate,
-    async interaction => {
+client.on(Events.InteractionCreate, async interaction => {
+    try {
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            if (!command) return;
+            return await command.execute(interaction);
+        }
 
-        if (
-            !interaction.isChatInputCommand()
-        ) return;
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId === "button_create") {
+                const buttonName = interaction.fields.getTextInputValue("button_name");
+                const description = interaction.fields.getTextInputValue("button_desc");
+                const message = interaction.fields.getTextInputValue("button_message");
 
-        const command =
-            client.commands.get(
-                interaction.commandName
-            );
+                const embed = new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle(buttonName)
+                    .setDescription(description);
 
-        if (!command) return;
+                const button = new ButtonBuilder()
+                    .setCustomId(`btn_${Buffer.from(message).toString("base64")}`)
+                    .setLabel(buttonName)
+                    .setStyle(ButtonStyle.Primary);
 
-        try {
+                const row = new ActionRowBuilder().addComponents(button);
 
-            await command.execute(
-                interaction
-            );
+                await interaction.reply({
+                    content: "ボタン作成完了",
+                    ephemeral: true
+                });
 
-        } catch (error) {
+                await interaction.channel.send({
+                    embeds: [embed],
+                    components: [row]
+                });
 
-            console.error(error);
+                return;
+            }
+        }
 
+        if (interaction.isButton()) {
+            if (interaction.customId.startsWith("btn_")) {
+                const msg = Buffer.from(
+                    interaction.customId.replace("btn_", ""),
+                    "base64"
+                ).toString();
+
+                await interaction.reply({
+                    content: msg,
+                    ephemeral: true
+                });
+
+                return;
+            }
+        }
+    } catch (error) {
+        console.error(error);
+
+        if (interaction.isRepliable()) {
             await interaction.reply({
-                content:
-                    "エラーが発生しました。",
+                content: "エラーが発生しました。",
                 ephemeral: true
-            });
+            }).catch(() => {});
         }
     }
-);
+});
 
 client.login(process.env.TOKEN);
