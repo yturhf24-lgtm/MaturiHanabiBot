@@ -1,3 +1,11 @@
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences
+    ]
+});
+
 client.commands = new Collection();
 
 const commands = [];
@@ -17,26 +25,41 @@ for (const file of commandFiles) {
 
     try {
 
-        console.log(`Loading ${file}`);
+        console.log(
+            `Loading ${file}`
+        );
 
         const command = require(
-            path.join(commandsPath, file)
+            path.join(
+                commandsPath,
+                file
+            )
         );
 
-        console.log(
-            `Name: ${command?.data?.name}`
-        );
+        if (!command.data) {
+            throw new Error(
+                "command.data がありません"
+            );
+        }
 
-        commands.push(
-            command.data.toJSON()
-        );
+        if (!command.execute) {
+            throw new Error(
+                "command.execute がありません"
+            );
+        }
 
         client.commands.set(
             command.data.name,
             command
         );
 
-        console.log(`Loaded ${file}`);
+        commands.push(
+            command.data.toJSON()
+        );
+
+        console.log(
+            `Loaded ${file}`
+        );
 
     } catch (err) {
 
