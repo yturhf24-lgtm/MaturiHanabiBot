@@ -1,12 +1,13 @@
-const { setGuild } = require("../utils/toggleStore");
+const { SlashCommandBuilder } = require("discord.js");
 
 module.exports = {
-    name: "off",
-    async execute(interaction) {
-        setGuild(interaction.guild.id, false);
+    data: new SlashCommandBuilder()
+        .setName("off")
+        .setDescription("OFFにする"),
 
+    async execute(interaction) {
         await interaction.reply({
-            content: "OFFにした",
+            content: "OFF",
             ephemeral: true
         });
     }
