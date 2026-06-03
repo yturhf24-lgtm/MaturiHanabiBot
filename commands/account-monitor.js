@@ -20,6 +20,7 @@ module.exports = {
         .addStringOption(option =>
             option
                 .setName("mode")
+                .setDescription("ONまたはOFF")
                 .setRequired(true)
                 .addChoices(
                     { name: "ON", value: "on" },
@@ -29,7 +30,8 @@ module.exports = {
         .addIntegerOption(option =>
             option
                 .setName("days")
-                .setDescription("日数")
+                .setDescription("監視する日数")
+                .setRequired(false)
         ),
 
     async execute(interaction) {
@@ -75,6 +77,7 @@ module.exports = {
             embeds: [
                 new EmbedBuilder()
                     .setColor("Green")
+                    .setTitle("設定完了")
                     .setDescription(
                         `新規アカウント監視: ${mode.toUpperCase()}\n日数: ${days}`
                     )
