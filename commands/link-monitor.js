@@ -20,6 +20,7 @@ module.exports = {
         .addStringOption(option =>
             option
                 .setName("mode")
+                .setDescription("ONまたはOFF")
                 .setRequired(true)
                 .addChoices(
                     { name: "ON", value: "on" },
@@ -60,6 +61,7 @@ module.exports = {
             embeds: [
                 new EmbedBuilder()
                     .setColor("Green")
+                    .setTitle("設定完了")
                     .setDescription(
                         `リンク監視: ${mode.toUpperCase()}`
                     )
