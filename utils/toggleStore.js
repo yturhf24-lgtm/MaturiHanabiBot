@@ -1,15 +1,15 @@
 const fs = require("fs");
 const path = require("path");
 
-const filePath = path.join(__dirname, "../config/toggle.json");
+const file = path.join(__dirname, "../config/toggle.json");
 
 function load() {
-    if (!fs.existsSync(filePath)) return {};
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!fs.existsSync(file)) return {};
+    return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
 function save(data) {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
 function setGuild(guildId, value) {
@@ -20,10 +20,7 @@ function setGuild(guildId, value) {
 
 function getGuild(guildId) {
     const data = load();
-    return data[guildId] ?? false; // デフォルトOFF
+    return data[guildId] ?? false;
 }
 
-module.exports = {
-    setGuild,
-    getGuild
-};
+module.exports = { setGuild, getGuild };
