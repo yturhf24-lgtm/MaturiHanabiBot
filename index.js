@@ -18,15 +18,15 @@ const {
     MessageFlags
 } = require("discord.js");
 
+const { set: saveButton, get: getButton } = require("./utils/buttonStore");
+
 const app = express();
 
 app.get("/", (req, res) => {
     res.send("Bot Online");
 });
 
-app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
-    console.log(`Web Server Running : ${process.env.PORT || 10000}`);
-});
+app.listen(process.env.PORT || 10000, "0.0.0.0");
 
 const client = new Client({
     intents: [
@@ -41,236 +41,120 @@ client.commands = new Collection();
 const commands = [];
 const commandsPath = path.join(__dirname, "commands");
 
-if (!fs.existsSync(commandsPath)) {
-    console.error("commandsフォルダが見つかりません");
-    process.exit(1);
-}
-
-const commandFiles = fs
-    .readdirSync(commandsPath)
-    .filter(file => file.endsWith(".js"));
+const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"));
 
 for (const file of commandFiles) {
 
-    try {
+    const command = require(path.join(commandsPath, file));
 
-        console.log(`Loading ${file}`);
-
-        const command = require(
-            path.join(commandsPath, file)
-        );
-
-        if (!command.data) {
-            throw new Error(
-                "command.data がありません"
-            );
-        }
-
-        if (!command.execute) {
-            throw new Error(
-                "command.execute がありません"
-            );
-        }
-
-        client.commands.set(
-            command.data.name,
-            command
-        );
-
-        commands.push(
-            command.data.toJSON()
-        );
-
-        console.log(`Loaded ${file}`);
-
-    } catch (err) {
-
-        console.error(
-            `ERROR FILE: ${file}`
-        );
-
-        console.error(err);
-
+    if (!command.data || !command.execute) {
+        console.error(`ERROR FILE: ${file}`);
         process.exit(1);
     }
+
+    client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
 }
 
 client.once(Events.ClientReady, async () => {
 
-    console.log(
-        `${client.user.tag} 起動完了`
+    console.log(`${client.user.tag} 起動完了`);
+
+    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+    await rest.put(
+        Routes.applicationCommands(process.env.CLIENT_ID),
+        { body: commands }
     );
+
+    console.log(`${commands.length}個のコマンド登録完了`);
+});
+
+client.on(Events.InteractionCreate, async interaction => {
 
     try {
 
-        const rest = new REST({
-            version: "10"
-        }).setToken(
-            process.env.TOKEN
-        );
+        // slash command
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            if (!command) return;
 
-        await rest.put(
-            Routes.applicationCommands(
-                process.env.CLIENT_ID
-            ),
-            {
-                body: commands
-            }
-        );
+            await command.execute(interaction);
+            return;
+        }
 
-        console.log(
-            `${commands.length}個のコマンド登録完了`
-        );
+        // modal
+        if (interaction.isModalSubmit()) {
 
-    } catch (err) {
+            if (interaction.customId === "button_create") {
 
-        console.error(err);
+                const buttonName = interaction.fields.getTextInputValue("button_name");
+                const description = interaction.fields.getTextInputValue("button_desc");
+                const message = interaction.fields.getTextInputValue("button_message");
 
-    }
-});
+                const embed = new EmbedBuilder()
+                    .setColor("#5865F2")
+                    .setTitle(buttonName)
+                    .setDescription(description);
 
-client.on(
-    Events.InteractionCreate,
-    async interaction => {
+                // ★ここが修正ポイント（base64廃止）
+                const id = Date.now().toString(36);
 
-        try {
+                saveButton(id, message);
 
-            if (
-                interaction.isChatInputCommand()
-            ) {
+                const button = new ButtonBuilder()
+                    .setCustomId(`btn_${id}`)
+                    .setLabel(buttonName)
+                    .setStyle(ButtonStyle.Primary);
 
-                const command =
-                    client.commands.get(
-                        interaction.commandName
-                    );
+                const row = new ActionRowBuilder().addComponents(button);
 
-                if (!command) return;
+                await interaction.reply({
+                    content: "ボタン作成完了",
+                    flags: MessageFlags.Ephemeral
+                });
 
-                await command.execute(
-                    interaction
-                );
+                await interaction.channel.send({
+                    embeds: [embed],
+                    components: [row]
+                });
 
                 return;
             }
+        }
 
-            if (
-                interaction.isModalSubmit()
-            ) {
+        // button
+        if (interaction.isButton()) {
 
-                if (
-                    interaction.customId ===
-                    "button_create"
-                ) {
+            if (interaction.customId.startsWith("btn_")) {
 
-                    const buttonName =
-                        interaction.fields.getTextInputValue(
-                            "button_name"
-                        );
+                const id = interaction.customId.replace("btn_", "");
+                const msg = getButton(id);
 
-                    const description =
-                        interaction.fields.getTextInputValue(
-                            "button_desc"
-                        );
-
-                    const message =
-                        interaction.fields.getTextInputValue(
-                            "button_message"
-                        );
-
-                    const embed =
-                        new EmbedBuilder()
-                            .setColor(
-                                "#5865F2"
-                            )
-                            .setTitle(
-                                buttonName
-                            )
-                            .setDescription(
-                                description
-                            );
-
-                    const button =
-                        new ButtonBuilder()
-                            .setCustomId(
-                                `btn_${Buffer
-                                    .from(message)
-                                    .toString("base64")}`
-                            )
-                            .setLabel(
-                                buttonName
-                            )
-                            .setStyle(
-                                ButtonStyle.Primary
-                            );
-
-                    const row =
-                        new ActionRowBuilder()
-                            .addComponents(
-                                button
-                            );
-
-                    await interaction.reply({
-                        content:
-                            "ボタン作成完了",
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-
-                    await interaction.channel.send({
-                        embeds: [embed],
-                        components: [row]
-                    });
-
-                    return;
-                }
-            }
-
-            if (
-                interaction.isButton()
-            ) {
-
-                if (
-                    interaction.customId.startsWith(
-                        "btn_"
-                    )
-                ) {
-
-                    const msg =
-                        Buffer.from(
-                            interaction.customId.replace(
-                                "btn_",
-                                ""
-                            ),
-                            "base64"
-                        ).toString();
-
-                    await interaction.reply({
-                        content: msg,
-                        flags:
-                            MessageFlags.Ephemeral
+                if (!msg) {
+                    return interaction.reply({
+                        content: "データが見つからない",
+                        flags: MessageFlags.Ephemeral
                     });
                 }
-            }
-
-        } catch (error) {
-
-            console.error(error);
-
-            if (
-                interaction.isRepliable()
-            ) {
 
                 await interaction.reply({
-                    content:
-                        "エラーが発生しました。",
-                    flags:
-                        MessageFlags.Ephemeral
-                }).catch(() => {});
+                    content: msg,
+                    flags: MessageFlags.Ephemeral
+                });
             }
         }
-    }
-);
 
-client.login(
-    process.env.TOKEN
-);
+    } catch (error) {
+        console.error(error);
+
+        if (interaction.isRepliable()) {
+            await interaction.reply({
+                content: "エラーが発生しました",
+                flags: MessageFlags.Ephemeral
+            }).catch(() => {});
+        }
+    }
+});
+
+client.login(process.env.TOKEN);
