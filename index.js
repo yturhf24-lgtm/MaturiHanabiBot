@@ -177,17 +177,14 @@ client.on(
                             "button_message"
                         );
 
-                    const embed =
-                        new EmbedBuilder()
-                            .setColor(
-                                "#5865F2"
-                            )
-                            .setTitle(
-                                buttonName
-                            )
-                            .setDescription(
-                                description
-                            );
+const embed =
+    new EmbedBuilder()
+        .setColor(
+            "#5865F2"
+        )
+        .setDescription(
+            description
+        );
 
                     const button =
                         new ButtonBuilder()
