@@ -11,10 +11,6 @@ const {
     Events,
     REST,
     Routes,
-    EmbedBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ActionRowBuilder,
     MessageFlags
 } = require("discord.js");
 
@@ -153,102 +149,6 @@ client.on(
                 return;
             }
 
-            if (
-                interaction.isModalSubmit()
-            ) {
-
-                if (
-                    interaction.customId ===
-                    "button_create"
-                ) {
-
-                    const buttonName =
-                        interaction.fields.getTextInputValue(
-                            "button_name"
-                        );
-
-                    const description =
-                        interaction.fields.getTextInputValue(
-                            "button_desc"
-                        );
-
-                    const message =
-                        interaction.fields.getTextInputValue(
-                            "button_message"
-                        );
-
-const embed =
-    new EmbedBuilder()
-        .setColor(
-            "#5865F2"
-        )
-        .setDescription(
-            description
-        );
-
-                    const button =
-                        new ButtonBuilder()
-                            .setCustomId(
-                                `btn_${Buffer
-                                    .from(message)
-                                    .toString("base64")}`
-                            )
-                            .setLabel(
-                                buttonName
-                            )
-                            .setStyle(
-                                ButtonStyle.Primary
-                            );
-
-                    const row =
-                        new ActionRowBuilder()
-                            .addComponents(
-                                button
-                            );
-
-                    await interaction.reply({
-                        content:
-                            "ボタン作成完了",
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-
-                    await interaction.channel.send({
-                        embeds: [embed],
-                        components: [row]
-                    });
-
-                    return;
-                }
-            }
-
-            if (
-                interaction.isButton()
-            ) {
-
-                if (
-                    interaction.customId.startsWith(
-                        "btn_"
-                    )
-                ) {
-
-                    const msg =
-                        Buffer.from(
-                            interaction.customId.replace(
-                                "btn_",
-                                ""
-                            ),
-                            "base64"
-                        ).toString();
-
-                    await interaction.reply({
-                        content: msg,
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-                }
-            }
-
         } catch (error) {
 
             console.error(error);
@@ -257,12 +157,25 @@ const embed =
                 interaction.isRepliable()
             ) {
 
-                await interaction.reply({
+                const payload = {
                     content:
                         "エラーが発生しました。",
                     flags:
                         MessageFlags.Ephemeral
-                }).catch(() => {});
+                };
+
+                if (
+                    interaction.replied ||
+                    interaction.deferred
+                ) {
+                    await interaction
+                        .followUp(payload)
+                        .catch(() => {});
+                } else {
+                    await interaction
+                        .reply(payload)
+                        .catch(() => {});
+                }
             }
         }
     }
