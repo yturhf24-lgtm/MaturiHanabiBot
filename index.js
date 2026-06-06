@@ -121,7 +121,6 @@ client.once(Events.ClientReady, async () => {
     } catch (err) {
 
         console.error(err);
-
     }
 });
 
@@ -131,6 +130,7 @@ client.on(
 
         try {
 
+            // スラッシュコマンド
             if (
                 interaction.isChatInputCommand()
             ) {
@@ -147,6 +147,35 @@ client.on(
                 );
 
                 return;
+            }
+
+            // announce モーダル送信
+            if (
+                interaction.isModalSubmit()
+            ) {
+
+                if (
+                    interaction.customId ===
+                    "announce_modal"
+                ) {
+
+                    const command =
+                        client.commands.get(
+                            "announce"
+                        );
+
+                    if (
+                        command &&
+                        command.modalSubmit
+                    ) {
+
+                        await command.modalSubmit(
+                            interaction
+                        );
+                    }
+
+                    return;
+                }
             }
 
         } catch (error) {
@@ -168,10 +197,13 @@ client.on(
                     interaction.replied ||
                     interaction.deferred
                 ) {
+
                     await interaction
                         .followUp(payload)
                         .catch(() => {});
+
                 } else {
+
                     await interaction
                         .reply(payload)
                         .catch(() => {});
