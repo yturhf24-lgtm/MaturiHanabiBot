@@ -1,6 +1,10 @@
 const {
     SlashCommandBuilder,
     PermissionFlagsBits,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder,
     EmbedBuilder
 } = require("discord.js");
 
@@ -12,19 +16,7 @@ const ALLOWED_USERS = [
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("announce")
-        .setDescription("アナウンスを送信")
-        .addStringOption(option =>
-            option
-                .setName("タイトル")
-                .setDescription("タイトル")
-                .setRequired(true)
-        )
-        .addStringOption(option =>
-            option
-                .setName("内容")
-                .setDescription("内容")
-                .setRequired(true)
-        )
+        .setDescription("埋め込みアナウンスを送信")
         .setDefaultMemberPermissions(
             PermissionFlagsBits.Administrator
         ),
@@ -49,14 +41,68 @@ module.exports = {
             });
         }
 
+        const modal = new ModalBuilder()
+            .setCustomId("announce_modal")
+            .setTitle("アナウンス作成");
+
         const title =
-            interaction.options.getString(
-                "タイトル"
+            new TextInputBuilder()
+                .setCustomId("announce_title")
+                .setLabel("タイトル")
+                .setStyle(
+                    TextInputStyle.Short
+                )
+                .setRequired(true)
+                .setMaxLength(256);
+
+        const content =
+            new TextInputBuilder()
+                .setCustomId("announce_content")
+                .setLabel("本文")
+                .setStyle(
+                    TextInputStyle.Paragraph
+                )
+                .setRequired(true)
+                .setMaxLength(4000);
+
+        const image =
+            new TextInputBuilder()
+                .setCustomId("announce_image")
+                .setLabel("画像URL（任意）")
+                .setStyle(
+                    TextInputStyle.Short
+                )
+                .setRequired(false);
+
+        modal.addComponents(
+            new ActionRowBuilder()
+                .addComponents(title),
+            new ActionRowBuilder()
+                .addComponents(content),
+            new ActionRowBuilder()
+                .addComponents(image)
+        );
+
+        await interaction.showModal(
+            modal
+        );
+    },
+
+    async modalSubmit(interaction) {
+
+        const title =
+            interaction.fields.getTextInputValue(
+                "announce_title"
             );
 
         const content =
-            interaction.options.getString(
-                "内容"
+            interaction.fields.getTextInputValue(
+                "announce_content"
+            );
+
+        const image =
+            interaction.fields.getTextInputValue(
+                "announce_image"
             );
 
         const embed =
@@ -66,13 +112,20 @@ module.exports = {
                 .setDescription(content)
                 .setTimestamp();
 
+        if (
+            image &&
+            image.startsWith("http")
+        ) {
+            embed.setImage(image);
+        }
+
         await interaction.channel.send({
             embeds: [embed]
         });
 
         await interaction.reply({
             content:
-                "アナウンス送信完了",
+                "アナウンスを送信しました。",
             ephemeral: true
         });
     }
