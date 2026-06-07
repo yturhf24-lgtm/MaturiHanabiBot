@@ -23,11 +23,11 @@ const app = express();
 app.get("/", (req, res) => res.send("Bot Online"));
 
 app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
-    console.log("WEB SERVER OK");
+    console.log("WEB OK");
 });
 
 /* =========================
-   DATA SAFE SYSTEM
+   DATA SAFE
 ========================= */
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
@@ -44,15 +44,12 @@ function loadData() {
 
 function saveData(data) {
     try {
-        if (!data || Object.keys(data).length === 0) {
-            console.log("❌ Empty save blocked");
-            return;
-        }
+        if (!data || Object.keys(data).length === 0) return;
 
         fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
         fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 
-        console.log("💾 SAVE OK");
+        console.log("💾 SAVED");
     } catch (e) {
         console.log("SAVE ERROR:", e);
     }
@@ -81,42 +78,51 @@ client.once(Events.ClientReady, () => {
 });
 
 /* =========================
-   INTERACTION (完全デバッグ付き)
+   INTERACTION FIX（ここ重要）
 ========================= */
 client.on(Events.InteractionCreate, async interaction => {
     try {
 
-        if (!interaction.guild?.id) return;
+        // 🔥 まず全部ログ（原因特定用）
+        console.log("INTERACTION TYPE:", {
+            command: interaction.isChatInputCommand?.(),
+            modal: interaction.isModalSubmit?.(),
+            customId: interaction.customId ?? null
+        });
+
+        if (!interaction.guild) return;
 
         const gid = interaction.guild.id;
-
         cache[gid] = cache[gid] || {};
 
-        console.log("INTERACTION:", interaction.customId);
-
-        /* SLASH */
+        /* =====================
+           SLASH
+        ===================== */
         if (interaction.isChatInputCommand()) return;
 
-        /* MODAL ONLY */
+        /* =====================
+           MODAL ONLY
+        ===================== */
         if (!interaction.isModalSubmit()) return;
 
-        console.log("MODAL OK:", interaction.customId);
+        // 🔥 ここで落ちるなら modal来てない
+        if (!interaction.customId) {
+            console.log("❌ customId undefined (modal not received)");
+            return;
+        }
 
-        /* =========================
+        console.log("MODAL RECEIVED:", interaction.customId);
+
+        /* =====================
            JOIN LOG
-        ========================= */
+        ===================== */
         if (interaction.customId.startsWith("joinlog_modal_")) {
 
             const channelId = interaction.customId.replace("joinlog_modal_", "");
 
-            const title = interaction.fields.getTextInputValue("join_title");
-            const message = interaction.fields.getTextInputValue("join_message");
-
             cache[gid].joinChannel = channelId;
-            cache[gid].joinTitle = title;
-            cache[gid].joinMessage = message;
-
-            console.log("JOIN SAVED:", cache[gid]);
+            cache[gid].joinTitle = interaction.fields.getTextInputValue("join_title");
+            cache[gid].joinMessage = interaction.fields.getTextInputValue("join_message");
 
             saveData(cache);
 
@@ -126,21 +132,16 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
-        /* =========================
+        /* =====================
            LEAVE LOG
-        ========================= */
+        ===================== */
         if (interaction.customId.startsWith("leavelog_modal_")) {
 
             const channelId = interaction.customId.replace("leavelog_modal_", "");
 
-            const title = interaction.fields.getTextInputValue("leave_title");
-            const message = interaction.fields.getTextInputValue("leave_message");
-
             cache[gid].leaveChannel = channelId;
-            cache[gid].leaveTitle = title;
-            cache[gid].leaveMessage = message;
-
-            console.log("LEAVE SAVED:", cache[gid]);
+            cache[gid].leaveTitle = interaction.fields.getTextInputValue("leave_title");
+            cache[gid].leaveMessage = interaction.fields.getTextInputValue("leave_message");
 
             saveData(cache);
 
@@ -166,7 +167,7 @@ client.on(Events.GuildMemberAdd, async member => {
         const channel = member.guild.channels.cache.get(config.joinChannel);
         if (!channel) return;
 
-        const text = config.joinMessage ?? "{user}（{username}）が参加しました";
+        const text = config.joinMessage ?? "{user} {username} が参加しました";
 
         const embed = new EmbedBuilder()
             .setColor("#57F287")
@@ -197,7 +198,7 @@ client.on(Events.GuildMemberRemove, async member => {
         const channel = member.guild.channels.cache.get(config.leaveChannel);
         if (!channel) return;
 
-        const text = config.leaveMessage ?? "{user}（{username}）が退出しました";
+        const text = config.leaveMessage ?? "{user} {username} が退出しました";
 
         const embed = new EmbedBuilder()
             .setColor("#ED4245")
