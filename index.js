@@ -27,26 +27,38 @@ app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
 });
 
 /* =========================
-   DATA
+   DATA SYSTEM（安全版）
 ========================= */
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
 function loadData() {
     try {
         if (!fs.existsSync(DATA_FILE)) return {};
-        return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+        const raw = fs.readFileSync(DATA_FILE, "utf8");
+        return raw ? JSON.parse(raw) : {};
     } catch {
         return {};
     }
 }
 
+/* 🔥 空データ保存防止 */
 function saveData(data) {
+    if (!data || Object.keys(data).length === 0) {
+        console.log("⚠ 空データ保存を防止");
+        return;
+    }
+
     fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
 /* キャッシュ */
 let cache = loadData();
+
+/* 🔥 定期同期（消失防止） */
+setInterval(() => {
+    cache = loadData();
+}, 30000);
 
 /* =========================
    CLIENT
@@ -106,9 +118,9 @@ client.on(Events.InteractionCreate, async interaction => {
     try {
         if (!interaction.guild?.id) return;
 
-        if (!cache[interaction.guild.id]) {
-            cache[interaction.guild.id] = {};
-        }
+        const gid = interaction.guild.id;
+
+        cache[gid] = cache[gid] || {};
 
         /* ===== SLASH ===== */
         if (interaction.isChatInputCommand()) {
@@ -119,8 +131,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
         /* ===== MODAL ===== */
         if (!interaction.isModalSubmit()) return;
-
-        const gid = interaction.guild.id;
 
         /* ===== JOIN LOG ===== */
         if (interaction.customId.startsWith("joinlog_modal_")) {
