@@ -15,26 +15,35 @@ const {
     EmbedBuilder
 } = require("discord.js");
 
+/* =========================
+   EXPRESS SERVER
+========================= */
 const app = express();
 
-app.get("/", (req, res) => {
-    res.send("Bot Online");
-});
+app.get("/", (req, res) => res.send("Bot Online"));
 
 app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
-    console.log(
-        `Web Server Running : ${
-            process.env.PORT || 10000
-        }`
-    );
+    console.log(`Web Server Running : ${process.env.PORT || 10000}`);
 });
 
-const DATA_FILE = path.join(
-    __dirname,
-    "data",
-    "memberlogs.json"
-);
+/* =========================
+   DATA
+========================= */
+const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
+function loadData() {
+    if (!fs.existsSync(DATA_FILE)) return {};
+    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+}
+
+function saveData(data) {
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+/* =========================
+   CLIENT
+========================= */
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -45,476 +54,191 @@ const client = new Client({
 
 client.commands = new Collection();
 
+/* =========================
+   COMMAND LOADER
+========================= */
 const commands = [];
-const commandsPath = path.join(
-    __dirname,
-    "commands"
-);
+const commandsPath = path.join(__dirname, "commands");
 
 if (!fs.existsSync(commandsPath)) {
-
-    console.error(
-        "commandsフォルダが見つかりません"
-    );
-
+    console.error("commandsフォルダが見つかりません");
     process.exit(1);
 }
 
-const commandFiles = fs
-    .readdirSync(commandsPath)
-    .filter(file =>
-        file.endsWith(".js")
-    );
+for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
+    const command = require(path.join(commandsPath, file));
 
-for (const file of commandFiles) {
-
-    try {
-
-        console.log(
-            `Loading ${file}`
-        );
-
-        const command = require(
-            path.join(
-                commandsPath,
-                file
-            )
-        );
-
-        if (!command.data) {
-
-            throw new Error(
-                "command.data がありません"
-            );
-        }
-
-        if (!command.execute) {
-
-            throw new Error(
-                "command.execute がありません"
-            );
-        }
-
-        client.commands.set(
-            command.data.name,
-            command
-        );
-
-        commands.push(
-            command.data.toJSON()
-        );
-
-        console.log(
-            `Loaded ${file}`
-        );
-
-    } catch (err) {
-
-        console.error(
-            `ERROR FILE: ${file}`
-        );
-
-        console.error(err);
-
-        process.exit(1);
+    if (!command.data || !command.execute) {
+        throw new Error(`Invalid command: ${file}`);
     }
+
+    client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
 }
 
-client.once(
-    Events.ClientReady,
-    async () => {
+/* =========================
+   READY
+========================= */
+client.once(Events.ClientReady, async () => {
+    console.log(`${client.user.tag} 起動完了`);
 
-        console.log(
-            `${client.user.tag} 起動完了`
-        );
+    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 
-        try {
+    await rest.put(
+        Routes.applicationCommands(process.env.CLIENT_ID),
+        { body: commands }
+    );
 
-            const rest =
-                new REST({
-                    version: "10"
-                }).setToken(
-                    process.env.TOKEN
-                );
+    console.log(`${commands.length}個のコマンド登録完了`);
+});
 
-            await rest.put(
-                Routes.applicationCommands(
-                    process.env.CLIENT_ID
-                ),
-                {
-                    body: commands
-                }
-            );
+/* =========================
+   INTERACTION
+========================= */
+client.on(Events.InteractionCreate, async interaction => {
+    try {
+        const data = loadData();
 
-            console.log(
-                `${commands.length}個のコマンド登録完了`
-            );
+        if (!interaction.guild?.id) return;
 
-        } catch (err) {
+        if (!data[interaction.guild.id]) {
+            data[interaction.guild.id] = {};
+        }
 
-            console.error(err);
+        /* ===== SLASH COMMAND ===== */
+        if (interaction.isChatInputCommand()) {
+            const cmd = client.commands.get(interaction.commandName);
+            if (cmd) await cmd.execute(interaction);
+            return;
+        }
+
+        /* ===== MODAL ===== */
+        if (!interaction.isModalSubmit()) return;
+
+        const gid = interaction.guild.id;
+
+        /* ===== ANNOUNCE ===== */
+        if (interaction.customId === "announce_modal") {
+            const cmd = client.commands.get("announce");
+            if (cmd?.modalSubmit) await cmd.modalSubmit(interaction);
+            return;
+        }
+
+        /* ===== JOIN LOG ===== */
+        if (interaction.customId.startsWith("joinlog_modal_")) {
+            const channelId = interaction.customId.replace("joinlog_modal_", "");
+
+            data[gid].joinChannel = channelId;
+            data[gid].joinTitle = interaction.fields.getTextInputValue("join_title");
+            data[gid].joinMessage = interaction.fields.getTextInputValue("join_message");
+
+            saveData(data);
+
+            return interaction.reply({
+                content: "✅ 参加ログ設定を保存しました",
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        /* ===== LEAVE LOG ===== */
+        if (interaction.customId.startsWith("leavelog_modal_")) {
+            const channelId = interaction.customId.replace("leavelog_modal_", "");
+
+            data[gid].leaveChannel = channelId;
+            data[gid].leaveTitle = interaction.fields.getTextInputValue("leave_title");
+            data[gid].leaveMessage = interaction.fields.getTextInputValue("leave_message");
+
+            saveData(data);
+
+            return interaction.reply({
+                content: "✅ 退出ログ設定を保存しました",
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+    } catch (err) {
+        console.error(err);
+
+        if (interaction.isRepliable()) {
+            await interaction.reply({
+                content: "エラーが発生しました",
+                flags: MessageFlags.Ephemeral
+            }).catch(() => {});
         }
     }
-);
+});
 
-client.on(
-    Events.InteractionCreate,
-    async interaction => {
+/* =========================
+   JOIN EVENT
+========================= */
+client.on(Events.GuildMemberAdd, async member => {
+    try {
+        const cmd = client.commands.get("joinmessage");
+        if (cmd?.memberAdd) await cmd.memberAdd(member);
 
-        try {
+        const data = loadData();
+        const config = data[member.guild.id];
 
-            if (
-                interaction.isChatInputCommand()
-            ) {
+        if (!config?.joinChannel) return;
 
-                const command =
-                    client.commands.get(
-                        interaction.commandName
-                    );
+        const channel = member.guild.channels.cache.get(config.joinChannel);
+        if (!channel) return;
 
-                if (!command) return;
+        const embed = new EmbedBuilder()
+            .setColor("#57F287")
+            .setTitle(config.joinTitle || "メンバー参加")
+            .setDescription(
+                (config.joinMessage || "{user} が参加しました")
+                    .replaceAll("{user}", `<@${member.id}>`)
+                    .replaceAll("{username}", member.user.username)
+                    .replaceAll("{server}", member.guild.name)
+            )
+            .setThumbnail(member.user.displayAvatarURL())
+            .setTimestamp();
 
-                await command.execute(
-                    interaction
-                );
+        await channel.send({ embeds: [embed] });
 
-                return;
-            }
-
-            if (
-                interaction.isModalSubmit()
-            ) {
-
-                let data = {};
-
-                if (
-                    fs.existsSync(
-                        DATA_FILE
-                    )
-                ) {
-
-                    data = JSON.parse(
-                        fs.readFileSync(
-                            DATA_FILE,
-                            "utf8"
-                        )
-                    );
-                }
-
-                if (
-                    !data[
-                        interaction.guild.id
-                    ]
-                ) {
-
-                    data[
-                        interaction.guild.id
-                    ] = {};
-                }
-
-                if (
-                    interaction.customId ===
-                    "announce_modal"
-                ) {
-
-                    const command =
-                        client.commands.get(
-                            "announce"
-                        );
-
-                    if (
-                        command &&
-                        command.modalSubmit
-                    ) {
-
-                        await command.modalSubmit(
-                            interaction
-                        );
-                    }
-
-                    return;
-                }
-
-                if (
-                    interaction.customId ===
-                    "joinmessage_modal"
-                ) {
-
-                    const command =
-                        client.commands.get(
-                            "joinmessage"
-                        );
-
-                    if (
-                        command &&
-                        command.modalSubmit
-                    ) {
-
-                        await command.modalSubmit(
-                            interaction
-                        );
-                    }
-
-                    return;
-                }
-
-                if (
-                    interaction.customId ===
-                    "leavemessage_modal"
-                ) {
-
-                    const command =
-                        client.commands.get(
-                            "leavemessage"
-                        );
-
-                    if (
-                        command &&
-                        command.modalSubmit
-                    ) {
-
-                        await command.modalSubmit(
-                            interaction
-                        );
-                    }
-
-                    return;
-                }
-
-                if (
-                    interaction.customId ===
-                    "joinlog_modal"
-                ) {
-
-                    const channel =
-                        interaction.fields.getTextInputValue(
-                            "join_channel"
-                        );
-
-                    const title =
-                        interaction.fields.getTextInputValue(
-                            "join_title"
-                        );
-
-                    const message =
-                        interaction.fields.getTextInputValue(
-                            "join_message"
-                        );
-
-                    data[
-                        interaction.guild.id
-                    ].joinChannel =
-                        channel.toLowerCase() ===
-                        "off"
-                            ? null
-                            : channel;
-
-                    data[
-                        interaction.guild.id
-                    ].joinTitle =
-                        title;
-
-                    data[
-                        interaction.guild.id
-                    ].joinMessage =
-                        message;
-
-                    fs.mkdirSync(
-                        path.dirname(
-                            DATA_FILE
-                        ),
-                        {
-                            recursive: true
-                        }
-                    );
-
-                    fs.writeFileSync(
-                        DATA_FILE,
-                        JSON.stringify(
-                            data,
-                            null,
-                            2
-                        )
-                    );
-
-                    return interaction.reply({
-                        content:
-                            "✅ 参加ログ設定を保存しました",
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-                }
-
-                if (
-                    interaction.customId ===
-                    "leavelog_modal"
-                ) {
-
-                    const channel =
-                        interaction.fields.getTextInputValue(
-                            "leave_channel"
-                        );
-
-                    const title =
-                        interaction.fields.getTextInputValue(
-                            "leave_title"
-                        );
-
-                    const message =
-                        interaction.fields.getTextInputValue(
-                            "leave_message"
-                        );
-
-                    data[
-                        interaction.guild.id
-                    ].leaveChannel =
-                        channel.toLowerCase() ===
-                        "off"
-                            ? null
-                            : channel;
-
-                    data[
-                        interaction.guild.id
-                    ].leaveTitle =
-                        title;
-
-                    data[
-                        interaction.guild.id
-                    ].leaveMessage =
-                        message;
-
-                    fs.mkdirSync(
-                        path.dirname(
-                            DATA_FILE
-                        ),
-                        {
-                            recursive: true
-                        }
-                    );
-
-                    fs.writeFileSync(
-                        DATA_FILE,
-                        JSON.stringify(
-                            data,
-                            null,
-                            2
-                        )
-                    );
-
-                    return interaction.reply({
-                        content:
-                            "✅ 退出ログ設定を保存しました",
-                        flags:
-                            MessageFlags.Ephemeral
-                    });
-                }
-            }
-
-        } catch (error) {
-
-            console.error(error);
-
-            if (
-                interaction.isRepliable()
-            ) {
-
-                const payload = {
-                    content:
-                        "エラーが発生しました。",
-                    flags:
-                        MessageFlags.Ephemeral
-                };
-
-                if (
-                    interaction.replied ||
-                    interaction.deferred
-                ) {
-
-                    await interaction
-                        .followUp(
-                            payload
-                        )
-                        .catch(
-                            () => {}
-                        );
-
-                } else {
-
-                    await interaction
-                        .reply(
-                            payload
-                        )
-                        .catch(
-                            () => {}
-                        );
-                }
-            }
-        }
+    } catch (err) {
+        console.error("GuildMemberAdd Error", err);
     }
-);
+});
 
-client.on(
-    Events.GuildMemberAdd,
-    async member => {
+/* =========================
+   LEAVE EVENT
+========================= */
+client.on(Events.GuildMemberRemove, async member => {
+    try {
+        const cmd = client.commands.get("leavemessage");
+        if (cmd?.memberRemove) await cmd.memberRemove(member);
 
-        try {
+        const data = loadData();
+        const config = data[member.guild.id];
 
-            const command =
-                client.commands.get(
-                    "joinmessage"
-                );
+        if (!config?.leaveChannel) return;
 
-            if (
-                command &&
-                command.memberAdd
-            ) {
+        const channel = member.guild.channels.cache.get(config.leaveChannel);
+        if (!channel) return;
 
-                await command.memberAdd(
-                    member
-                );
-            }
+        const embed = new EmbedBuilder()
+            .setColor("#ED4245")
+            .setTitle(config.leaveTitle || "メンバー退出")
+            .setDescription(
+                (config.leaveMessage || "{username} が退出しました")
+                    .replaceAll("{user}", `<@${member.id}>`)
+                    .replaceAll("{username}", member.user.username)
+                    .replaceAll("{server}", member.guild.name)
+            )
+            .setThumbnail(member.user.displayAvatarURL())
+            .setTimestamp();
 
-        } catch (err) {
+        await channel.send({ embeds: [embed] });
 
-            console.error(
-                "GuildMemberAdd Error",
-                err
-            );
-        }
+    } catch (err) {
+        console.error("GuildMemberRemove Error", err);
     }
-);
+});
 
-client.on(
-    Events.GuildMemberRemove,
-    async member => {
-
-        try {
-
-            const command =
-                client.commands.get(
-                    "leavemessage"
-                );
-
-            if (
-                command &&
-                command.memberRemove
-            ) {
-
-                await command.memberRemove(
-                    member
-                );
-            }
-
-        } catch (err) {
-
-            console.error(
-                "GuildMemberRemove Error",
-                err
-            );
-        }
-    }
-);
-
-client.login(
-    process.env.TOKEN
-);
+/* =========================
+   LOGIN
+========================= */
+client.login(process.env.TOKEN);
