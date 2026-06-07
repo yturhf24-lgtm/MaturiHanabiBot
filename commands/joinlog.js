@@ -78,7 +78,7 @@ module.exports = {
                     "join_message"
                 )
                 .setLabel(
-                    "参加メッセージ"
+                    "参加メッセー"
                 )
                 .setStyle(
                     TextInputStyle.Paragraph
