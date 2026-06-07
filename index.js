@@ -12,13 +12,7 @@ const {
     REST,
     Routes,
     MessageFlags,
-    EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle
+    EmbedBuilder
 } = require("discord.js");
 
 /* =========================
@@ -34,17 +28,22 @@ app.listen(process.env.PORT || 10000, () => console.log("WEB OK"));
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
 function loadData() {
-    if (!fs.existsSync(DATA_FILE)) return {};
     try {
+        if (!fs.existsSync(DATA_FILE)) return {};
         return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    } catch {
+    } catch (e) {
+        console.error("DATA LOAD ERROR:", e);
         return {};
     }
 }
 
 function saveData(data) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    try {
+        fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {
+        console.error("DATA SAVE ERROR:", e);
+    }
 }
 
 /* =========================
@@ -57,127 +56,119 @@ const client = new Client({
     ]
 });
 
-client.once(Events.ClientReady, () => {
-    console.log(`${client.user.tag} READY`);
+client.commands = new Collection();
+
+/* =========================
+   COMMAND LOADER
+========================= */
+const commands = [];
+const commandsPath = path.join(__dirname, "commands");
+
+if (!fs.existsSync(commandsPath)) {
+    console.error("commandsフォルダが見つかりません");
+    process.exit(1);
+}
+
+for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
+    const command = require(path.join(commandsPath, file));
+
+    if (!command.data || !command.execute) {
+        throw new Error(`Invalid command: ${file}`);
+    }
+
+    client.commands.set(command.data.name, command);
+    commands.push(command.data.toJSON());
+}
+
+/* =========================
+   READY
+========================= */
+client.once(Events.ClientReady, async () => {
+    console.log(`${client.user.tag} 起動完了`);
+
+    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+    await rest.put(
+        Routes.applicationCommands(process.env.CLIENT_ID),
+        { body: commands }
+    );
+
+    console.log(`${commands.length}個のコマンド登録完了`);
 });
 
 /* =========================
-   INTERACTION FLOW
+   INTERACTION
 ========================= */
 client.on(Events.InteractionCreate, async interaction => {
 
-    const data = loadData();
-    const gid = interaction.guild?.id;
+    try {
+        if (!interaction.guild?.id) return;
 
-    if (!gid) return;
-    data[gid] = data[gid] || {};
+        const data = loadData();
+        const gid = interaction.guild.id;
 
-    /* =====================
-       ボタン → モーダル
-    ===================== */
-    if (interaction.isButton()) {
+        if (!data[gid]) data[gid] = {};
 
-        console.log("BUTTON:", interaction.customId);
-
-        /* JOIN SETUP OPEN */
-        if (interaction.customId.startsWith("open_join_modal_")) {
-
-            const channelId = interaction.customId.replace("open_join_modal_", "");
-
-            const modal = new ModalBuilder()
-                .setCustomId("joinlog_modal_" + channelId)
-                .setTitle("参加ログ設定");
-
-            const title = new TextInputBuilder()
-                .setCustomId("join_title")
-                .setLabel("タイトル")
-                .setStyle(TextInputStyle.Short);
-
-            const message = new TextInputBuilder()
-                .setCustomId("join_message")
-                .setLabel("メッセージ")
-                .setStyle(TextInputStyle.Paragraph);
-
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(title),
-                new ActionRowBuilder().addComponents(message)
-            );
-
-            return interaction.showModal(modal);
+        /* ===== SLASH ===== */
+        if (interaction.isChatInputCommand()) {
+            const cmd = client.commands.get(interaction.commandName);
+            if (cmd) await cmd.execute(interaction);
+            return;
         }
 
-        /* LEAVE SETUP OPEN */
-        if (interaction.customId.startsWith("open_leave_modal_")) {
+        /* ===== MODAL ===== */
+        if (!interaction.isModalSubmit()) return;
 
-            const channelId = interaction.customId.replace("open_leave_modal_", "");
+        console.log("MODAL:", interaction.customId);
 
-            const modal = new ModalBuilder()
-                .setCustomId("leavelog_modal_" + channelId)
-                .setTitle("退出ログ設定");
+        /* JOIN SAVE */
+        if (interaction.customId.startsWith("joinlog_modal_")) {
 
-            const title = new TextInputBuilder()
-                .setCustomId("leave_title")
-                .setLabel("タイトル")
-                .setStyle(TextInputStyle.Short);
+            const channelId = interaction.customId.replace("joinlog_modal_", "");
 
-            const message = new TextInputBuilder()
-                .setCustomId("leave_message")
-                .setLabel("メッセージ")
-                .setStyle(TextInputStyle.Paragraph);
+            data[gid].joinChannel = channelId;
+            data[gid].joinTitle = interaction.fields.getTextInputValue("join_title");
+            data[gid].joinMessage = interaction.fields.getTextInputValue("join_message");
 
-            modal.addComponents(
-                new ActionRowBuilder().addComponents(title),
-                new ActionRowBuilder().addComponents(message)
-            );
+            saveData(data);
 
-            return interaction.showModal(modal);
+            return interaction.reply({
+                content: "✅ 参加ログ保存完了",
+                flags: MessageFlags.Ephemeral
+            });
         }
-    }
 
-    /* =====================
-       MODAL SUBMIT
-    ===================== */
-    if (!interaction.isModalSubmit()) return;
+        /* LEAVE SAVE */
+        if (interaction.customId.startsWith("leavelog_modal_")) {
 
-    console.log("MODAL:", interaction.customId);
+            const channelId = interaction.customId.replace("leavelog_modal_", "");
 
-    /* JOIN SAVE */
-    if (interaction.customId.startsWith("joinlog_modal_")) {
+            data[gid].leaveChannel = channelId;
+            data[gid].leaveTitle = interaction.fields.getTextInputValue("leave_title");
+            data[gid].leaveMessage = interaction.fields.getTextInputValue("leave_message");
 
-        const channelId = interaction.customId.replace("joinlog_modal_", "");
+            saveData(data);
 
-        data[gid].joinChannel = channelId;
-        data[gid].joinTitle = interaction.fields.getTextInputValue("join_title");
-        data[gid].joinMessage = interaction.fields.getTextInputValue("join_message");
+            return interaction.reply({
+                content: "✅ 退出ログ保存完了",
+                flags: MessageFlags.Ephemeral
+            });
+        }
 
-        saveData(data);
+    } catch (err) {
+        console.error("INTERACTION ERROR:", err);
 
-        return interaction.reply({
-            content: "✅ 参加ログ保存完了",
-            flags: MessageFlags.Ephemeral
-        });
-    }
-
-    /* LEAVE SAVE */
-    if (interaction.customId.startsWith("leavelog_modal_")) {
-
-        const channelId = interaction.customId.replace("leavelog_modal_", "");
-
-        data[gid].leaveChannel = channelId;
-        data[gid].leaveTitle = interaction.fields.getTextInputValue("leave_title");
-        data[gid].leaveMessage = interaction.fields.getTextInputValue("leave_message");
-
-        saveData(data);
-
-        return interaction.reply({
-            content: "✅ 退出ログ保存完了",
-            flags: MessageFlags.Ephemeral
-        });
+        if (interaction.isRepliable()) {
+            await interaction.reply({
+                content: "エラーが発生しました",
+                flags: MessageFlags.Ephemeral
+            }).catch(() => {});
+        }
     }
 });
 
 /* =========================
-   JOIN EVENT
+   JOIN
 ========================= */
 client.on(Events.GuildMemberAdd, async member => {
 
@@ -189,11 +180,13 @@ client.on(Events.GuildMemberAdd, async member => {
     const channel = member.guild.channels.cache.get(config.joinChannel);
     if (!channel) return;
 
+    const text = config.joinMessage || "{user} {username} が参加しました";
+
     const embed = new EmbedBuilder()
         .setColor("#57F287")
         .setTitle(config.joinTitle || "参加表示")
         .setDescription(
-            (config.joinMessage || "{user} {username} が参加しました")
+            text
                 .replaceAll("{user}", `<@${member.id}>`)
                 .replaceAll("{username}", member.user.username)
         )
@@ -203,7 +196,7 @@ client.on(Events.GuildMemberAdd, async member => {
 });
 
 /* =========================
-   LEAVE EVENT
+   LEAVE
 ========================= */
 client.on(Events.GuildMemberRemove, async member => {
 
@@ -215,11 +208,13 @@ client.on(Events.GuildMemberRemove, async member => {
     const channel = member.guild.channels.cache.get(config.leaveChannel);
     if (!channel) return;
 
+    const text = config.leaveMessage || "{user} {username} が退出しました";
+
     const embed = new EmbedBuilder()
         .setColor("#ED4245")
         .setTitle(config.leaveTitle || "退出表示")
         .setDescription(
-            (config.leaveMessage || "{user} {username} が退出しました")
+            text
                 .replaceAll("{user}", `<@${member.id}>`)
                 .replaceAll("{username}", member.user.username)
         )
