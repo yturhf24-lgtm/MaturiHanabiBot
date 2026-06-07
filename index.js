@@ -23,11 +23,11 @@ const app = express();
 app.get("/", (req, res) => res.send("Bot Online"));
 
 app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
-    console.log(`Web Server Running : ${process.env.PORT || 10000}`);
+    console.log("WEB SERVER OK");
 });
 
 /* =========================
-   DATA SYSTEM（安全版）
+   DATA SAFE SYSTEM
 ========================= */
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
@@ -36,29 +36,30 @@ function loadData() {
         if (!fs.existsSync(DATA_FILE)) return {};
         const raw = fs.readFileSync(DATA_FILE, "utf8");
         return raw ? JSON.parse(raw) : {};
-    } catch {
+    } catch (e) {
+        console.log("LOAD ERROR:", e);
         return {};
     }
 }
 
-/* 🔥 空データ保存防止 */
 function saveData(data) {
-    if (!data || Object.keys(data).length === 0) {
-        console.log("⚠ 空データ保存を防止");
-        return;
-    }
+    try {
+        if (!data || Object.keys(data).length === 0) {
+            console.log("❌ Empty save blocked");
+            return;
+        }
 
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+        fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+
+        console.log("💾 SAVE OK");
+    } catch (e) {
+        console.log("SAVE ERROR:", e);
+    }
 }
 
 /* キャッシュ */
 let cache = loadData();
-
-/* 🔥 定期同期（消失防止） */
-setInterval(() => {
-    cache = loadData();
-}, 30000);
 
 /* =========================
    CLIENT
@@ -66,106 +67,91 @@ setInterval(() => {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences
+        GatewayIntentBits.GuildMembers
     ]
 });
 
 client.commands = new Collection();
 
 /* =========================
-   COMMAND LOADER
-========================= */
-const commands = [];
-const commandsPath = path.join(__dirname, "commands");
-
-if (!fs.existsSync(commandsPath)) {
-    console.error("commandsフォルダが見つかりません");
-    process.exit(1);
-}
-
-for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
-    const command = require(path.join(commandsPath, file));
-
-    if (!command.data || !command.execute) {
-        throw new Error(`Invalid command: ${file}`);
-    }
-
-    client.commands.set(command.data.name, command);
-    commands.push(command.data.toJSON());
-}
-
-/* =========================
    READY
 ========================= */
-client.once(Events.ClientReady, async () => {
-    console.log(`${client.user.tag} 起動完了`);
-
-    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-
-    await rest.put(
-        Routes.applicationCommands(process.env.CLIENT_ID),
-        { body: commands }
-    );
-
-    console.log(`${commands.length}個のコマンド登録完了`);
+client.once(Events.ClientReady, () => {
+    console.log(`${client.user.tag} READY`);
 });
 
 /* =========================
-   INTERACTION
+   INTERACTION (完全デバッグ付き)
 ========================= */
 client.on(Events.InteractionCreate, async interaction => {
     try {
+
         if (!interaction.guild?.id) return;
 
         const gid = interaction.guild.id;
 
         cache[gid] = cache[gid] || {};
 
-        /* ===== SLASH ===== */
-        if (interaction.isChatInputCommand()) {
-            const cmd = client.commands.get(interaction.commandName);
-            if (cmd) await cmd.execute(interaction);
-            return;
-        }
+        console.log("INTERACTION:", interaction.customId);
 
-        /* ===== MODAL ===== */
+        /* SLASH */
+        if (interaction.isChatInputCommand()) return;
+
+        /* MODAL ONLY */
         if (!interaction.isModalSubmit()) return;
 
-        /* ===== JOIN LOG ===== */
+        console.log("MODAL OK:", interaction.customId);
+
+        /* =========================
+           JOIN LOG
+        ========================= */
         if (interaction.customId.startsWith("joinlog_modal_")) {
+
             const channelId = interaction.customId.replace("joinlog_modal_", "");
 
+            const title = interaction.fields.getTextInputValue("join_title");
+            const message = interaction.fields.getTextInputValue("join_message");
+
             cache[gid].joinChannel = channelId;
-            cache[gid].joinTitle = interaction.fields.getTextInputValue("join_title");
-            cache[gid].joinMessage = interaction.fields.getTextInputValue("join_message");
+            cache[gid].joinTitle = title;
+            cache[gid].joinMessage = message;
+
+            console.log("JOIN SAVED:", cache[gid]);
 
             saveData(cache);
 
             return interaction.reply({
-                content: "✅ 参加ログ保存完了",
+                content: "✅ 参加ログ保存OK",
                 flags: MessageFlags.Ephemeral
             });
         }
 
-        /* ===== LEAVE LOG ===== */
+        /* =========================
+           LEAVE LOG
+        ========================= */
         if (interaction.customId.startsWith("leavelog_modal_")) {
+
             const channelId = interaction.customId.replace("leavelog_modal_", "");
 
+            const title = interaction.fields.getTextInputValue("leave_title");
+            const message = interaction.fields.getTextInputValue("leave_message");
+
             cache[gid].leaveChannel = channelId;
-            cache[gid].leaveTitle = interaction.fields.getTextInputValue("leave_title");
-            cache[gid].leaveMessage = interaction.fields.getTextInputValue("leave_message");
+            cache[gid].leaveTitle = title;
+            cache[gid].leaveMessage = message;
+
+            console.log("LEAVE SAVED:", cache[gid]);
 
             saveData(cache);
 
             return interaction.reply({
-                content: "✅ 退出ログ保存完了",
+                content: "✅ 退出ログ保存OK",
                 flags: MessageFlags.Ephemeral
             });
         }
 
     } catch (err) {
-        console.error(err);
+        console.log("INTERACTION ERROR:", err);
     }
 });
 
@@ -189,8 +175,6 @@ client.on(Events.GuildMemberAdd, async member => {
                 text
                     .replaceAll("{user}", `<@${member.id}>`)
                     .replaceAll("{username}", member.user.username)
-                    .replaceAll("{displayName}", member.displayName)
-                    .replaceAll("{server}", member.guild.name)
             )
             .setThumbnail(member.user.displayAvatarURL())
             .setTimestamp();
@@ -198,7 +182,7 @@ client.on(Events.GuildMemberAdd, async member => {
         await channel.send({ embeds: [embed] });
 
     } catch (err) {
-        console.error("JOIN ERROR", err);
+        console.log("JOIN ERROR:", err);
     }
 });
 
@@ -222,8 +206,6 @@ client.on(Events.GuildMemberRemove, async member => {
                 text
                     .replaceAll("{user}", `<@${member.id}>`)
                     .replaceAll("{username}", member.user.username)
-                    .replaceAll("{displayName}", member.displayName)
-                    .replaceAll("{server}", member.guild.name)
             )
             .setThumbnail(member.user.displayAvatarURL())
             .setTimestamp();
@@ -231,7 +213,7 @@ client.on(Events.GuildMemberRemove, async member => {
         await channel.send({ embeds: [embed] });
 
     } catch (err) {
-        console.error("LEAVE ERROR", err);
+        console.log("LEAVE ERROR:", err);
     }
 });
 
