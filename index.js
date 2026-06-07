@@ -28,6 +28,12 @@ app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
     );
 });
 
+const DATA_FILE = path.join(
+    __dirname,
+    "data",
+    "memberlogs.json"
+);
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -39,8 +45,10 @@ const client = new Client({
 client.commands = new Collection();
 
 const commands = [];
-const commandsPath =
-    path.join(__dirname, "commands");
+const commandsPath = path.join(
+    __dirname,
+    "commands"
+);
 
 if (!fs.existsSync(commandsPath)) {
 
@@ -154,7 +162,6 @@ client.on(
 
         try {
 
-            // Slash Command
             if (
                 interaction.isChatInputCommand()
             ) {
@@ -173,79 +180,233 @@ client.on(
                 return;
             }
 
-            // announce_modal
             if (
-                interaction.isModalSubmit() &&
-                interaction.customId ===
+                interaction.isModalSubmit()
+            ) {
+
+                let data = {};
+
+                if (
+                    fs.existsSync(
+                        DATA_FILE
+                    )
+                ) {
+
+                    data = JSON.parse(
+                        fs.readFileSync(
+                            DATA_FILE,
+                            "utf8"
+                        )
+                    );
+                }
+
+                if (
+                    !data[
+                        interaction.guild.id
+                    ]
+                ) {
+
+                    data[
+                        interaction.guild.id
+                    ] = {};
+                }
+
+                if (
+                    interaction.customId ===
                     "announce_modal"
-            ) {
-
-                const command =
-                    client.commands.get(
-                        "announce"
-                    );
-
-                if (
-                    command &&
-                    command.modalSubmit
                 ) {
 
-                    await command.modalSubmit(
-                        interaction
-                    );
+                    const command =
+                        client.commands.get(
+                            "announce"
+                        );
+
+                    if (
+                        command &&
+                        command.modalSubmit
+                    ) {
+
+                        await command.modalSubmit(
+                            interaction
+                        );
+                    }
+
+                    return;
                 }
 
-                return;
-            }
-
-            // joinmessage_modal
-            if (
-                interaction.isModalSubmit() &&
-                interaction.customId ===
+                if (
+                    interaction.customId ===
                     "joinmessage_modal"
-            ) {
-
-                const command =
-                    client.commands.get(
-                        "joinmessage"
-                    );
-
-                if (
-                    command &&
-                    command.modalSubmit
                 ) {
 
-                    await command.modalSubmit(
-                        interaction
-                    );
+                    const command =
+                        client.commands.get(
+                            "joinmessage"
+                        );
+
+                    if (
+                        command &&
+                        command.modalSubmit
+                    ) {
+
+                        await command.modalSubmit(
+                            interaction
+                        );
+                    }
+
+                    return;
                 }
 
-                return;
-            }
-
-            // leavemessage_modal
-            if (
-                interaction.isModalSubmit() &&
-                interaction.customId ===
+                if (
+                    interaction.customId ===
                     "leavemessage_modal"
-            ) {
-
-                const command =
-                    client.commands.get(
-                        "leavemessage"
-                    );
-
-                if (
-                    command &&
-                    command.modalSubmit
                 ) {
 
-                    await command.modalSubmit(
-                        interaction
-                    );
+                    const command =
+                        client.commands.get(
+                            "leavemessage"
+                        );
+
+                    if (
+                        command &&
+                        command.modalSubmit
+                    ) {
+
+                        await command.modalSubmit(
+                            interaction
+                        );
+                    }
+
+                    return;
                 }
 
-                return;
+                if (
+                    interaction.customId ===
+                    "joinlog_modal"
+                ) {
+
+                    const channel =
+                        interaction.fields.getTextInputValue(
+                            "join_channel"
+                        );
+
+                    const title =
+                        interaction.fields.getTextInputValue(
+                            "join_title"
+                        );
+
+                    const message =
+                        interaction.fields.getTextInputValue(
+                            "join_message"
+                        );
+
+                    data[
+                        interaction.guild.id
+                    ].joinChannel =
+                        channel.toLowerCase() ===
+                        "off"
+                            ? null
+                            : channel;
+
+                    data[
+                        interaction.guild.id
+                    ].joinTitle =
+                        title;
+
+                    data[
+                        interaction.guild.id
+                    ].joinMessage =
+                        message;
+
+                    fs.mkdirSync(
+                        path.dirname(
+                            DATA_FILE
+                        ),
+                        {
+                            recursive: true
+                        }
+                    );
+
+                    fs.writeFileSync(
+                        DATA_FILE,
+                        JSON.stringify(
+                            data,
+                            null,
+                            2
+                        )
+                    );
+
+                    return interaction.reply({
+                        content:
+                            "✅ 参加ログ設定を保存しました",
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
+
+                if (
+                    interaction.customId ===
+                    "leavelog_modal"
+                ) {
+
+                    const channel =
+                        interaction.fields.getTextInputValue(
+                            "leave_channel"
+                        );
+
+                    const title =
+                        interaction.fields.getTextInputValue(
+                            "leave_title"
+                        );
+
+                    const message =
+                        interaction.fields.getTextInputValue(
+                            "leave_message"
+                        );
+
+                    data[
+                        interaction.guild.id
+                    ].leaveChannel =
+                        channel.toLowerCase() ===
+                        "off"
+                            ? null
+                            : channel;
+
+                    data[
+                        interaction.guild.id
+                    ].leaveTitle =
+                        title;
+
+                    data[
+                        interaction.guild.id
+                    ].leaveMessage =
+                        message;
+
+                    fs.mkdirSync(
+                        path.dirname(
+                            DATA_FILE
+                        ),
+                        {
+                            recursive: true
+                        }
+                    );
+
+                    fs.writeFileSync(
+                        DATA_FILE,
+                        JSON.stringify(
+                            data,
+                            null,
+                            2
+                        )
+                    );
+
+                    return interaction.reply({
+                        content:
+                            "✅ 退出ログ設定を保存しました",
+                        flags:
+                            MessageFlags.Ephemeral
+                    });
+                }
             }
 
         } catch (error) {
@@ -291,7 +452,6 @@ client.on(
     }
 );
 
-// メンバー参加
 client.on(
     Events.GuildMemberAdd,
     async member => {
@@ -323,7 +483,6 @@ client.on(
     }
 );
 
-// メンバー退出
 client.on(
     Events.GuildMemberRemove,
     async member => {
