@@ -19,7 +19,7 @@ module.exports = {
         .addChannelOption(option =>
             option
                 .setName("チャンネル")
-                .setDescription("参加ログチャンネル")
+                .setDescription("参加ログ")
                 .addChannelTypes(
                     ChannelType.GuildText
                 )
