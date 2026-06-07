@@ -1,5 +1,6 @@
 const {
     SlashCommandBuilder,
+    ChannelType,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
@@ -14,7 +15,16 @@ const ALLOWED_USERS = [
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("leavelog")
-        .setDescription("退出ログ設定"),
+        .setDescription("退出ログ設定")
+        .addChannelOption(option =>
+            option
+                .setName("チャンネル")
+                .setDescription("退出ログチャンネル")
+                .addChannelTypes(
+                    ChannelType.GuildText
+                )
+                .setRequired(true)
+        ),
 
     async execute(interaction) {
 
@@ -27,10 +37,7 @@ module.exports = {
                 interaction.user.id
             );
 
-        if (
-            !isOwner &&
-            !isAllowed
-        ) {
+        if (!isOwner && !isAllowed) {
             return interaction.reply({
                 content:
                     "このコマンドは使用できません。",
@@ -38,27 +45,19 @@ module.exports = {
             });
         }
 
+        const channel =
+            interaction.options.getChannel(
+                "チャンネル"
+            );
+
         const modal =
             new ModalBuilder()
                 .setCustomId(
-                    "leavelog_modal"
+                    `leavelog_modal_${channel.id}`
                 )
                 .setTitle(
                     "退出ログ設定"
                 );
-
-        const channel =
-            new TextInputBuilder()
-                .setCustomId(
-                    "leave_channel"
-                )
-                .setLabel(
-                    "チャンネルID (offで無効)"
-                )
-                .setStyle(
-                    TextInputStyle.Short
-                )
-                .setRequired(true);
 
         const title =
             new TextInputBuilder()
@@ -66,12 +65,13 @@ module.exports = {
                     "leave_title"
                 )
                 .setLabel(
-                    "タイトル"
+                    "退出タイトル"
                 )
                 .setStyle(
                     TextInputStyle.Short
                 )
-                .setRequired(true);
+                .setRequired(true)
+                .setMaxLength(256);
 
         const message =
             new TextInputBuilder()
@@ -79,7 +79,7 @@ module.exports = {
                     "leave_message"
                 )
                 .setLabel(
-                    "メッセージ"
+                    "退出メッセージ"
                 )
                 .setStyle(
                     TextInputStyle.Paragraph
@@ -88,9 +88,6 @@ module.exports = {
                 .setMaxLength(4000);
 
         modal.addComponents(
-            new ActionRowBuilder()
-                .addComponents(channel),
-
             new ActionRowBuilder()
                 .addComponents(title),
 
