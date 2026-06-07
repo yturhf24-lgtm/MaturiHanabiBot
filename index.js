@@ -16,7 +16,7 @@ const {
 } = require("discord.js");
 
 /* =========================
-   EXPRESS SERVER
+   EXPRESS
 ========================= */
 const app = express();
 
@@ -32,14 +32,21 @@ app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
 function loadData() {
-    if (!fs.existsSync(DATA_FILE)) return {};
-    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    try {
+        if (!fs.existsSync(DATA_FILE)) return {};
+        return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    } catch {
+        return {};
+    }
 }
 
 function saveData(data) {
     fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
+
+/* キャッシュ */
+let cache = loadData();
 
 /* =========================
    CLIENT
@@ -97,15 +104,13 @@ client.once(Events.ClientReady, async () => {
 ========================= */
 client.on(Events.InteractionCreate, async interaction => {
     try {
-        const data = loadData();
-
         if (!interaction.guild?.id) return;
 
-        if (!data[interaction.guild.id]) {
-            data[interaction.guild.id] = {};
+        if (!cache[interaction.guild.id]) {
+            cache[interaction.guild.id] = {};
         }
 
-        /* ===== SLASH COMMAND ===== */
+        /* ===== SLASH ===== */
         if (interaction.isChatInputCommand()) {
             const cmd = client.commands.get(interaction.commandName);
             if (cmd) await cmd.execute(interaction);
@@ -117,25 +122,18 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const gid = interaction.guild.id;
 
-        /* ===== ANNOUNCE ===== */
-        if (interaction.customId === "announce_modal") {
-            const cmd = client.commands.get("announce");
-            if (cmd?.modalSubmit) await cmd.modalSubmit(interaction);
-            return;
-        }
-
         /* ===== JOIN LOG ===== */
         if (interaction.customId.startsWith("joinlog_modal_")) {
             const channelId = interaction.customId.replace("joinlog_modal_", "");
 
-            data[gid].joinChannel = channelId;
-            data[gid].joinTitle = interaction.fields.getTextInputValue("join_title");
-            data[gid].joinMessage = interaction.fields.getTextInputValue("join_message");
+            cache[gid].joinChannel = channelId;
+            cache[gid].joinTitle = interaction.fields.getTextInputValue("join_title");
+            cache[gid].joinMessage = interaction.fields.getTextInputValue("join_message");
 
-            saveData(data);
+            saveData(cache);
 
             return interaction.reply({
-                content: "✅ 参加ログ設定を保存しました",
+                content: "✅ 参加ログ保存完了",
                 flags: MessageFlags.Ephemeral
             });
         }
@@ -144,27 +142,20 @@ client.on(Events.InteractionCreate, async interaction => {
         if (interaction.customId.startsWith("leavelog_modal_")) {
             const channelId = interaction.customId.replace("leavelog_modal_", "");
 
-            data[gid].leaveChannel = channelId;
-            data[gid].leaveTitle = interaction.fields.getTextInputValue("leave_title");
-            data[gid].leaveMessage = interaction.fields.getTextInputValue("leave_message");
+            cache[gid].leaveChannel = channelId;
+            cache[gid].leaveTitle = interaction.fields.getTextInputValue("leave_title");
+            cache[gid].leaveMessage = interaction.fields.getTextInputValue("leave_message");
 
-            saveData(data);
+            saveData(cache);
 
             return interaction.reply({
-                content: "✅ 退出ログ設定を保存しました",
+                content: "✅ 退出ログ保存完了",
                 flags: MessageFlags.Ephemeral
             });
         }
 
     } catch (err) {
         console.error(err);
-
-        if (interaction.isRepliable()) {
-            await interaction.reply({
-                content: "エラーが発生しました",
-                flags: MessageFlags.Ephemeral
-            }).catch(() => {});
-        }
     }
 });
 
@@ -173,24 +164,22 @@ client.on(Events.InteractionCreate, async interaction => {
 ========================= */
 client.on(Events.GuildMemberAdd, async member => {
     try {
-        const cmd = client.commands.get("joinmessage");
-        if (cmd?.memberAdd) await cmd.memberAdd(member);
-
-        const data = loadData();
-        const config = data[member.guild.id];
-
+        const config = cache[member.guild.id];
         if (!config?.joinChannel) return;
 
         const channel = member.guild.channels.cache.get(config.joinChannel);
         if (!channel) return;
 
+        const text = config.joinMessage ?? "{user}（{username}）が参加しました";
+
         const embed = new EmbedBuilder()
             .setColor("#57F287")
-            .setTitle(config.joinTitle || "メンバー参加")
+            .setTitle(config.joinTitle || "参加表示")
             .setDescription(
-                (config.joinMessage || "{user} が参加しました")
+                text
                     .replaceAll("{user}", `<@${member.id}>`)
                     .replaceAll("{username}", member.user.username)
+                    .replaceAll("{displayName}", member.displayName)
                     .replaceAll("{server}", member.guild.name)
             )
             .setThumbnail(member.user.displayAvatarURL())
@@ -199,7 +188,7 @@ client.on(Events.GuildMemberAdd, async member => {
         await channel.send({ embeds: [embed] });
 
     } catch (err) {
-        console.error("GuildMemberAdd Error", err);
+        console.error("JOIN ERROR", err);
     }
 });
 
@@ -208,24 +197,22 @@ client.on(Events.GuildMemberAdd, async member => {
 ========================= */
 client.on(Events.GuildMemberRemove, async member => {
     try {
-        const cmd = client.commands.get("leavemessage");
-        if (cmd?.memberRemove) await cmd.memberRemove(member);
-
-        const data = loadData();
-        const config = data[member.guild.id];
-
+        const config = cache[member.guild.id];
         if (!config?.leaveChannel) return;
 
         const channel = member.guild.channels.cache.get(config.leaveChannel);
         if (!channel) return;
 
+        const text = config.leaveMessage ?? "{user}（{username}）が退出しました";
+
         const embed = new EmbedBuilder()
             .setColor("#ED4245")
-            .setTitle(config.leaveTitle || "メンバー退出")
+            .setTitle(config.leaveTitle || "退出表示")
             .setDescription(
-                (config.leaveMessage || "{username} が退出しました")
+                text
                     .replaceAll("{user}", `<@${member.id}>`)
                     .replaceAll("{username}", member.user.username)
+                    .replaceAll("{displayName}", member.displayName)
                     .replaceAll("{server}", member.guild.name)
             )
             .setThumbnail(member.user.displayAvatarURL())
@@ -234,7 +221,7 @@ client.on(Events.GuildMemberRemove, async member => {
         await channel.send({ embeds: [embed] });
 
     } catch (err) {
-        console.error("GuildMemberRemove Error", err);
+        console.error("LEAVE ERROR", err);
     }
 });
 
