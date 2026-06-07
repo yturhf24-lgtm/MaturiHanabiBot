@@ -11,7 +11,8 @@ const {
     Events,
     REST,
     Routes,
-    MessageFlags
+    MessageFlags,
+    EmbedBuilder
 } = require("discord.js");
 
 const app = express();
