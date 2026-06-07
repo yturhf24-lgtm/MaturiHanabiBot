@@ -12,29 +12,32 @@ const {
     REST,
     Routes,
     MessageFlags,
-    EmbedBuilder
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } = require("discord.js");
 
 /* =========================
-   EXPRESS
+   WEB SERVER
 ========================= */
 const app = express();
 app.get("/", (req, res) => res.send("Bot Online"));
 app.listen(process.env.PORT || 10000, () => console.log("WEB OK"));
 
 /* =========================
-   DATA SAFE
+   DATA
 ========================= */
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
 function loadData() {
     try {
         if (!fs.existsSync(DATA_FILE)) return {};
-        const raw = fs.readFileSync(DATA_FILE, "utf8");
-        if (!raw) return {};
-        return JSON.parse(raw);
-    } catch (e) {
-        console.error("LOAD ERROR:", e);
+        return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    } catch {
         return {};
     }
 }
@@ -58,15 +61,48 @@ const client = new Client({
     ]
 });
 
+client.commands = new Collection();
+
 /* =========================
-   READY
+   SLASH COMMAND LOADER
 ========================= */
-client.once(Events.ClientReady, () => {
+const commands = [];
+const commandsPath = path.join(__dirname, "commands");
+
+if (fs.existsSync(commandsPath)) {
+
+    for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
+        const command = require(path.join(commandsPath, file));
+
+        if (command?.data && command?.execute) {
+            client.commands.set(command.data.name, command);
+            commands.push(command.data.toJSON());
+        }
+    }
+}
+
+/* =========================
+   READY (REGISTER SLASH)
+========================= */
+client.once(Events.ClientReady, async () => {
     console.log(`${client.user.tag} READY`);
+
+    try {
+        const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+        await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: commands }
+        );
+
+        console.log("SLASH COMMANDS REGISTERED");
+    } catch (e) {
+        console.error("SLASH ERROR:", e);
+    }
 });
 
 /* =========================
-   INTERACTION SAVE ONLY
+   INTERACTION
 ========================= */
 client.on(Events.InteractionCreate, async interaction => {
 
@@ -74,12 +110,74 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const data = loadData();
     const gid = interaction.guild.id;
-
     data[gid] = data[gid] || {};
 
+    /* ===== SLASH ===== */
+    if (interaction.isChatInputCommand()) {
+        const cmd = client.commands.get(interaction.commandName);
+        if (cmd) await cmd.execute(interaction);
+        return;
+    }
+
+    /* ===== BUTTON → MODAL ===== */
+    if (interaction.isButton()) {
+
+        if (interaction.customId.startsWith("open_join_modal_")) {
+
+            const channelId = interaction.customId.replace("open_join_modal_", "");
+
+            const modal = new ModalBuilder()
+                .setCustomId("joinlog_modal_" + channelId)
+                .setTitle("参加ログ設定");
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId("join_title")
+                        .setLabel("タイトル")
+                        .setStyle(TextInputStyle.Short)
+                ),
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId("join_message")
+                        .setLabel("メッセージ")
+                        .setStyle(TextInputStyle.Paragraph)
+                )
+            );
+
+            return interaction.showModal(modal);
+        }
+
+        if (interaction.customId.startsWith("open_leave_modal_")) {
+
+            const channelId = interaction.customId.replace("open_leave_modal_", "");
+
+            const modal = new ModalBuilder()
+                .setCustomId("leavelog_modal_" + channelId)
+                .setTitle("退出ログ設定");
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId("leave_title")
+                        .setLabel("タイトル")
+                        .setStyle(TextInputStyle.Short)
+                ),
+                new ActionRowBuilder().addComponents(
+                    new TextInputBuilder()
+                        .setCustomId("leave_message")
+                        .setLabel("メッセージ")
+                        .setStyle(TextInputStyle.Paragraph)
+                )
+            );
+
+            return interaction.showModal(modal);
+        }
+    }
+
+    /* ===== MODAL ===== */
     if (!interaction.isModalSubmit()) return;
 
-    /* JOIN */
     if (interaction.customId.startsWith("joinlog_modal_")) {
 
         const channelId = interaction.customId.replace("joinlog_modal_", "");
@@ -96,7 +194,6 @@ client.on(Events.InteractionCreate, async interaction => {
         });
     }
 
-    /* LEAVE */
     if (interaction.customId.startsWith("leavelog_modal_")) {
 
         const channelId = interaction.customId.replace("leavelog_modal_", "");
@@ -115,7 +212,7 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 /* =========================
-   JOIN EVENT
+   JOIN LOG
 ========================= */
 client.on(Events.GuildMemberAdd, async member => {
 
@@ -127,23 +224,23 @@ client.on(Events.GuildMemberAdd, async member => {
     const channel = member.guild.channels.cache.get(config.joinChannel);
     if (!channel) return;
 
-    const message = (config.joinMessage || "{user} {username} が参加しました");
+    const msg = config.joinMessage || "{user} {username} が参加しました";
 
     const embed = new EmbedBuilder()
         .setColor("#57F287")
-        .setTitle(config.joinTitle || "参加表示")
+        .setTitle(config.joinTitle || "参加ログ")
         .setDescription(
-            message
+            msg
                 .replaceAll("{user}", `<@${member.id}>`)
-                .replaceAll("{username}", member.user.username ?? "unknown")
+                .replaceAll("{username}", member.user.username)
         )
         .setTimestamp();
 
-    await channel.send({ embeds: [embed] });
+    channel.send({ embeds: [embed] });
 });
 
 /* =========================
-   LEAVE EVENT
+   LEAVE LOG
 ========================= */
 client.on(Events.GuildMemberRemove, async member => {
 
@@ -155,19 +252,19 @@ client.on(Events.GuildMemberRemove, async member => {
     const channel = member.guild.channels.cache.get(config.leaveChannel);
     if (!channel) return;
 
-    const message = (config.leaveMessage || "{user} {username} が退出しました");
+    const msg = config.leaveMessage || "{user} {username} が退出しました";
 
     const embed = new EmbedBuilder()
         .setColor("#ED4245")
-        .setTitle(config.leaveTitle || "退出表示")
+        .setTitle(config.leaveTitle || "退出ログ")
         .setDescription(
-            message
+            msg
                 .replaceAll("{user}", `<@${member.id}>`)
-                .replaceAll("{username}", member.user.username ?? "unknown")
+                .replaceAll("{username}", member.user.username)
         )
         .setTimestamp();
 
-    await channel.send({ embeds: [embed] });
+    channel.send({ embeds: [embed] });
 });
 
 /* =========================
