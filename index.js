@@ -19,14 +19,14 @@ const {
    WEB SERVER
 ========================= */
 const app = express();
-app.get("/", (req, res) => res.send("Bot Online"));
+app.get("/", (_, res) => res.send("Bot Online"));
 
 app.listen(process.env.PORT || 10000, () => {
     console.log("WEB SERVER OK");
 });
 
 /* =========================
-   DATA
+   DATA SYSTEM（サーバー別）
 ========================= */
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
@@ -63,18 +63,18 @@ const client = new Client({
 client.commands = new Collection();
 
 /* =========================
-   COMMAND LOAD
+   COMMAND LOADER
 ========================= */
 const commands = [];
 const commandsPath = path.join(__dirname, "commands");
 
 if (fs.existsSync(commandsPath)) {
     for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith(".js"))) {
-        const command = require(path.join(commandsPath, file));
+        const cmd = require(path.join(commandsPath, file));
 
-        if (command?.data && command?.execute) {
-            client.commands.set(command.data.name, command);
-            commands.push(command.data.toJSON());
+        if (cmd?.data && cmd?.execute) {
+            client.commands.set(cmd.data.name, cmd);
+            commands.push(cmd.data.toJSON());
         }
     }
 }
@@ -106,9 +106,8 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!interaction.guild) return;
 
-    const data = loadData();
     const gid = interaction.guild.id;
-
+    const data = loadData();
     data[gid] = data[gid] || {};
 
     /* ===== SLASH ===== */
@@ -118,21 +117,22 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
-    /* ===== MODAL ===== */
+    /* ===== MODAL ONLY ===== */
     if (!interaction.isModalSubmit()) return;
 
     try {
 
-        /* JOIN SAVE */
+        /* ================= JOIN LOG ================= */
         if (interaction.customId.startsWith("joinlog_modal_")) {
 
-            const channelId = interaction.customId.replace("joinlog_modal_", "");
+            const channelId = interaction.customId.split("_").pop();
 
             data[gid].joinChannel = channelId;
             data[gid].joinTitle =
                 interaction.fields.getTextInputValue("join_title") || "参加ログ";
             data[gid].joinMessage =
-                interaction.fields.getTextInputValue("join_message") || "{user} {username} が参加しました";
+                interaction.fields.getTextInputValue("join_message") ||
+                "{user} {username} が参加しました";
 
             saveData(data);
 
@@ -142,16 +142,17 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
-        /* LEAVE SAVE */
+        /* ================= LEAVE LOG ================= */
         if (interaction.customId.startsWith("leavelog_modal_")) {
 
-            const channelId = interaction.customId.replace("leavelog_modal_", "");
+            const channelId = interaction.customId.split("_").pop();
 
             data[gid].leaveChannel = channelId;
             data[gid].leaveTitle =
                 interaction.fields.getTextInputValue("leave_title") || "退出ログ";
             data[gid].leaveMessage =
-                interaction.fields.getTextInputValue("leave_message") || "{user} {username} が退出しました";
+                interaction.fields.getTextInputValue("leave_message") ||
+                "{user} {username} が退出しました";
 
             saveData(data);
 
@@ -180,13 +181,13 @@ client.on(Events.GuildMemberAdd, async member => {
         const channel = member.guild.channels.cache.get(config.joinChannel);
         if (!channel) return;
 
-        const msg = config.joinMessage || "{user} {username} が参加しました";
+        const text = config.joinMessage || "{user} {username} が参加しました";
 
         const embed = new EmbedBuilder()
             .setColor("#57F287")
             .setTitle(config.joinTitle || "参加ログ")
             .setDescription(
-                msg
+                text
                     .replaceAll("{user}", `<@${member.id}>`)
                     .replaceAll("{username}", member.user?.username || "unknown")
             )
@@ -215,13 +216,13 @@ client.on(Events.GuildMemberRemove, async member => {
         const channel = member.guild.channels.cache.get(config.leaveChannel);
         if (!channel) return;
 
-        const msg = config.leaveMessage || "{user} {username} が退出しました";
+        const text = config.leaveMessage || "{user} {username} が退出しました";
 
         const embed = new EmbedBuilder()
             .setColor("#ED4245")
             .setTitle(config.leaveTitle || "退出ログ")
             .setDescription(
-                msg
+                text
                     .replaceAll("{user}", `<@${member.id}>`)
                     .replaceAll("{username}", member.user?.username || "unknown")
             )
