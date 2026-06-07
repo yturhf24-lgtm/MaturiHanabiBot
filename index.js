@@ -16,7 +16,7 @@ const {
 } = require("discord.js");
 
 /* =========================
-   WEB SERVER
+   WEB SERVER（Render対策）
 ========================= */
 const app = express();
 app.get("/", (_, res) => res.send("Bot Online"));
@@ -26,7 +26,7 @@ app.listen(process.env.PORT || 10000, () => {
 });
 
 /* =========================
-   DATA SYSTEM（サーバー別）
+   DATA SYSTEM（完全安定保存）
 ========================= */
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
@@ -51,7 +51,7 @@ function saveData(data) {
 }
 
 /* =========================
-   CLIENT
+   CLIENT（最小安定構成）
 ========================= */
 const client = new Client({
     intents: [
@@ -108,6 +108,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const gid = interaction.guild.id;
     const data = loadData();
+
     data[gid] = data[gid] || {};
 
     /* ===== SLASH ===== */
@@ -117,12 +118,11 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
 
-    /* ===== MODAL ONLY ===== */
     if (!interaction.isModalSubmit()) return;
 
     try {
 
-        /* ================= JOIN LOG ================= */
+        /* ===== JOIN LOG ===== */
         if (interaction.customId.startsWith("joinlog_modal_")) {
 
             const channelId = interaction.customId.split("_").pop();
@@ -142,7 +142,7 @@ client.on(Events.InteractionCreate, async interaction => {
             });
         }
 
-        /* ================= LEAVE LOG ================= */
+        /* ===== LEAVE LOG ===== */
         if (interaction.customId.startsWith("leavelog_modal_")) {
 
             const channelId = interaction.customId.split("_").pop();
