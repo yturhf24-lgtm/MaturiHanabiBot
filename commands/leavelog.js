@@ -1,87 +1,105 @@
 const {
     SlashCommandBuilder,
-    PermissionFlagsBits,
-    ChannelType
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder
 } = require("discord.js");
 
-const fs = require("fs");
-const path = require("path");
-
-const DATA_FILE = path.join(
-    __dirname,
-    "..",
-    "data",
-    "memberlogs.json"
-);
+const ALLOWED_USERS = [
+    "1266013271518089258",
+    "1323527061410676787"
+];
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("leavelog")
-        .setDescription("退出ログチャンネル設定")
-        .addChannelOption(option =>
-            option
-                .setName("チャンネル")
-                .setDescription("未指定でOFF")
-                .addChannelTypes(
-                    ChannelType.GuildText
-                )
-                .setRequired(false)
-        )
-        .setDefaultMemberPermissions(
-            PermissionFlagsBits.Administrator
-        ),
+        .setDescription("退出ログ設定"),
 
     async execute(interaction) {
 
-        const channel =
-            interaction.options.getChannel(
-                "チャンネル"
+        const isOwner =
+            interaction.guild.ownerId ===
+            interaction.user.id;
+
+        const isAllowed =
+            ALLOWED_USERS.includes(
+                interaction.user.id
             );
 
-        let data = {};
-
         if (
-            fs.existsSync(DATA_FILE)
+            !isOwner &&
+            !isAllowed
         ) {
-            data = JSON.parse(
-                fs.readFileSync(
-                    DATA_FILE,
-                    "utf8"
+            return interaction.reply({
+                content:
+                    "このコマンドは使用できません。",
+                ephemeral: true
+            });
+        }
+
+        const modal =
+            new ModalBuilder()
+                .setCustomId(
+                    "leavelog_modal"
                 )
-            );
-        }
+                .setTitle(
+                    "退出ログ設定"
+                );
 
-        if (
-            !data[
-                interaction.guild.id
-            ]
-        ) {
-            data[
-                interaction.guild.id
-            ] = {};
-        }
+        const channel =
+            new TextInputBuilder()
+                .setCustomId(
+                    "leave_channel"
+                )
+                .setLabel(
+                    "チャンネルID (offで無効)"
+                )
+                .setStyle(
+                    TextInputStyle.Short
+                )
+                .setRequired(true);
 
-        data[
-            interaction.guild.id
-        ].leaveChannel =
-            channel
-                ? channel.id
-                : null;
+        const title =
+            new TextInputBuilder()
+                .setCustomId(
+                    "leave_title"
+                )
+                .setLabel(
+                    "タイトル"
+                )
+                .setStyle(
+                    TextInputStyle.Short
+                )
+                .setRequired(true);
 
-        fs.writeFileSync(
-            DATA_FILE,
-            JSON.stringify(
-                data,
-                null,
-                2
-            )
+        const message =
+            new TextInputBuilder()
+                .setCustomId(
+                    "leave_message"
+                )
+                .setLabel(
+                    "メッセージ"
+                )
+                .setStyle(
+                    TextInputStyle.Paragraph
+                )
+                .setRequired(true)
+                .setMaxLength(4000);
+
+        modal.addComponents(
+            new ActionRowBuilder()
+                .addComponents(channel),
+
+            new ActionRowBuilder()
+                .addComponents(title),
+
+            new ActionRowBuilder()
+                .addComponents(message)
         );
 
-        await interaction.reply({
-            content: channel
-                ? `✅ 退出ログを ${channel} に設定しました`
-                : "✅ 退出ログをOFFにしました",
-            ephemeral: true
-        });
+        await interaction.showModal(
+            modal
+        );
     }
 };
