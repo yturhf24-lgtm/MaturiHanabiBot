@@ -21,7 +21,11 @@ app.get("/", (req, res) => {
 });
 
 app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
-    console.log(`Web Server Running : ${process.env.PORT || 10000}`);
+    console.log(
+        `Web Server Running : ${
+            process.env.PORT || 10000
+        }`
+    );
 });
 
 const client = new Client({
@@ -35,34 +39,48 @@ const client = new Client({
 client.commands = new Collection();
 
 const commands = [];
-const commandsPath = path.join(__dirname, "commands");
+const commandsPath =
+    path.join(__dirname, "commands");
 
 if (!fs.existsSync(commandsPath)) {
-    console.error("commandsフォルダが見つかりません");
+
+    console.error(
+        "commandsフォルダが見つかりません"
+    );
+
     process.exit(1);
 }
 
 const commandFiles = fs
     .readdirSync(commandsPath)
-    .filter(file => file.endsWith(".js"));
+    .filter(file =>
+        file.endsWith(".js")
+    );
 
 for (const file of commandFiles) {
 
     try {
 
-        console.log(`Loading ${file}`);
+        console.log(
+            `Loading ${file}`
+        );
 
         const command = require(
-            path.join(commandsPath, file)
+            path.join(
+                commandsPath,
+                file
+            )
         );
 
         if (!command.data) {
+
             throw new Error(
                 "command.data がありません"
             );
         }
 
         if (!command.execute) {
+
             throw new Error(
                 "command.execute がありません"
             );
@@ -77,7 +95,9 @@ for (const file of commandFiles) {
             command.data.toJSON()
         );
 
-        console.log(`Loaded ${file}`);
+        console.log(
+            `Loaded ${file}`
+        );
 
     } catch (err) {
 
@@ -91,38 +111,42 @@ for (const file of commandFiles) {
     }
 }
 
-client.once(Events.ClientReady, async () => {
-
-    console.log(
-        `${client.user.tag} 起動完了`
-    );
-
-    try {
-
-        const rest = new REST({
-            version: "10"
-        }).setToken(
-            process.env.TOKEN
-        );
-
-        await rest.put(
-            Routes.applicationCommands(
-                process.env.CLIENT_ID
-            ),
-            {
-                body: commands
-            }
-        );
+client.once(
+    Events.ClientReady,
+    async () => {
 
         console.log(
-            `${commands.length}個のコマンド登録完了`
+            `${client.user.tag} 起動完了`
         );
 
-    } catch (err) {
+        try {
 
-        console.error(err);
+            const rest =
+                new REST({
+                    version: "10"
+                }).setToken(
+                    process.env.TOKEN
+                );
+
+            await rest.put(
+                Routes.applicationCommands(
+                    process.env.CLIENT_ID
+                ),
+                {
+                    body: commands
+                }
+            );
+
+            console.log(
+                `${commands.length}個のコマンド登録完了`
+            );
+
+        } catch (err) {
+
+            console.error(err);
+        }
     }
-});
+);
 
 client.on(
     Events.InteractionCreate,
@@ -130,7 +154,7 @@ client.on(
 
         try {
 
-            // スラッシュコマンド
+            // Slash Command
             if (
                 interaction.isChatInputCommand()
             ) {
@@ -149,33 +173,79 @@ client.on(
                 return;
             }
 
-            // announce モーダル送信
+            // announce_modal
             if (
-                interaction.isModalSubmit()
+                interaction.isModalSubmit() &&
+                interaction.customId ===
+                    "announce_modal"
             ) {
 
+                const command =
+                    client.commands.get(
+                        "announce"
+                    );
+
                 if (
-                    interaction.customId ===
-                    "announce_modal"
+                    command &&
+                    command.modalSubmit
                 ) {
 
-                    const command =
-                        client.commands.get(
-                            "announce"
-                        );
-
-                    if (
-                        command &&
-                        command.modalSubmit
-                    ) {
-
-                        await command.modalSubmit(
-                            interaction
-                        );
-                    }
-
-                    return;
+                    await command.modalSubmit(
+                        interaction
+                    );
                 }
+
+                return;
+            }
+
+            // joinmessage_modal
+            if (
+                interaction.isModalSubmit() &&
+                interaction.customId ===
+                    "joinmessage_modal"
+            ) {
+
+                const command =
+                    client.commands.get(
+                        "joinmessage"
+                    );
+
+                if (
+                    command &&
+                    command.modalSubmit
+                ) {
+
+                    await command.modalSubmit(
+                        interaction
+                    );
+                }
+
+                return;
+            }
+
+            // leavemessage_modal
+            if (
+                interaction.isModalSubmit() &&
+                interaction.customId ===
+                    "leavemessage_modal"
+            ) {
+
+                const command =
+                    client.commands.get(
+                        "leavemessage"
+                    );
+
+                if (
+                    command &&
+                    command.modalSubmit
+                ) {
+
+                    await command.modalSubmit(
+                        interaction
+                    );
+                }
+
+                return;
             }
 
         } catch (error) {
@@ -199,16 +269,88 @@ client.on(
                 ) {
 
                     await interaction
-                        .followUp(payload)
-                        .catch(() => {});
+                        .followUp(
+                            payload
+                        )
+                        .catch(
+                            () => {}
+                        );
 
                 } else {
 
                     await interaction
-                        .reply(payload)
-                        .catch(() => {});
+                        .reply(
+                            payload
+                        )
+                        .catch(
+                            () => {}
+                        );
                 }
             }
+        }
+    }
+);
+
+// メンバー参加
+client.on(
+    Events.GuildMemberAdd,
+    async member => {
+
+        try {
+
+            const command =
+                client.commands.get(
+                    "joinmessage"
+                );
+
+            if (
+                command &&
+                command.memberAdd
+            ) {
+
+                await command.memberAdd(
+                    member
+                );
+            }
+
+        } catch (err) {
+
+            console.error(
+                "GuildMemberAdd Error",
+                err
+            );
+        }
+    }
+);
+
+// メンバー退出
+client.on(
+    Events.GuildMemberRemove,
+    async member => {
+
+        try {
+
+            const command =
+                client.commands.get(
+                    "leavemessage"
+                );
+
+            if (
+                command &&
+                command.memberRemove
+            ) {
+
+                await command.memberRemove(
+                    member
+                );
+            }
+
+        } catch (err) {
+
+            console.error(
+                "GuildMemberRemove Error",
+                err
+            );
         }
     }
 );
