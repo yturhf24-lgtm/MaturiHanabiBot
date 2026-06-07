@@ -16,16 +16,17 @@ const {
 } = require("discord.js");
 
 /* =========================
-   EXPRESS
+   WEB SERVER
 ========================= */
 const app = express();
 app.get("/", (req, res) => res.send("Bot Online"));
+
 app.listen(process.env.PORT || 10000, () => {
     console.log("WEB SERVER OK");
 });
 
 /* =========================
-   DATA FILE
+   DATA
 ========================= */
 const DATA_FILE = path.join(__dirname, "data", "memberlogs.json");
 
@@ -62,7 +63,7 @@ const client = new Client({
 client.commands = new Collection();
 
 /* =========================
-   SLASH COMMANDS
+   COMMAND LOAD
 ========================= */
 const commands = [];
 const commandsPath = path.join(__dirname, "commands");
@@ -122,7 +123,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     try {
 
-        /* JOIN */
+        /* JOIN SAVE */
         if (interaction.customId.startsWith("joinlog_modal_")) {
 
             const channelId = interaction.customId.replace("joinlog_modal_", "");
@@ -136,12 +137,12 @@ client.on(Events.InteractionCreate, async interaction => {
             saveData(data);
 
             return interaction.reply({
-                content: "✅ 参加ログ保存OK",
+                content: "✅ 参加ログ保存完了",
                 flags: MessageFlags.Ephemeral
             });
         }
 
-        /* LEAVE */
+        /* LEAVE SAVE */
         if (interaction.customId.startsWith("leavelog_modal_")) {
 
             const channelId = interaction.customId.replace("leavelog_modal_", "");
@@ -155,7 +156,7 @@ client.on(Events.InteractionCreate, async interaction => {
             saveData(data);
 
             return interaction.reply({
-                content: "✅ 退出ログ保存OK",
+                content: "✅ 退出ログ保存完了",
                 flags: MessageFlags.Ephemeral
             });
         }
