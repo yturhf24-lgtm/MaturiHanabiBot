@@ -19,7 +19,7 @@ const client = new Client({
 
 // --- GitHub API 経由のデータ管理設定 ---
 const DATA_FILE = path.join(__dirname, 'data.json');
-// 💡 ご自身のリポジトリ情報に書き換えるか、Renderの環境変数に登録してください
+
 const GITHUB_OWNER = 'yturhf24-lgtm'; // リポジトリの所有者名
 const GITHUB_REPO = 'MaturiHanabiBot';  // リポジトリ名
 const FILE_PATH = 'data.json';
@@ -56,7 +56,8 @@ async function loadSettingsFromGitHub() {
       fs.writeFileSync(DATA_FILE, JSON.stringify(localSettingsCache, null, 2));
       console.log('GitHubからのデータ同期に成功しました！');
     } else if (response.status === 404) {
-      console.log('GitHub上に data.json が存在しないため、新しく作成します。');
+      // 💡 無限ループ対策: 起動時はメモリを空にするだけで、GitHubへの勝手な書き込み（＝再デプロイ誘発）を防ぎます
+      console.log('GitHub上に data.json がまだありません。初回コマンド実行時に自動生成されます。');
       localSettingsCache = {};
     } else {
       console.log(`GitHubの取得に失敗 (ステータス: ${response.status})。ローカルを使用します。`);
@@ -104,9 +105,9 @@ client.saveSettings = async (data) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        message: 'chore: update data.json via API [skip ci]',
+        message: 'chore: update data.json via API [skip ci]', // [skip ci]で意図しない挙動を防ぐ
         content: base64Content,
-        sha: sha // 新規作成時はnull、上書き時は取得したsha
+        sha: sha
       })
     });
 
@@ -134,7 +135,7 @@ for (const file of commandFiles) {
 }
 
 // 起動時にデータを1回同期
-client.once('clientReady', async () => {
+client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Botがログインしました: ${client.user.tag}`);
 });
