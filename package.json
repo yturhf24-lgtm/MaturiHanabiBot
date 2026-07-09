@@ -1,7 +1,7 @@
 {
   "name": "discord-lgtm-bot",
-  "version": "1.1.0",
-  "description": "Render Hosted Discord Bot with Role Management",
+  "version": "1.2.0",
+  "description": "Multi-Guild Hosted Discord Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
