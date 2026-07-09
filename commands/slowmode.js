@@ -15,11 +15,9 @@ module.exports = {
           { name: '時間 (Hours)', value: 'h' }
         )
     ),
+    // 💡 初期状態では管理者のみに表示（あとから許可ロール持ちにも自動解放されます）
 
   async execute(interaction) {
-    // タイムアウト（応答なし）を防ぐための最優先処理
-    await interaction.deferReply();
-
     const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
     
     // このサーバーの許可ロール一覧をデータファイルから照合
@@ -27,16 +25,21 @@ module.exports = {
     const allowedRoles = settings[interaction.guildId]?.roles || [];
     const hasAllowedRole = interaction.member.roles.cache.some(role => allowedRoles.includes(role.id));
 
+    // ⚠️ 変更点: deferReply する前に、まず完全に権限をチェックして弾く
     if (!isAdmin && !hasAllowedRole) {
-      return interaction.editReply({
+      return interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('権限エラー')
-            .setDescription('このコマンドを使用する権限がありません。（サーバー管理者または登録された許可ロールが必要です）')
-        ]
+            .setDescription('このコマンドを使用する権限がありません。')
+        ],
+        ephemeral: true // 実行者にしか見えないエラーメッセージ
       });
     }
+
+    // 権限が確認できてから「考え中...」にする（これでフリーズを防ぐ）
+    await interaction.deferReply();
 
     const timeVal = interaction.options.getInteger('time');
     const unit = interaction.options.getString('unit');
@@ -57,7 +60,6 @@ module.exports = {
     let failCount = 0;
 
     try {
-      // 複数サーバー対応：キャッシュではなく、コマンドを実行したサーバーの全チャンネルを最新状態として取得
       const fetchedChannels = await interaction.guild.channels.fetch();
       const textChannels = fetchedChannels.filter(c => c && c.type === ChannelType.GuildText);
 
