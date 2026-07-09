@@ -77,7 +77,7 @@ for (const file of commandFiles) {
   if ('data' in command && 'execute' in command) client.commands.set(command.data.name, command);
 }
 
-// 🚀 起動完了イベント (Deprecation警告対策済み)
+// 🚀 起動完了イベント (Deprecation警告対策・スパム通知除去)
 client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Botがログインしました: ${client.user.tag}`);
@@ -88,7 +88,7 @@ client.once('clientReady', async () => {
       invitesCache.set(guild.id, new Map(guildInvites.map(invite => [invite.code, invite.uses])));
     } catch (e) {}
   }
-  // 💡 スパムのバグ原因だった起動時自動通知の処理は、完全に撤去しました。
+  // 💡 バグだった起動時の自動通知スパムコードは完全に抹消しました。
 });
 
 // 招待キャッシュ更新用
@@ -98,7 +98,7 @@ client.on('inviteCreate', async (invite) => {
   invitesCache.set(invite.guild.id, guildInvites);
 });
 
-// 💡 Webhookを取得または自動生成する関数
+// 💡 Webhookを取得または自動生成する関数（エラーログ＆権限警告強化版）
 async function getOrCreateWebhook(channel) {
   try {
     const webhooks = await channel.fetchWebhooks();
@@ -112,12 +112,16 @@ async function getOrCreateWebhook(channel) {
     }
     return webhook;
   } catch (err) {
-    console.error('Webhookの取得/作成に失敗しました:', err);
-    return null;
+    console.error('============ WEBHOOK ERROR ============');
+    console.error(`チャンネル: ${channel.name} (ID: ${channel.id})`);
+    console.error(`エラー内容: ${err.message}`);
+    console.error('対策: Discordサーバー設定のロールでBotに「ウェブフックの管理」権限を与えてください。');
+    console.error('=======================================');
+    return null; // 失敗時はnullを返し、バックアップシステムへ移行
   }
 }
 
-// 📥 メンバー参加イベント（Webhook経由の完全埋め込み形式）
+// 📥 メンバー参加イベント（Webhook埋め込み形式 ＋ 権限不足時の自動通常メッセージバックアップ内蔵）
 client.on('guildMemberAdd', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
@@ -127,9 +131,6 @@ client.on('guildMemberAdd', async (member) => {
   try {
     const channel = await member.guild.channels.fetch(channelId);
     if (!channel) return;
-
-    const webhook = await getOrCreateWebhook(channel);
-    if (!webhook) return;
 
     let inviteDetails = '不明、またはワンタイムリンク';
     let inviterUser = '判別不能';
@@ -162,15 +163,22 @@ client.on('guildMemberAdd', async (member) => {
       )
       .setTimestamp();
 
-    await webhook.send({
-      embeds: [embed],
-      username: 'SERVER ENTRY GATE',
-      avatarURL: 'https://i.imgur.com/wSTFkRM.png'
-    });
+    const webhook = await getOrCreateWebhook(channel);
+    if (webhook) {
+      // ⭕ Webhook権限があればカスタムWebhookとしてかっこよく送信
+      await webhook.send({
+        embeds: [embed],
+        username: 'SERVER ENTRY GATE',
+        avatarURL: 'https://i.imgur.com/wSTFkRM.png'
+      });
+    } else {
+      // ⚠️ Webhook権限がなければ、Botの通常メッセージとして埋め込みを安全にバックアップ送信
+      await channel.send({ embeds: [embed] });
+    }
   } catch (err) { console.error(err); }
 });
 
-// 📤 メンバー退出イベント（Webhook経由の完全埋め込み形式）
+// 📤 メンバー退出イベント（Webhook埋め込み形式 ＋ 通常メッセージバックアップ内蔵）
 client.on('guildMemberRemove', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
@@ -180,9 +188,6 @@ client.on('guildMemberRemove', async (member) => {
   try {
     const channel = await member.guild.channels.fetch(channelId);
     if (!channel) return;
-
-    const webhook = await getOrCreateWebhook(channel);
-    if (!webhook) return;
 
     const rawTemplate = config.leaveMessage || '**{user}** がサーバーから退出しました。';
     const finalDescription = rawTemplate.replace(/{user}/g, `<@${member.id}>`);
@@ -197,11 +202,16 @@ client.on('guildMemberRemove', async (member) => {
       )
       .setTimestamp();
 
-    await webhook.send({
-      embeds: [embed],
-      username: 'SERVER EXIT GATE',
-      avatarURL: 'https://i.imgur.com/E761vIs.png'
-    });
+    const webhook = await getOrCreateWebhook(channel);
+    if (webhook) {
+      await webhook.send({
+        embeds: [embed],
+        username: 'SERVER EXIT GATE',
+        avatarURL: 'https://i.imgur.com/E761vIs.png'
+      });
+    } else {
+      await channel.send({ embeds: [embed] });
+    }
   } catch (err) { console.error(err); }
 });
 
@@ -220,7 +230,7 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.customId === 'join_msg_modal') {
       const updatedJoin = interaction.fields.getTextInputValue('modal_join_text_input');
-      settings[interaction.guildId].logChannel = interaction.channelId;
+      settings[interaction.guildId].logChannel = interaction.channelId; // 現在のチャンネルを自動保存
       settings[interaction.guildId].joinMessage = updatedJoin;
       await client.saveSettings(settings);
 
@@ -232,7 +242,7 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.customId === 'leave_msg_modal') {
       const updatedLeave = interaction.fields.getTextInputValue('modal_leave_text_input');
-      settings[interaction.guildId].logChannel = interaction.channelId;
+      settings[interaction.guildId].logChannel = interaction.channelId; // 現在のチャンネルを自動保存
       settings[interaction.guildId].leaveMessage = updatedLeave;
       await client.saveSettings(settings);
 
@@ -244,7 +254,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// 💡 終了シグナル時のみ確実に動く「再起動前・予告通知」
+// 💡 本当に終了する直前のみ1回だけ飛ぶ「再起動前・予告通知」
 async function sendPreRebootNotification() {
   console.log('⚠️ 終了シグナルを受信しました。再起動前の事前通知を送信します...');
   const settings = localSettingsCache;
