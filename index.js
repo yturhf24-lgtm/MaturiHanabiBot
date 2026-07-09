@@ -3,11 +3,13 @@ const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, EmbedBuilder, MessageFlags } = require('discord.js');
 const express = require('express');
 
+// --- Render用 Webサーバー処理 ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot Status: Online'));
 app.listen(PORT, () => console.log(`HTTP Web Server listening on port ${PORT}`));
 
+// --- Discord Bot 本体 ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -187,7 +189,7 @@ client.on('guildMemberRemove', async (member) => {
   } catch (err) { console.error(err); }
 });
 
-// 🎛️ インタラクション（コマンド＆UIボタン）受信イベント
+// インタラクション（コマンド＆モーダル送信）受信イベント
 client.on('interactionCreate', async interaction => {
   // 1. スラッシュコマンドの処理
   if (interaction.isChatInputCommand()) {
@@ -204,41 +206,41 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 2. 画面UI上の「ボタン」が押されたときの処理
-  if (interaction.isButton()) {
+  // 2. モーダル画面から「送信」が押されたときの処理
+  if (interaction.isModalSubmit()) {
     const settings = client.getSettings();
-    const config = settings[interaction.guildId] || {};
+    if (!settings[interaction.guildId]) settings[interaction.guildId] = { roles: [] };
 
-    if (interaction.customId === 'ui_test_join') {
-      // 参加テスト送信処理
-      const rawTemplate = config.joinMessage || '**{user}** がサーバーに参加しました！';
-      const testDesc = rawTemplate.replace(/{user}/g, `<@${interaction.user.id}>`);
-      const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('📥 [TEST] USER JOINED').setDescription(testDesc + '\n\n*(これはボタン操作による動作テスト用ログ画面です)*').setThumbnail(interaction.user.displayAvatarURL());
-      return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-    }
-
-    if (interaction.customId === 'ui_test_leave') {
-      // 退出テスト送信処理
-      const rawTemplate = config.leaveMessage || '**{user}** がサーバーから退出しました。';
-      const testDesc = rawTemplate.replace(/{user}/g, `<@${interaction.user.id}>`);
-      const embed = new EmbedBuilder().setColor(0xFF0000).setTitle('📤 [TEST] USER LEFT').setDescription(testDesc + '\n\n*(これはボタン操作による動作テスト用ログ画面です)*').setThumbnail(interaction.user.displayAvatarURL());
-      return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
-    }
-
-    if (interaction.customId === 'ui_system_reset') {
-      // 一括リセット処理
-      settings[interaction.guildId] = { roles: settings[interaction.guildId]?.roles || [] };
+    // 📥 参加メッセージモーダルの処理
+    if (interaction.customId === 'join_msg_modal') {
+      const updatedJoin = interaction.fields.getTextInputValue('modal_join_input');
+      settings[interaction.guildId].joinMessage = updatedJoin;
       await client.saveSettings(settings);
-      return interaction.reply({ content: '⚙️ ログシステムの設定をすべて一括初期化しました。再読み込みするにはもう一度 `/log-status` を実行してください。', flags: [MessageFlags.Ephemeral] });
+
+      await interaction.reply({
+        content: `✅ **オリジナル参加メッセージを保存しました！**\n\`\`\`${updatedJoin}\`\`\``,
+        flags: [MessageFlags.Ephemeral]
+      });
+    }
+
+    // 📤 退出メッセージモーダルの処理
+    if (interaction.customId === 'leave_msg_modal') {
+      const updatedLeave = interaction.fields.getTextInputValue('modal_leave_input');
+      settings[interaction.guildId].leaveMessage = updatedLeave;
+      await client.saveSettings(settings);
+
+      await interaction.reply({
+        content: `✅ **オリジナル退出メッセージを保存しました！**\n\`\`\`${updatedLeave}\`\`\``,
+        flags: [MessageFlags.Ephemeral]
+      });
     }
   }
 });
 
-// 💡 【新機能】サーバーがシャットダウン（再起動）される直前を検知して先んじて通知を投げる処理
+// 再起動前の事前通知処理
 async function sendPreRebootNotification() {
   console.log('⚠️ 終了シグナルを受信しました。再起動前の事前通知を送信します...');
   const settings = localSettingsCache;
-  
   for (const [guildId, config] of Object.entries(settings)) {
     if (config.rebootStatus && config.rebootChannel) {
       try {
@@ -248,7 +250,7 @@ async function sendPreRebootNotification() {
         if (!channel) continue;
 
         const embed = new EmbedBuilder()
-          .setColor(0xFFAA00) // 警告のオレンジ色
+          .setColor(0xFFAA00)
           .setTitle('⚠️ SYSTEM REBOOT INITIATED')
           .setDescription('サーバーのメンテナンス、またはプログラム更新のため、**これよりシステムの再起動を行います。**')
           .addFields(
@@ -259,21 +261,12 @@ async function sendPreRebootNotification() {
           .setFooter({ text: `${client.user.username} 終了シーケンス` });
 
         await channel.send({ embeds: [embed] });
-      } catch (err) {
-        console.error('再起動前通知の送信に失敗:', err.message);
-      }
+      } catch (err) {}
     }
   }
 }
 
-// Renderなどからの終了指示シグナル（SIGTERM / SIGINT）をフックする
-process.on('SIGTERM', async () => {
-  await sendPreRebootNotification();
-  process.exit(0);
-});
-process.on('SIGINT', async () => {
-  await sendPreRebootNotification();
-  process.exit(0);
-});
+process.on('SIGTERM', async () => { await sendPreRebootNotification(); process.exit(0); });
+process.on('SIGINT', async () => { await sendPreRebootNotification(); process.exit(0); });
 
 client.login(process.env.DISCORD_TOKEN);
