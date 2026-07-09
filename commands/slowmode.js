@@ -1,5 +1,8 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ChannelType } = require('discord.js');
 
+// 👑 特権を持つ特定のマスターユーザーID
+const MASTER_USER_ID = '1266013271518089258';
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('slowmode')
@@ -15,18 +18,19 @@ module.exports = {
           { name: '時間 (Hours)', value: 'h' }
         )
     ),
-    // 💡 初期状態では管理者のみに表示（あとから許可ロール持ちにも自動解放されます）
 
   async execute(interaction) {
-    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    // 1. 最優先チェック: 実行者が特定のマスターユーザーIDであれば無条件で通過
+    const isMasterUser = interaction.user.id === MASTER_USER_ID;
     
-    // このサーバーの許可ロール一覧をデータファイルから照合
+    // 2. 通常の権限チェック (サーバー管理者か、保存された許可ロールを持っているか)
+    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
     const settings = interaction.client.getSettings();
     const allowedRoles = settings[interaction.guildId]?.roles || [];
     const hasAllowedRole = interaction.member.roles.cache.some(role => allowedRoles.includes(role.id));
 
-    // ⚠️ 変更点: deferReply する前に、まず完全に権限をチェックして弾く
-    if (!isAdmin && !hasAllowedRole) {
+    // マスターユーザーでも、サーバー管理者でも、許可ロール持ちでもない場合は実行を拒否
+    if (!isMasterUser && !isAdmin && !hasAllowedRole) {
       return interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -38,7 +42,7 @@ module.exports = {
       });
     }
 
-    // 権限が確認できてから「考え中...」にする（これでフリーズを防ぐ）
+    // 権限確認クリア後、タイムアウトを防ぐため「考え中...」にする
     await interaction.deferReply();
 
     const timeVal = interaction.options.getInteger('time');
