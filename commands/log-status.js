@@ -20,7 +20,7 @@ module.exports = {
       });
     }
 
-    // 💡 自分だけ表示（エフェメラル）で返信
+    // 💡 あなたにしか見えない「シークレット返信」
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const config = settings[interaction.guildId] || {};
@@ -33,7 +33,7 @@ module.exports = {
       .setTitle('📋 設定中のオリジナル文字確認')
       .setDescription(`📢 **現在のログ通知先チャンネル**: ${channelId ? `<#${channelId}>` : '` ❌ 未設定 `\n'}`)
       .addFields(
-        // 💡 参加と退出のオリジナル文字のみを、# を使って超巨大化させています
+        // 💡 参加・退出のオリジナルテキストだけを # を使って特大表示させています
         { name: '📥 【設定中の参加オリジナル文字】', value: `# ${joinMsg}`, inline: false },
         { name: '📤 【設定中の退出オリジナル文字】', value: `# ${leaveMsg}`, inline: false }
       )
