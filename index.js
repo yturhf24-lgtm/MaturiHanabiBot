@@ -3,13 +3,11 @@ const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, EmbedBuilder, MessageFlags } = require('discord.js');
 const express = require('express');
 
-// --- Render用 Webサーバー処理 ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot Status: Online'));
 app.listen(PORT, () => console.log(`HTTP Web Server listening on port ${PORT}`));
 
-// --- Discord Bot 本体 ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -32,7 +30,6 @@ async function loadSettingsFromGitHub() {
     return;
   }
   try {
-    console.log('GitHub APIから最新データを取得中...');
     const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${FILE_PATH}`;
     const response = await fetch(url, {
       headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}`, 'User-Agent': 'Render-Discord-Bot', 'Accept': 'application/vnd.github.v3+json' }
@@ -42,12 +39,10 @@ async function loadSettingsFromGitHub() {
       const content = Buffer.from(json.content, 'base64').toString('utf8');
       localSettingsCache = JSON.parse(content);
       fs.writeFileSync(DATA_FILE, JSON.stringify(localSettingsCache, null, 2));
-      console.log('GitHubからのデータ同期に成功しました！');
     } else if (response.status === 404) {
-      console.log('GitHub上に data.json がまだありません。初回コマンド実行時に自動生成されます。');
       localSettingsCache = {};
     }
-  } catch (err) { console.error('GitHubデータの読み込みエラー:', err.message); }
+  } catch (err) { console.error(err.message); }
 }
 
 client.getSettings = () => localSettingsCache;
@@ -67,7 +62,7 @@ client.saveSettings = async (data) => {
       headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}`, 'User-Agent': 'Render-Discord-Bot', 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: 'chore: update data.json via API [skip ci]', content: base64Content, sha: sha })
     });
-  } catch (err) { console.error('GitHubへの保存エラー:', err.message); }
+  } catch (err) { console.error(err.message); }
 };
 
 // コマンド読み込み
@@ -91,153 +86,166 @@ client.once('ready', async () => {
       invitesCache.set(guild.id, new Map(guildInvites.map(invite => [invite.code, invite.uses])));
     } catch (e) {}
   }
-
-  // 再起動完了通知（ON設定のサーバーのみ）
-  const settings = client.getSettings();
-  for (const [guildId, config] of Object.entries(settings)) {
-    if (config.rebootStatus && config.rebootChannel) {
-      try {
-        const guild = client.guilds.cache.get(guildId);
-        if (!guild) continue;
-        const channel = await guild.channels.fetch(config.rebootChannel);
-        if (!channel) continue;
-
-        const embed = new EmbedBuilder()
-          .setColor(0x00FFFF)
-          .setTitle('⚡ SYSTEM REBOOT COMPLETE')
-          .setDescription('Botのシステム再起動および同期処理が正常に完了しました。')
-          .addFields(
-            { name: '🟢 稼働ステータス', value: '` 正常稼働中 (ONLINE) `', inline: true },
-            { name: '⏰ 起動時刻', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
-          )
-          .setTimestamp()
-          .setFooter({ text: `${client.user.username} システムメインコア` });
-
-        await channel.send({ embeds: [embed] });
-      } catch (err) {}
-    }
-  }
+  // 💡 起動時の自動通知処理（バグの原因）を完全に撤去しました。
 });
 
-// 招待リンクイベント
+// 招待キャッシュ更新用
 client.on('inviteCreate', async (invite) => {
   const guildInvites = invitesCache.get(invite.guild.id) || new Map();
   guildInvites.set(invite.code, invite.uses);
   invitesCache.set(invite.guild.id, guildInvites);
 });
 
-// 📥 メンバー参加イベント
+// 💡 共通処理：Webhookを取得または作成する関数
+async function getOrCreateWebhook(channel) {
+  try {
+    const webhooks = await channel.fetchWebhooks();
+    let webhook = webhooks.find(wh => wh.owner.id === client.user.id);
+    if (!webhook) {
+      webhook = await channel.createWebhook({
+        name: 'SYSTEM LOG WEBHOOK',
+        avatar: client.user.displayAvatarURL(),
+        reason: '参加・退出ログ用自動生成WebHook'
+      });
+    }
+    return webhook;
+  } catch (err) {
+    console.error('Webhookの取得/作成に失敗:', err);
+    return null;
+  }
+}
+
+// 📥 メンバー参加イベント（Webhook & Embed）
 client.on('guildMemberAdd', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
   const channelId = config?.logChannel;
   if (!channelId) return;
+
   try {
     const channel = await member.guild.channels.fetch(channelId);
     if (!channel) return;
-    let usedInviteString = '不明、またはワンタイムリンク';
+
+    const webhook = await getOrCreateWebhook(channel);
+    if (!webhook) return;
+
+    let inviteDetails = '不明、またはワンタイムリンク';
+    let inviterUser = '判別不能';
+
     try {
       const newInvites = await member.guild.invites.fetch();
       const oldInvites = invitesCache.get(member.guild.id);
       const usedInvite = newInvites.find(inv => oldInvites && inv.uses > (oldInvites.get(inv.code) || 0));
-      if (usedInvite) usedInviteString = `https://discord.gg/${usedInvite.code} (作成者: <@${usedInvite.inviter.id}> | 使用数: ${usedInvite.uses}回)`;
+      if (usedInvite) {
+        inviteDetails = `https://discord.gg/${usedInvite.code} (使用数: ${usedInvite.uses}回)`;
+        inviterUser = `<@${usedInvite.inviter.id}> (${usedInvite.inviter.tag})`;
+      }
       invitesCache.set(member.guild.id, new Map(newInvites.map(invite => [invite.code, invite.uses])));
     } catch (e) {}
+
     const rawTemplate = config.joinMessage || '**{user}** がサーバーに参加しました！';
     const finalDescription = rawTemplate.replace(/{user}/g, `<@${member.id}>`);
     const createdAt = `<t:${Math.floor(member.user.createdTimestamp / 1000)}:F> (<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>)`;
+
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
-      .setTitle('📥 TARGET DETECTED: USER JOINED')
+      .setTitle('📥 プレイヤーが入室しました')
       .setDescription(finalDescription)
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .addFields(
-        { name: '👤 ユーザー情報', value: `${member.user.tag} (ID: ${member.id})`, inline: false },
+        { name: '👤 入ってきたプレイヤー', value: `<@${member.id}> (${member.user.tag})`, inline: true },
         { name: '📅 アカウント作成日', value: createdAt, inline: false },
-        { name: '🔗 使用された招待リンク', value: usedInviteString, inline: false },
-        { name: '📊 サーバー総人数', value: `現在のメンバー数: **${member.guild.memberCount}** 人`, inline: false }
+        { name: '👤 招待した人', value: inviterUser, inline: true },
+        { name: '🔗 使用された招待リンク', value: inviteDetails, inline: true }
       )
-      .setTimestamp()
-      .setFooter({ text: '👤 INTERFACE: USER_JOIN_MANAGER' });
-    await channel.send({ embeds: [embed] });
+      .setTimestamp();
+
+    // Webhook経由で送信
+    await webhook.send({
+      embeds: [embed],
+      username: 'SERVER ENTRY GATE',
+      avatarURL: 'https://i.imgur.com/wSTFkRM.png' // 必要に応じて自由な画像URLに変えてください
+    });
   } catch (err) { console.error(err); }
 });
 
-// 📤 メンバー退出イベント
+// 📤 メンバー退出イベント（Webhook & Embed）
 client.on('guildMemberRemove', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
   const channelId = config?.logChannel;
   if (!channelId) return;
+
   try {
     const channel = await member.guild.channels.fetch(channelId);
     if (!channel) return;
+
+    const webhook = await getOrCreateWebhook(channel);
+    if (!webhook) return;
+
     const rawTemplate = config.leaveMessage || '**{user}** がサーバーから退出しました。';
     const finalDescription = rawTemplate.replace(/{user}/g, `<@${member.id}>`);
+
     const embed = new EmbedBuilder()
       .setColor(0xFF0000)
-      .setTitle('📤 TARGET LOST: USER LEFT')
+      .setTitle('📤 プレイヤーが退室しました')
       .setDescription(finalDescription)
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
       .addFields(
-        { name: '👤 ユーザー情報', value: `${member.user.tag} (ID: ${member.id})`, inline: false },
-        { name: '📊 サーバー総人数', value: `現在のメンバー数: **${member.guild.memberCount}** 人`, inline: false }
+        { name: '👤 退出プレイヤー', value: `<@${member.id}> (${member.user.tag})`, inline: true }
       )
-      .setTimestamp()
-      .setFooter({ text: '👤 INTERFACE: USER_LEAVE_MANAGER' });
-    await channel.send({ embeds: [embed] });
+      .setTimestamp();
+
+    await webhook.send({
+      embeds: [embed],
+      username: 'SERVER EXIT GATE',
+      avatarURL: 'https://i.imgur.com/E761vIs.png'
+    });
   } catch (err) { console.error(err); }
 });
 
-// インタラクション（コマンド＆モーダル送信）受信イベント
+// インタラクション受信イベント
 client.on('interactionCreate', async interaction => {
-  // 1. スラッシュコマンドの処理
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-    try {
-      await command.execute(interaction);
-    } catch (error) {
-      console.error(error);
-      const errorEmbed = { description: 'コマンド実行時にエラーが発生しました。', color: 0xFF0000 };
-      if (interaction.replied || interaction.deferred) await interaction.followUp({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] });
-      else await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] });
-    }
+    try { await command.execute(interaction); } catch (error) { console.error(error); }
     return;
   }
 
-  // 2. モーダル画面から「送信」が押されたときの処理
   if (interaction.isModalSubmit()) {
     const settings = client.getSettings();
     if (!settings[interaction.guildId]) settings[interaction.guildId] = { roles: [] };
 
-    // 📥 参加メッセージモーダルの処理
+    // 📥 参加設定の保存（自動で現在位置のチャンネルを記録）
     if (interaction.customId === 'join_msg_modal') {
-      const updatedJoin = interaction.fields.getTextInputValue('modal_join_input');
+      const updatedJoin = interaction.fields.getTextInputValue('modal_join_text_input');
+      settings[interaction.guildId].logChannel = interaction.channelId; // コマンドを打ったチャンネルをそのまま登録
       settings[interaction.guildId].joinMessage = updatedJoin;
       await client.saveSettings(settings);
 
       await interaction.reply({
-        content: `✅ **オリジナル参加メッセージを保存しました！**\n\`\`\`${updatedJoin}\`\`\``,
+        content: `✅ **参加ログの設定を保存しました！**\n📺 **通知先**: <#${interaction.channelId}>\n📥 **オリジナル文字**:\n\`\`\`${updatedJoin}\`\`\``,
         flags: [MessageFlags.Ephemeral]
       });
     }
 
-    // 📤 退出メッセージモーダルの処理
+    // 📤 退出設定の保存（自動で現在位置のチャンネルを記録）
     if (interaction.customId === 'leave_msg_modal') {
-      const updatedLeave = interaction.fields.getTextInputValue('modal_leave_input');
+      const updatedLeave = interaction.fields.getTextInputValue('modal_leave_text_input');
+      settings[interaction.guildId].logChannel = interaction.channelId;
       settings[interaction.guildId].leaveMessage = updatedLeave;
       await client.saveSettings(settings);
 
       await interaction.reply({
-        content: `✅ **オリジナル退出メッセージを保存しました！**\n\`\`\`${updatedLeave}\`\`\``,
+        content: `✅ **退出ログの設定を保存しました！**\n📺 **通知先**: <#${interaction.channelId}>\n📤 **オリジナル文字**:\n\`\`\`${updatedLeave}\`\`\``,
         flags: [MessageFlags.Ephemeral]
       });
     }
   }
 });
 
-// 再起動前の事前通知処理
+// 本当の終了シグナル時のみ動作する「再起動前・予告通知」
 async function sendPreRebootNotification() {
   console.log('⚠️ 終了シグナルを受信しました。再起動前の事前通知を送信します...');
   const settings = localSettingsCache;
@@ -252,13 +260,12 @@ async function sendPreRebootNotification() {
         const embed = new EmbedBuilder()
           .setColor(0xFFAA00)
           .setTitle('⚠️ SYSTEM REBOOT INITIATED')
-          .setDescription('サーバーのメンテナンス、またはプログラム更新のため、**これよりシステムの再起動を行います。**')
+          .setDescription('プログラム更新のため、**これよりシステムの再起動を行います。**')
           .addFields(
-            { name: '🔴 現在のステータス', value: '` 再起動の準備中 (GO OFFLINE) `', inline: true },
-            { name: '⏱️ 予想復帰時間', value: '約 10秒 〜 30秒以内', inline: true }
+            { name: '🔴 ステータス', value: '` 再起動の準備中 (GO OFFLINE) `', inline: true },
+            { name: '⏱️ 復帰時間', value: '約 10秒 〜 30秒以内', inline: true }
           )
-          .setTimestamp()
-          .setFooter({ text: `${client.user.username} 終了シーケンス` });
+          .setTimestamp();
 
         await channel.send({ embeds: [embed] });
       } catch (err) {}
