@@ -3,26 +3,41 @@ const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('disc
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('list-roles')
-    .setDescription('現在登録されている許可ロールの一覧を表示します（管理者専用）')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .setDescription('【管理者専用】現在登録されているBotの操作許可ロール一覧を表示します'),
 
   async execute(interaction) {
-    const guildId = interaction.guildId;
-    const settings = interaction.client.getSettings();
-    const allowedRoles = settings[guildId]?.roles || [];
-
-    const embed = new EmbedBuilder()
-      .setColor(0x0099FF)
-      .setTitle('📋 許可ロール一覧')
-      .setTimestamp();
-
-    if (allowedRoles.length === 0) {
-      embed.setDescription('現在、登録されている許可ロールはありません。\n（現在はサーバー管理者のみがコマンドを実行できます）');
-    } else {
-      const roleMentions = allowedRoles.map(id => `・ <@&${id}> (ID: ${id})`).join('\n');
-      embed.setDescription(`以下のロールを持つメンバーは、管理者以外でも制限されたコマンドを実行できます：\n\n${roleMentions}`);
+    // 💡 サーバーの「管理者（Administrator）」権限を持っているか厳格にチェック
+    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('❌ 権限エラー')
+            .setDescription('このコマンドは管理者のみの設定です。')
+        ],
+        ephemeral: true
+      });
     }
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.deferReply();
+
+    const settings = interaction.client.getSettings();
+    const roles = settings[interaction.guildId]?.roles || [];
+
+    if (roles.length === 0) {
+      return interaction.editReply({
+        embeds: [new EmbedBuilder().setColor(0xFFFF00).setDescription('現在、このサーバーに登録されている許可ロールはありません。')]
+      });
+    }
+
+    const roleMentions = roles.map(id => `<@&${id}>`).join('\n');
+
+    const embed = new EmbedBuilder()
+      .setColor(0x00FFFF)
+      .setTitle('📋 許可ロール一覧')
+      .setDescription(`以下のロールを持つユーザーは、管理権限がなくてもBotの一部管理コマンドを実行できます。\n\n${roleMentions}`)
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
   },
 };
