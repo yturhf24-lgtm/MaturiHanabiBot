@@ -20,7 +20,7 @@ module.exports = {
       embed.setDescription('現在、登録されている許可ロールはありません。\n（現在はサーバー管理者のみがコマンドを実行できます）');
     } else {
       const roleMentions = allowedRoles.map(id => `・ <@&${id}> (ID: ${id})`).join('\n');
-      embed.setDescription(`以下のロールを持つメンバーは、管理者以外でも制限されたコマンド（/slowmode など）を実行できます：\n\n${roleMentions}`);
+      embed.setDescription(`以下のロールを持つメンバーは、管理者以外でも制限されたコマンドを実行できます：\n\n${roleMentions}`);
     }
 
     await interaction.reply({ embeds: [embed] });
