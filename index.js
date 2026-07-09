@@ -51,7 +51,8 @@ for (const file of commandFiles) {
   }
 }
 
-client.once('ready', () => {
+// ⚠️ 警告対応: 'ready' から 'clientReady' に修正して未来のバージョンに対応
+client.once('clientReady', () => {
   console.log(`Botがログインしました: ${client.user.tag}`);
 });
 
