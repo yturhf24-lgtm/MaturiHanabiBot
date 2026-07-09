@@ -18,12 +18,12 @@ const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('スラッシュコマンドをDiscordに登録中...');
+    console.log('【グローバル対応】スラッシュコマンドをDiscordに登録中...');
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands },
     );
-    console.log('すべてのスラッシュコマンドの登録が完了しました！');
+    console.log('すべてのサーバーへのコマンド登録が完了しました！');
   } catch (error) {
     console.error(error);
   }
