@@ -1,12 +1,12 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('list-roles')
-    .setDescription('【管理者専用】現在登録されているBotの操作許可ロール一覧を表示します'),
+    .setDescription('【管理者専用】現在登録されている許可ロール一覧を表示します（あなたにしか見えません）'),
 
   async execute(interaction) {
-    // 💡 サーバーの「管理者（Administrator）」権限を持っているか厳格にチェック
+    // 1. 権限チェック
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({
         embeds: [
@@ -15,11 +15,12 @@ module.exports = {
             .setTitle('❌ 権限エラー')
             .setDescription('このコマンドは管理者のみの設定です。')
         ],
-        ephemeral: true
+        flags: [MessageFlags.Ephemeral]
       });
     }
 
-    await interaction.deferReply();
+    // 💡 応答を「自分だけに見える状態」で準備する
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const settings = interaction.client.getSettings();
     const roles = settings[interaction.guildId]?.roles || [];
