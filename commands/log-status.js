@@ -20,7 +20,7 @@ module.exports = {
       });
     }
 
-    // 💡 自分だけ表示（シークレット）で返信
+    // 💡 自分だけ表示（エフェメラル）で返信
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const config = settings[interaction.guildId] || {};
@@ -30,12 +30,12 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0x00FFFF)
-      .setTitle('📋 CURRENT LOG SYSTEM STATUS')
-      .setDescription(`📢 **通知先チャンネル**: ${channelId ? `<#${channelId}>` : '` ❌ 未設定 `\n'}`)
+      .setTitle('📋 設定中のオリジナル文字確認')
+      .setDescription(`📢 **現在のログ通知先チャンネル**: ${channelId ? `<#${channelId}>` : '` ❌ 未設定 `\n'}`)
       .addFields(
-        // 💡 大きな文字（Markdownの見出し）で見やすく配置
-        { name: '# 📥 現在のオリジナル参加メッセージ', value: `## ${joinMsg}`, inline: false },
-        { name: '# 📤 現在のオリジナル退出メッセージ', value: `## ${leaveMsg}`, inline: false }
+        // 💡 参加と退出のオリジナル文字のみを、# を使って超巨大化させています
+        { name: '📥 【設定中の参加オリジナル文字】', value: `# ${joinMsg}`, inline: false },
+        { name: '📤 【設定中の退出オリジナル文字】', value: `# ${leaveMsg}`, inline: false }
       )
       .setTimestamp()
       .setFooter({ text: 'PRIVATE INTERFACE // YOU ONLY' });
