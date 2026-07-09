@@ -1,10 +1,10 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const MASTER_USER_ID = '1266013271518089258';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('log-status')
-    .setDescription('参加・退出ログ設定のコントロールパネルUIを表示します'),
+    .setDescription('現在のオリジナルメッセージやログ設定の画面UIを表示します'),
 
   async execute(interaction) {
     const isMasterUser = interaction.user.id === MASTER_USER_ID;
@@ -20,7 +20,8 @@ module.exports = {
       });
     }
 
-    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+    // 画面上に全員が見える形で表示させるため、普通にシグナル待機
+    await interaction.deferReply();
 
     const config = settings[interaction.guildId] || {};
     const channelId = config.logChannel;
@@ -31,33 +32,19 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0x2F3136)
-      .setTitle('⚙️ LOG SYSTEM CONTROL PANEL')
-      .setDescription('システム設定およびコンポーネントの操作画面です。下の物理ボタンから直接命令を下せます。')
+      .setTitle('🖥️ LOG SYSTEM INTERFACE PANEL')
+      .setDescription('現在のログサーバー稼働状況およびオリジナル文字の設定画面UIです。')
       .addFields(
         { name: '📺 メインログチャンネル', value: channelId ? `<#${channelId}>` : '` ❌ 未設定 (通知オフ) `', inline: true },
         { name: '🔄 再起動ログ通知設定', value: rebootChannelId ? `<#${rebootChannelId}> [${rebootStatus}]` : '` ❌ 未設定 `', inline: true },
-        { name: '📥 参加メッセージ構成案', value: `\`\`\`${joinMsg}\`\`\``, inline: false },
-        { name: '📤 退出メッセージ構成案', value: `\`\`\`${leaveMsg}\`\`\``, inline: false }
+        { name: '📥 設定中のオリジナル参加文字', value: `\`\`\`${joinMsg}\`\`\``, inline: false },
+        { name: '📤 設定中のオリジナル退出文字', value: `\`\`\`${leaveMsg}\`\`\``, inline: false },
+        { name: '📅 収集データ①: アカウント作成日', value: '` 🟢 自動解析有効 ` (Discord標準タイムスタンプ形式に自動変換して埋め込み出力)', inline: false },
+        { name: '🔗 収集データ②: 使用された招待リンク', value: '` 🟢 追跡システム有効 ` (作成者・URL・使用回数を自動特定して埋め込み出力)', inline: false }
       )
       .setTimestamp()
-      .setFooter({ text: 'DEVICE INTERFACE // SYSTEM CONTROL' });
+      .setFooter({ text: 'SYSTEM INTERFACE // DATA VISUALIZATION' });
 
-    const row = new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId('ui_test_join')
-          .setLabel('参加通知をテスト送信')
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId('ui_test_leave')
-          .setLabel('退出通知をテスト送信')
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId('ui_system_reset')
-          .setLabel('設定一括初期化')
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-    await interaction.editReply({ embeds: [embed], components: [row] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
