@@ -1,15 +1,15 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('add-role')
-    .setDescription('【管理者専用】Botの操作を許可するロールを追加します')
+    .setDescription('【管理者専用】Botの操作を許可するロールを追加します（結果はあなたにしか見えません）')
     .addRoleOption(option =>
       option.setName('role').setDescription('許可するロールを選択').setRequired(true)
     ),
 
   async execute(interaction) {
-    // 💡 サーバーの「管理者（Administrator）」権限を持っているか厳格にチェック
+    // 1. 権限チェック
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return interaction.reply({
         embeds: [
@@ -18,11 +18,12 @@ module.exports = {
             .setTitle('❌ 権限エラー')
             .setDescription('このコマンドは管理者のみの設定です。')
         ],
-        ephemeral: true // 実行した一般ユーザーにしか見えないエラー
+        flags: [MessageFlags.Ephemeral]
       });
     }
 
-    await interaction.deferReply();
+    // 💡 応答を「自分だけに見える状態」で準備する
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const role = interaction.options.getRole('role');
     const settings = interaction.client.getSettings();
@@ -38,7 +39,7 @@ module.exports = {
     }
 
     settings[interaction.guildId].roles.push(role.id);
-    interaction.client.saveSettings(settings);
+    await interaction.client.saveSettings(settings);
 
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
