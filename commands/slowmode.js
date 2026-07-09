@@ -17,30 +17,26 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    // 実行者がサーバー管理者かどうか
+    // タイムアウト（応答なし）を防ぐための最優先処理
+    await interaction.deferReply();
+
     const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
     
-    // 保存データからこのサーバーの許可ロール一覧を取得
+    // このサーバーの許可ロール一覧をデータファイルから照合
     const settings = interaction.client.getSettings();
     const allowedRoles = settings[interaction.guildId]?.roles || [];
-    
-    // 実行者が許可ロールを保持しているかチェック
     const hasAllowedRole = interaction.member.roles.cache.some(role => allowedRoles.includes(role.id));
 
-    // 管理者でもなく、許可ロールも持っていない場合は実行を拒否
     if (!isAdmin && !hasAllowedRole) {
-      return interaction.reply({
+      return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('権限エラー')
-            .setDescription('このコマンドを使用する権限がありません。（サーバー管理者または許可ロールが必要です）')
-        ],
-        ephemeral: true
+            .setDescription('このコマンドを使用する権限がありません。（サーバー管理者または登録された許可ロールが必要です）')
+        ]
       });
     }
-
-    await interaction.deferReply();
 
     const timeVal = interaction.options.getInteger('time');
     const unit = interaction.options.getString('unit');
@@ -53,33 +49,44 @@ module.exports = {
 
     if (seconds > 21600) {
       return interaction.editReply({
-        embeds: [new EmbedBuilder().setColor(0xFF0000).setTitle('エラー').setDescription('設定できる最大時間は6時間（21600秒）までです。')]
+        embeds: [new EmbedBuilder().setColor(0xFF0000).setTitle('エラー').setDescription('設定できる最大時間は6時間までです。')]
       });
     }
 
     let successCount = 0;
     let failCount = 0;
-    const channels = interaction.guild.channels.cache.filter(c => c.type === ChannelType.GuildText);
 
-    for (const [_, channel] of channels) {
-      try {
-        await channel.setRateLimitPerUser(seconds);
-        successCount++;
-      } catch (err) {
-        failCount++;
+    try {
+      // 複数サーバー対応：キャッシュではなく、コマンドを実行したサーバーの全チャンネルを最新状態として取得
+      const fetchedChannels = await interaction.guild.channels.fetch();
+      const textChannels = fetchedChannels.filter(c => c && c.type === ChannelType.GuildText);
+
+      for (const [_, channel] of textChannels) {
+        try {
+          await channel.setRateLimitPerUser(seconds);
+          successCount++;
+        } catch (err) {
+          failCount++;
+        }
       }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('🐢 低速モード設定完了')
+        .addFields(
+          { name: '設定した低速時間', value: `${timeVal} ${unitLabel} (${seconds}秒)`, inline: true },
+          { name: '対象チャンネル数', value: `成功: ${successCount} / 失敗: ${failCount}`, inline: true }
+        )
+        .setTimestamp()
+        .setFooter({ text: `実行者: ${interaction.user.tag}` });
+
+      await interaction.editReply({ embeds: [embed] });
+
+    } catch (error) {
+      console.error(error);
+      await interaction.editReply({
+        embeds: [new EmbedBuilder().setColor(0xFF0000).setDescription('チャンネル情報の同期中に予期せぬエラーが発生しました。')]
+      });
     }
-
-    const embed = new EmbedBuilder()
-      .setColor(0x00FF00)
-      .setTitle('🐢 低速モード設定完了')
-      .addFields(
-        { name: '設定した低速時間', value: `${timeVal} ${unitLabel} (${seconds}秒)`, inline: true },
-        { name: '対象チャンネル数', value: `成功: ${successCount} / 失敗: ${failCount}`, inline: true }
-      )
-      .setTimestamp()
-      .setFooter({ text: `実行者: ${interaction.user.tag}` });
-
-    await interaction.editReply({ embeds: [embed] });
   },
 };
