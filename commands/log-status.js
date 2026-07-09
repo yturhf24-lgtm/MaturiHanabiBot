@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const MASTER_USER_ID = '1266013271518089258';
 
 module.exports = {
@@ -20,7 +20,6 @@ module.exports = {
       });
     }
 
-    // パネル操作は実行者以外に見せないため、自分だけ表示（エフェメラル）で展開
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const config = settings[interaction.guildId] || {};
@@ -30,7 +29,6 @@ module.exports = {
     const rebootChannelId = config.rebootChannel;
     const rebootStatus = config.rebootStatus ? '🟢 ON' : '🔴 OFF';
 
-    // 🖥️ メインUIの埋め込み画面
     const embed = new EmbedBuilder()
       .setColor(0x2F3136)
       .setTitle('⚙️ LOG SYSTEM CONTROL PANEL')
@@ -44,7 +42,6 @@ module.exports = {
       .setTimestamp()
       .setFooter({ text: 'DEVICE INTERFACE // SYSTEM CONTROL' });
 
-    // 🎛️ 画面上のコンポーネント（ボタンUI）を構築
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
