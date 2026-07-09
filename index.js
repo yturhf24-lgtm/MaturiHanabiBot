@@ -3,11 +3,13 @@ const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, EmbedBuilder, MessageFlags } = require('discord.js');
 const express = require('express');
 
+// --- Render用 Webサーバー処理 ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot Status: Online'));
 app.listen(PORT, () => console.log(`HTTP Web Server listening on port ${PORT}`));
 
+// --- Discord Bot 本体 ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -75,8 +77,8 @@ for (const file of commandFiles) {
   if ('data' in command && 'execute' in command) client.commands.set(command.data.name, command);
 }
 
-// 🚀 起動完了イベント
-client.once('ready', async () => {
+// 🚀 起動完了イベント (Deprecation警告対策済み)
+client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Botがログインしました: ${client.user.tag}`);
 
@@ -86,7 +88,7 @@ client.once('ready', async () => {
       invitesCache.set(guild.id, new Map(guildInvites.map(invite => [invite.code, invite.uses])));
     } catch (e) {}
   }
-  // 💡 起動時の自動通知処理（バグの原因）を完全に撤去しました。
+  // 💡 スパムのバグ原因だった起動時自動通知の処理は、完全に撤去しました。
 });
 
 // 招待キャッシュ更新用
@@ -96,7 +98,7 @@ client.on('inviteCreate', async (invite) => {
   invitesCache.set(invite.guild.id, guildInvites);
 });
 
-// 💡 共通処理：Webhookを取得または作成する関数
+// 💡 Webhookを取得または自動生成する関数
 async function getOrCreateWebhook(channel) {
   try {
     const webhooks = await channel.fetchWebhooks();
@@ -110,12 +112,12 @@ async function getOrCreateWebhook(channel) {
     }
     return webhook;
   } catch (err) {
-    console.error('Webhookの取得/作成に失敗:', err);
+    console.error('Webhookの取得/作成に失敗しました:', err);
     return null;
   }
 }
 
-// 📥 メンバー参加イベント（Webhook & Embed）
+// 📥 メンバー参加イベント（Webhook経由の完全埋め込み形式）
 client.on('guildMemberAdd', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
@@ -160,16 +162,15 @@ client.on('guildMemberAdd', async (member) => {
       )
       .setTimestamp();
 
-    // Webhook経由で送信
     await webhook.send({
       embeds: [embed],
       username: 'SERVER ENTRY GATE',
-      avatarURL: 'https://i.imgur.com/wSTFkRM.png' // 必要に応じて自由な画像URLに変えてください
+      avatarURL: 'https://i.imgur.com/wSTFkRM.png'
     });
   } catch (err) { console.error(err); }
 });
 
-// 📤 メンバー退出イベント（Webhook & Embed）
+// 📤 メンバー退出イベント（Webhook経由の完全埋め込み形式）
 client.on('guildMemberRemove', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
@@ -204,7 +205,7 @@ client.on('guildMemberRemove', async (member) => {
   } catch (err) { console.error(err); }
 });
 
-// インタラクション受信イベント
+// インタラクション受信
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -217,10 +218,9 @@ client.on('interactionCreate', async interaction => {
     const settings = client.getSettings();
     if (!settings[interaction.guildId]) settings[interaction.guildId] = { roles: [] };
 
-    // 📥 参加設定の保存（自動で現在位置のチャンネルを記録）
     if (interaction.customId === 'join_msg_modal') {
       const updatedJoin = interaction.fields.getTextInputValue('modal_join_text_input');
-      settings[interaction.guildId].logChannel = interaction.channelId; // コマンドを打ったチャンネルをそのまま登録
+      settings[interaction.guildId].logChannel = interaction.channelId;
       settings[interaction.guildId].joinMessage = updatedJoin;
       await client.saveSettings(settings);
 
@@ -230,7 +230,6 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-    // 📤 退出設定の保存（自動で現在位置のチャンネルを記録）
     if (interaction.customId === 'leave_msg_modal') {
       const updatedLeave = interaction.fields.getTextInputValue('modal_leave_text_input');
       settings[interaction.guildId].logChannel = interaction.channelId;
@@ -245,7 +244,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// 本当の終了シグナル時のみ動作する「再起動前・予告通知」
+// 💡 終了シグナル時のみ確実に動く「再起動前・予告通知」
 async function sendPreRebootNotification() {
   console.log('⚠️ 終了シグナルを受信しました。再起動前の事前通知を送信します...');
   const settings = localSettingsCache;
