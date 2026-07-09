@@ -1,15 +1,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, EmbedBuilder, MessageFlags } = require('discord.js');
 const express = require('express');
 
-// --- Render用 Webサーバー処理 ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot Status: Online'));
 app.listen(PORT, () => console.log(`HTTP Web Server listening on port ${PORT}`));
 
-// --- Discord Bot 本体 ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -19,8 +17,6 @@ const client = new Client({
 });
 
 const invitesCache = new Map();
-
-// --- GitHub API 経由のデータ管理設定 ---
 const DATA_FILE = path.join(__dirname, 'data.json');
 const GITHUB_OWNER = 'yturhf24-lgtm';
 const GITHUB_REPO = 'MaturiHanabiBot';
@@ -37,11 +33,7 @@ async function loadSettingsFromGitHub() {
     console.log('GitHub APIから最新データを取得中...');
     const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${FILE_PATH}`;
     const response = await fetch(url, {
-      headers: {
-        'Authorization': `token ${process.env.GITHUB_TOKEN}`,
-        'User-Agent': 'Render-Discord-Bot',
-        'Accept': 'application/vnd.github.v3+json'
-      }
+      headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}`, 'User-Agent': 'Render-Discord-Bot', 'Accept': 'application/vnd.github.v3+json' }
     });
     if (response.ok) {
       const json = await response.json();
@@ -53,9 +45,7 @@ async function loadSettingsFromGitHub() {
       console.log('GitHub上に data.json がまだありません。初回コマンド実行時に自動生成されます。');
       localSettingsCache = {};
     }
-  } catch (err) {
-    console.error('GitHubデータの読み込みエラー:', err.message);
-  }
+  } catch (err) { console.error('GitHubデータの読み込みエラー:', err.message); }
 }
 
 client.getSettings = () => localSettingsCache;
@@ -78,7 +68,7 @@ client.saveSettings = async (data) => {
   } catch (err) { console.error('GitHubへの保存エラー:', err.message); }
 };
 
-// --- コマンド自動読み込み ---
+// コマンド読み込み
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -90,21 +80,17 @@ for (const file of commandFiles) {
 
 // 🚀 起動完了イベント
 client.once('ready', async () => {
-  // 1. まずデータを同期する
   await loadSettingsFromGitHub();
   console.log(`Botがログインしました: ${client.user.tag}`);
 
-  // 2. 各サーバーの招待リンクをキャッシュ
   for (const [_, guild] of client.guilds.cache) {
     try {
       const guildInvites = await guild.invites.fetch();
       invitesCache.set(guild.id, new Map(guildInvites.map(invite => [invite.code, invite.uses])));
-    } catch (err) {
-      console.log(`サーバー [${guild.name}] の招待リンク取得をスキップしました(権限不足等)`);
-    }
+    } catch (e) {}
   }
 
-  // 💡 【新機能】データ復元後、再起動通知（ON設定のサーバーのみ）を一斉送信
+  // 再起動完了通知（ON設定のサーバーのみ）
   const settings = client.getSettings();
   for (const [guildId, config] of Object.entries(settings)) {
     if (config.rebootStatus && config.rebootChannel) {
@@ -115,7 +101,7 @@ client.once('ready', async () => {
         if (!channel) continue;
 
         const embed = new EmbedBuilder()
-          .setColor(0x00FFFF) // 水色
+          .setColor(0x00FFFF)
           .setTitle('⚡ SYSTEM REBOOT COMPLETE')
           .setDescription('Botのシステム再起動および同期処理が正常に完了しました。')
           .addFields(
@@ -126,10 +112,7 @@ client.once('ready', async () => {
           .setFooter({ text: `${client.user.username} システムメインコア` });
 
         await channel.send({ embeds: [embed] });
-        console.log(`サーバー [${guild.name}] へ再起動通知を送信しました。`);
-      } catch (err) {
-        console.error(`再起動通知送信エラー (${guildId}):`, err.message);
-      }
+      } catch (err) {}
     }
   }
 });
@@ -204,19 +187,93 @@ client.on('guildMemberRemove', async (member) => {
   } catch (err) { console.error(err); }
 });
 
-// スラッシュコマンド実行イベント
+// 🎛️ インタラクション（コマンド＆UIボタン）受信イベント
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    const errorEmbed = { description: 'コマンド実行時にエラーが発生しました。', color: 0xFF0000 };
-    if (interaction.replied || interaction.deferred) await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
-    else await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+  // 1. スラッシュコマンドの処理
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+    try {
+      await command.execute(interaction);
+    } catch (error) {
+      console.error(error);
+      const errorEmbed = { description: 'コマンド実行時にエラーが発生しました。', color: 0xFF0000 };
+      if (interaction.replied || interaction.deferred) await interaction.followUp({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] });
+      else await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] });
+    }
+    return;
   }
+
+  // 2. 画面UI上の「ボタン」が押されたときの処理
+  if (interaction.isButton()) {
+    const settings = client.getSettings();
+    const config = settings[interaction.guildId] || {};
+
+    if (interaction.customId === 'ui_test_join') {
+      // 参加テスト送信処理
+      const rawTemplate = config.joinMessage || '**{user}** がサーバーに参加しました！';
+      const testDesc = rawTemplate.replace(/{user}/g, `<@${interaction.user.id}>`);
+      const embed = new EmbedBuilder().setColor(0x00FF00).setTitle('📥 [TEST] USER JOINED').setDescription(testDesc + '\n\n*(これはボタン操作による動作テスト用ログ画面です)*').setThumbnail(interaction.user.displayAvatarURL());
+      return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+    }
+
+    if (interaction.customId === 'ui_test_leave') {
+      // 退出テスト送信処理
+      const rawTemplate = config.leaveMessage || '**{user}** がサーバーから退出しました。';
+      const testDesc = rawTemplate.replace(/{user}/g, `<@${interaction.user.id}>`);
+      const embed = new EmbedBuilder().setColor(0xFF0000).setTitle('📤 [TEST] USER LEFT').setDescription(testDesc + '\n\n*(これはボタン操作による動作テスト用ログ画面です)*').setThumbnail(interaction.user.displayAvatarURL());
+      return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+    }
+
+    if (interaction.customId === 'ui_system_reset') {
+      // 一括リセット処理
+      settings[interaction.guildId] = { roles: settings[interaction.guildId]?.roles || [] };
+      await client.saveSettings(settings);
+      return interaction.reply({ content: '⚙️ ログシステムの設定をすべて一括初期化しました。再読み込みするにはもう一度 `/log-status` を実行してください。', flags: [MessageFlags.Ephemeral] });
+    }
+  }
+});
+
+// 💡 【新機能】サーバーがシャットダウン（再起動）される直前を検知して先んじて通知を投げる処理
+async function sendPreRebootNotification() {
+  console.log('⚠️ 終了シグナルを受信しました。再起動前の事前通知を送信します...');
+  const settings = localSettingsCache;
+  
+  for (const [guildId, config] of Object.entries(settings)) {
+    if (config.rebootStatus && config.rebootChannel) {
+      try {
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) continue;
+        const channel = await guild.channels.fetch(config.rebootChannel);
+        if (!channel) continue;
+
+        const embed = new EmbedBuilder()
+          .setColor(0xFFAA00) // 警告のオレンジ色
+          .setTitle('⚠️ SYSTEM REBOOT INITIATED')
+          .setDescription('サーバーのメンテナンス、またはプログラム更新のため、**これよりシステムの再起動を行います。**')
+          .addFields(
+            { name: '🔴 現在のステータス', value: '` 再起動の準備中 (GO OFFLINE) `', inline: true },
+            { name: '⏱️ 予想復帰時間', value: '約 10秒 〜 30秒以内', inline: true }
+          )
+          .setTimestamp()
+          .setFooter({ text: `${client.user.username} 終了シーケンス` });
+
+        await channel.send({ embeds: [embed] });
+      } catch (err) {
+        console.error('再起動前通知の送信に失敗:', err.message);
+      }
+    }
+  }
+}
+
+// Renderなどからの終了指示シグナル（SIGTERM / SIGINT）をフックする
+process.on('SIGTERM', async () => {
+  await sendPreRebootNotification();
+  process.exit(0);
+});
+process.on('SIGINT', async () => {
+  await sendPreRebootNotification();
+  process.exit(0);
 });
 
 client.login(process.env.DISCORD_TOKEN);
