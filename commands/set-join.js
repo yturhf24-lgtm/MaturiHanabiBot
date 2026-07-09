@@ -4,7 +4,7 @@ const MASTER_USER_ID = '1266013271518089258';
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('set-join')
-    .setDescription('参加メッセージを編集するポップアップ画面UIを開きます'),
+    .setDescription('参加ログの通知チャンネルとオリジナル文字を編集する画面UIを開きます'),
 
   async execute(interaction) {
     const isMasterUser = interaction.user.id === MASTER_USER_ID;
@@ -21,20 +21,35 @@ module.exports = {
     }
 
     const config = settings[interaction.guildId] || {};
+    const currentChannelId = config.logChannel || ''; // 現在設定されているチャンネルID
     const currentJoinMsg = config.joinMessage || '**{user}** がサーバーに参加しました！';
 
     const modal = new ModalBuilder()
       .setCustomId('join_msg_modal')
-      .setTitle('📥 参加メッセージの編集UI');
+      .setTitle('📥 参加ログの設定UI');
 
+    // 💡 項目①：チャンネルID入力欄
+    const channelInput = new TextInputBuilder()
+      .setCustomId('modal_join_channel_input')
+      .setLabel('通知を飛ばすチャンネルのIDを入力してください')
+      .setStyle(TextInputStyle.Short)
+      .setValue(currentChannelId)
+      .setPlaceholder('例: 123456789012345678')
+      .setRequired(true);
+
+    // 💡 項目②：メッセージテンプレート入力欄
     const joinInput = new TextInputBuilder()
-      .setCustomId('modal_join_input')
+      .setCustomId('modal_join_text_input')
       .setLabel('参加テンプレートを入力 ({user}でメンション)')
       .setStyle(TextInputStyle.Paragraph)
       .setValue(currentJoinMsg)
       .setRequired(true);
 
-    modal.addComponents(new ActionRowBuilder().addComponents(joinInput));
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(channelInput),
+      new ActionRowBuilder().addComponents(joinInput)
+    );
+    
     await interaction.showModal(modal);
   },
 };
