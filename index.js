@@ -2,7 +2,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const express = require('express');
-const { execSync } = require('node:child_process'); // 💡 Git操作用のモジュール
 
 // --- Render用 Webサーバー処理 ---
 const app = express();
@@ -18,50 +17,106 @@ const client = new Client({
   ]
 });
 
-// --- GitHub自動同期対応データ保存ヘルパー ---
+// --- GitHub API 経由のデータ管理設定 ---
 const DATA_FILE = path.join(__dirname, 'data.json');
+// 💡 ご自身のリポジトリ情報に書き換えるか、Renderの環境変数に登録してください
+const GITHUB_OWNER = 'yturhf24-lgtm'; // リポジトリの所有者名
+const GITHUB_REPO = 'MaturiHanabiBot';  // リポジトリ名
+const FILE_PATH = 'data.json';
 
-// 起動時に最新のデータをGitHubから強制プル(同期)する
-try {
-  console.log('GitHubから最新のデータを同期中...');
-  execSync('git config --global user.name "RenderBot"');
-  execSync('git config --global user.email "bot@render.com"');
-  execSync('git pull origin main'); 
-  console.log('データの同期が完了しました。');
-} catch (e) {
-  console.log('初期同期スキップ、またはエラー:', e.message);
+// メモリ上に最新データをキャッシュするための変数
+let localSettingsCache = {};
+
+// 🌟 GitHubからデータを引っ張ってくる関数
+async function loadSettingsFromGitHub() {
+  if (!process.env.GITHUB_TOKEN) {
+    console.log('警告: GITHUB_TOKEN がないため、ローカルファイルを使用します。');
+    if (fs.existsSync(DATA_FILE)) {
+      localSettingsCache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    }
+    return;
+  }
+
+  try {
+    console.log('GitHub APIから最新データを取得中...');
+    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${FILE_PATH}`;
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+        'User-Agent': 'Render-Discord-Bot',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (response.ok) {
+      const json = await response.json();
+      // GitHubはファイルをBase64でエンコードして返すのでデコードする
+      const content = Buffer.from(json.content, 'base64').toString('utf8');
+      localSettingsCache = JSON.parse(content);
+      fs.writeFileSync(DATA_FILE, JSON.stringify(localSettingsCache, null, 2));
+      console.log('GitHubからのデータ同期に成功しました！');
+    } else if (response.status === 404) {
+      console.log('GitHub上に data.json が存在しないため、新しく作成します。');
+      localSettingsCache = {};
+    } else {
+      console.log(`GitHubの取得に失敗 (ステータス: ${response.status})。ローカルを使用します。`);
+    }
+  } catch (err) {
+    console.error('GitHubデータの読み込みエラー:', err.message);
+  }
 }
 
 client.getSettings = () => {
-  if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({}));
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) { return {}; }
+  return localSettingsCache;
 };
 
-// 💡 データを書き込んだら、即座にGitHubへ自動送信する関数
-client.saveSettings = (data) => {
+// 🌟 データを書き換えたら、GitHub APIで直接上書き保存（コミット）する関数
+client.saveSettings = async (data) => {
+  localSettingsCache = data;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  
-  // GitHubへの自動保存処理 (Render環境のトークンを使用)
-  if (process.env.GITHUB_TOKEN) {
-    try {
-      console.log('GitHubへ設定を自動保存中...');
-      // 認証情報付きのURLを再設定
-      const repoUrl = execSync('git remote get-url origin').toString().trim();
-      if (!repoUrl.includes('x-access-token')) {
-        const authenticatedUrl = repoUrl.replace('https://github.com/', `https://x-access-token:${process.env.GITHUB_TOKEN}@github.com/`);
-        execSync(`git remote set-url origin ${authenticatedUrl}`);
+
+  if (!process.env.GITHUB_TOKEN) return;
+
+  try {
+    console.log('GitHub APIを使って保存中...');
+    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${FILE_PATH}`;
+    
+    // 現在のファイルのSHA（上書きに必要なID）を取得する
+    let sha = null;
+    const getRes = await fetch(url, {
+      headers: {
+        'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+        'User-Agent': 'Render-Discord-Bot'
       }
-      
-      // コミットしてプッシュ
-      execSync('git add data.json');
-      execSync('git commit -m "chore: update data.json [skip ci]" || true'); // 変更がない場合はスルー
-      execSync('git push origin main');
-      console.log('GitHubへの保存が成功しました！');
-    } catch (gitError) {
-      console.error('GitHub自動保存エラー:', gitError.message);
+    });
+    if (getRes.ok) {
+      const getJson = await getRes.json();
+      sha = getJson.sha;
     }
-  } else {
-    console.log('警告: GITHUB_TOKEN が環境変数に設定されていないため、データは次回再起動時にリセットされます。');
+
+    // 新しいデータをBase64に変換して送信
+    const base64Content = Buffer.from(JSON.stringify(data, null, 2)).toString('base64');
+    const putRes = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${process.env.GITHUB_TOKEN}`,
+        'User-Agent': 'Render-Discord-Bot',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'chore: update data.json via API [skip ci]',
+        content: base64Content,
+        sha: sha // 新規作成時はnull、上書き時は取得したsha
+      })
+    });
+
+    if (putRes.ok) {
+      console.log('GitHub APIへのデータ保存が完全完了しました！');
+    } else {
+      console.error(`GitHubへの保存に失敗 (ステータス: ${putRes.status})`);
+    }
+  } catch (err) {
+    console.error('GitHubへの保存中にエラーが発生しました:', err.message);
   }
 };
 
@@ -78,7 +133,9 @@ for (const file of commandFiles) {
   }
 }
 
-client.once('clientReady', () => {
+// 起動時にデータを1回同期
+client.once('clientReady', async () => {
+  await loadSettingsFromGitHub();
   console.log(`Botがログインしました: ${client.user.tag}`);
 });
 
