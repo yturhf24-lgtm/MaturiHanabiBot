@@ -4,6 +4,9 @@
       "1521768644223438999"
     ],
     "rebootChannel": "1521770308871389235",
-    "rebootStatus": true
+    "rebootStatus": true,
+    "logChannel": "1521770308871389235",
+    "joinMessage": "**{user}** がサーバーに参加しました！",
+    "leaveMessage": "**{user}** がサーバーから退出しました。"
   }
 }
