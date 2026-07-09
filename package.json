@@ -1,20 +1,14 @@
 {
-  "name": "discord-bot",
-  "version": "1.0.0",
-  "description": "Discord Slash Command Bot",
+  "name": "discord-lgtm-bot",
+  "version": "1.1.0",
+  "description": "Render Hosted Discord Bot with Role Management",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js",
-    "deploy": "node deploy-commands.js"
-  },
-  "engines": {
-    "node": ">=22.0.0"
+    "register": "node deploy-commands.js"
   },
   "dependencies": {
-    "discord.js": "^14.21.0",
-    "dotenv": "^16.6.1",
-    "glob": "^11.0.3"
+    "discord.js": "^14.14.1",
+    "express": "^4.18.2"
   }
 }
