@@ -4,9 +4,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('remove-role')
     .setDescription('許可リストから特定のロールを削除します（管理者専用）')
-    .addRoleOption(option =>
-      option.setName('role').setDescription('削除するロールを選択').setRequired(true)
-    )
+    .addRoleOption(option => option.setName('role').setDescription('削除するロールを選択').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
@@ -17,7 +15,7 @@ module.exports = {
     
     if (!settings[guildId] || !settings[guildId].roles.includes(role.id)) {
       return interaction.reply({
-        embeds: [new EmbedBuilder().setColor(0xFF0000).setDescription(`ロール <@&${role.id}> は許可リストに登録されていません。`)],
+        embeds: [new Builder().setColor(0xFF0000).setDescription(`ロール <@&${role.id}> は登録されていません。`)],
         ephemeral: true
       });
     }
@@ -28,7 +26,7 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setTitle('❌ 許可ロール削除')
-      .setDescription(`ロール <@&${role.id}> を許可リストから削除し、保存しました。`)
+      .setDescription(`ロール <@&${role.id}> をこのサーバーの許可リストから削除しました。`)
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
