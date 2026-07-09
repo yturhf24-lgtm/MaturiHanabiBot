@@ -14,11 +14,10 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildInvites // 💡 招待リンクを追跡するために必須のインテント
+    GatewayIntentBits.GuildInvites
   ]
 });
 
-// 招待リンクのキャッシュ保持用
 const invitesCache = new Map();
 
 // --- GitHub API 経由のデータ管理設定 ---
@@ -91,10 +90,11 @@ for (const file of commandFiles) {
 
 // 🚀 起動完了イベント
 client.once('ready', async () => {
+  // 1. まずデータを同期する
   await loadSettingsFromGitHub();
   console.log(`Botがログインしました: ${client.user.tag}`);
 
-  // 起動時に全サーバーの招待リンクの初期状態をキャッシュに記憶する
+  // 2. 各サーバーの招待リンクをキャッシュ
   for (const [_, guild] of client.guilds.cache) {
     try {
       const guildInvites = await guild.invites.fetch();
@@ -103,49 +103,64 @@ client.once('ready', async () => {
       console.log(`サーバー [${guild.name}] の招待リンク取得をスキップしました(権限不足等)`);
     }
   }
+
+  // 💡 【新機能】データ復元後、再起動通知（ON設定のサーバーのみ）を一斉送信
+  const settings = client.getSettings();
+  for (const [guildId, config] of Object.entries(settings)) {
+    if (config.rebootStatus && config.rebootChannel) {
+      try {
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) continue;
+        const channel = await guild.channels.fetch(config.rebootChannel);
+        if (!channel) continue;
+
+        const embed = new EmbedBuilder()
+          .setColor(0x00FFFF) // 水色
+          .setTitle('⚡ SYSTEM REBOOT COMPLETE')
+          .setDescription('Botのシステム再起動および同期処理が正常に完了しました。')
+          .addFields(
+            { name: '🟢 稼働ステータス', value: '` 正常稼働中 (ONLINE) `', inline: true },
+            { name: '⏰ 起動時刻', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
+          )
+          .setTimestamp()
+          .setFooter({ text: `${client.user.username} システムメインコア` });
+
+        await channel.send({ embeds: [embed] });
+        console.log(`サーバー [${guild.name}] へ再起動通知を送信しました。`);
+      } catch (err) {
+        console.error(`再起動通知送信エラー (${guildId}):`, err.message);
+      }
+    }
+  }
 });
 
-// 招待リンクが作られた/消されたときにキャッシュを自動更新
+// 招待リンクイベント
 client.on('inviteCreate', async (invite) => {
   const guildInvites = invitesCache.get(invite.guild.id) || new Map();
   guildInvites.set(invite.code, invite.uses);
   invitesCache.set(invite.guild.id, guildInvites);
 });
 
-// --- 📥 メンバー参加イベント ---
+// 📥 メンバー参加イベント
 client.on('guildMemberAdd', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
   const channelId = config?.logChannel;
   if (!channelId) return;
-
   try {
     const channel = await member.guild.channels.fetch(channelId);
     if (!channel) return;
-
-    // どの招待リンクが使われたか特定する処理
     let usedInviteString = '不明、またはワンタイムリンク';
     try {
       const newInvites = await member.guild.invites.fetch();
       const oldInvites = invitesCache.get(member.guild.id);
-      
       const usedInvite = newInvites.find(inv => oldInvites && inv.uses > (oldInvites.get(inv.code) || 0));
-      if (usedInvite) {
-        usedInviteString = `https://discord.gg/${usedInvite.code} (作成者: <@${usedInvite.inviter.id}> | 使用数: ${usedInvite.uses}回)`;
-      }
-      // キャッシュを最新に更新
+      if (usedInvite) usedInviteString = `https://discord.gg/${usedInvite.code} (作成者: <@${usedInvite.inviter.id}> | 使用数: ${usedInvite.uses}回)`;
       invitesCache.set(member.guild.id, new Map(newInvites.map(invite => [invite.code, invite.uses])));
-    } catch (e) {
-      console.log('招待リンクの特定に失敗しました。');
-    }
-
-    // メッセージのカスタム置換
+    } catch (e) {}
     const rawTemplate = config.joinMessage || '**{user}** がサーバーに参加しました！';
     const finalDescription = rawTemplate.replace(/{user}/g, `<@${member.id}>`);
-
-    // アカウント作成日を読みやすい表記に
     const createdAt = `<t:${Math.floor(member.user.createdTimestamp / 1000)}:F> (<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>)`;
-
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
       .setTitle('📥 TARGET DETECTED: USER JOINED')
@@ -159,27 +174,21 @@ client.on('guildMemberAdd', async (member) => {
       )
       .setTimestamp()
       .setFooter({ text: '👤 INTERFACE: USER_JOIN_MANAGER' });
-
     await channel.send({ embeds: [embed] });
-  } catch (err) {
-    console.error(err);
-  }
+  } catch (err) { console.error(err); }
 });
 
-// --- 📤 メンバー退出イベント ---
+// 📤 メンバー退出イベント
 client.on('guildMemberRemove', async (member) => {
   const settings = client.getSettings();
   const config = settings[member.guild.id];
   const channelId = config?.logChannel;
   if (!channelId) return;
-
   try {
     const channel = await member.guild.channels.fetch(channelId);
     if (!channel) return;
-
     const rawTemplate = config.leaveMessage || '**{user}** がサーバーから退出しました。';
     const finalDescription = rawTemplate.replace(/{user}/g, `<@${member.id}>`);
-
     const embed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setTitle('📤 TARGET LOST: USER LEFT')
@@ -191,14 +200,11 @@ client.on('guildMemberRemove', async (member) => {
       )
       .setTimestamp()
       .setFooter({ text: '👤 INTERFACE: USER_LEAVE_MANAGER' });
-
     await channel.send({ embeds: [embed] });
-  } catch (err) {
-    console.error(err);
-  }
+  } catch (err) { console.error(err); }
 });
 
-// --- スラッシュコマンド実行イベント ---
+// スラッシュコマンド実行イベント
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   const command = client.commands.get(interaction.commandName);
