@@ -8,5 +8,10 @@
     "rebootStatus": true,
     "logChannel": "1521770308871389235",
     "joinMessage": "ええ？？"
+  },
+  "1523238859670819007": {
+    "roles": [],
+    "vLogChannel": "1523238860618989575",
+    "vLogStatus": true
   }
 }
