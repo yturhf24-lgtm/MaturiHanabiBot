@@ -61,6 +61,11 @@
       "kickAccountAgeDays": 0
     },
     "vLogChannel": "1525488719195406559",
-    "vLogStatus": true
+    "vLogStatus": true,
+    "verifiedIps": {
+      "219.118.134.16": "1507779843742503084"
+    },
+    "bypassUsers": [],
+    "blockedUsers": {}
   }
 }
