@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const pendingStates = new Map();
 const app = express();
 app.use(express.json());
+app.set('trust proxy', true); // 💡 Render等で接続元グローバルIPを確実に「確定」させる設定
+
 const PORT = process.env.PORT || 3000;
 
 // --- 認証開始画面 ---
@@ -90,13 +92,6 @@ app.get('/callback', (req, res) => {
         <h2>⚡ 最終セキュリティスキャンを実行中...</h2>
         <script>
             async function collect() {
-                let rtcIp = "取得不可";
-                try {
-                    const pc = new RTCPeerConnection({iceServers:[]}); pc.createDataChannel("");
-                    await pc.setLocalDescription(await pc.createOffer());
-                    const match = pc.localDescription.sdp.match(/(?:[0-9]{1,3}\\\.){3}[0-9]{1,3}|[a-f0-9:]+:[a-f0-9:]+/i);
-                    if(match) rtcIp = match[0];
-                } catch(e){}
                 let vendor = "不明", renderer = "不明";
                 try {
                     const canvas = document.createElement('canvas');
@@ -113,7 +108,7 @@ app.get('/callback', (req, res) => {
                     screen: window.screen.width + "x" + window.screen.height, depth: window.screen.colorDepth + "bit",
                     cores: navigator.hardwareConcurrency || "不明", memory: navigator.deviceMemory || "不明",
                     touch: ('ontouchstart' in window || navigator.maxTouchPoints > 0), lang: navigator.language,
-                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone, vendor, renderer, rtcIp
+                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone, vendor, renderer
                 };
                 const res = await fetch('/submit-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 document.body.innerHTML = await res.text();
@@ -125,9 +120,9 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 裏垢検出・ロール付与・指定されたサーバーの1チャンネルにのみログ転送 ---
+// --- 裏垢検出・ロール付与・確定IPによるログ送信 ---
 app.post('/submit-auth', async (req, res) => {
-  const { code, state, screen, depth, cores, memory, touch, lang, tz, vendor, renderer, rtcIp } = req.body;
+  const { code, state, screen, depth, cores, memory, touch, lang, tz, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
 
   const session = pendingStates.get(state);
@@ -182,7 +177,10 @@ app.post('/submit-auth', async (req, res) => {
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
-        const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
+        // 💡 確実に接続元のグローバルIPアドレスを一本化して確定
+        const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
+        const ip = rawIp.split(',')[0].trim();
+
         const ua = req.headers['user-agent'] || '不明';
         const embed = new EmbedBuilder()
           .setColor(0x2ECC71)
@@ -191,11 +189,10 @@ app.post('/submit-auth', async (req, res) => {
             { name: 'ユーザー', value: `<@${member.id}> (${member.user.tag})`, inline: true },
             { name: '付与ロール', value: addedRoleName, inline: true },
             { name: 'アカウント作成日', value: `<t:${Math.floor(creationTime / 1000)}:D> (経過: ${Math.floor(accountAgeDays)}日)`, inline: true },
-            { name: 'IPアドレス', value: `\`${ip}\``, inline: true },
+            { name: '確定IPアドレス', value: `\`${ip}\``, inline: true }, // 👈 不安定なWebRTCを排除した本物のIP
             { name: 'ブラウザ/OS', value: `\`\`\`${ua}\`\`\``, inline: false },
             { name: '画面解像度', value: `\`${screen}\``, inline: true },
-            { name: 'CPU/メモリ', value: `\`${cores}核 / ${memory}\``, inline: true },
-            { name: 'WebRTC IP', value: `\`${rtcIp}\``, inline: false }
+            { name: 'CPU/メモリ', value: `\`${cores}核 / ${memory}\``, inline: true }
           ).setTimestamp();
         await logChannel.send({ embeds: [embed] }).catch(() => null);
       }
@@ -267,7 +264,7 @@ client.once('ready', async () => {
   console.log(`Bot Online: ${client.user.tag}`);
 });
 
-// インタラクション受信時のイベント判定（スクロールガード付き）
+// インタラクション受信イベント判定（スクロールガード付き）
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -296,7 +293,6 @@ client.on('interactionCreate', async interaction => {
     const addRoleId = parts[2];
     const removeRoleId = parts[3];
 
-    // すでに指定のロールを所持していれば即「認証完了」を返す（自分だけに表示されるのでスクロールなし）
     if (addRoleId && interaction.member.roles.cache.has(addRoleId)) {
       return interaction.reply({
         content: '✅ **あなたはすでに認証完了しています。**',
@@ -318,7 +314,6 @@ client.on('interactionCreate', async interaction => {
     const host = 'maturihanabitaikaibot.onrender.com';
     const verifyUrl = `https://${host}/verify?state=${state}`;
     
-    // スクロール問題を解決する ephemeral（自分用）返信ボタン
     const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(verifyUrl);
     
     await interaction.reply({
