@@ -156,7 +156,6 @@ app.post('/submit-auth', async (req, res) => {
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
     
-    // 各サーバーごとの保存器を完全に切り離して構築
     const config = allSettings[session.guildId];
     if (!config.verifiedIps) config.verifiedIps = {};
     if (!config.bypassUsers) config.bypassUsers = [];
@@ -366,9 +365,28 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
+// 🟢 起動イベント（サーバー数を初期設定）
 client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
+
+  // 📊 起動時に導入サーバー数をリアルタイムアクティビティとしてセット
+  const guildCount = client.guilds.cache.size;
+  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 }); // 0 = プレイ中
+});
+
+// ➕ 新しいサーバーに導入された時、数を更新
+client.on('guildCreate', guild => {
+  const guildCount = client.guilds.cache.size;
+  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 });
+  console.log(`[参加] 新規サーバーへの導入: ${guild.name} (合計: ${guildCount}サーバー)`);
+});
+
+// ➖ サーバーから蹴られた/退出した時、数を更新
+client.on('guildDelete', guild => {
+  const guildCount = client.guilds.cache.size;
+  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 });
+  console.log(`[退出] サーバーから退出: ${guild.name} (合計: ${guildCount}サーバー)`);
 });
 
 // 万が一のエラーでBot全体が落ちるのを防ぐグローバルハンドラ
