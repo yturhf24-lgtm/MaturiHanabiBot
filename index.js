@@ -4,14 +4,12 @@ const { Client, Collection, GatewayIntentBits, EmbedBuilder, ButtonBuilder, Butt
 const express = require('express');
 const crypto = require('crypto');
 
-// --- 認証用の一時キャッシュ ---
 const pendingStates = new Map();
-
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
-// 💡 認証開始画面（真ん中に大きなボタン、下にエラー・IPの条件を記載）
+// --- 認証開始画面 ---
 app.get('/verify', (req, res) => {
   const state = req.query.state;
   if (!state || !pendingStates.has(state)) {
@@ -78,7 +76,7 @@ app.get('/verify', (req, res) => {
   `);
 });
 
-// OAuth2コールバック（端末データを裏で収集・クレジット表記なし）
+// --- OAuth2コールバック ---
 app.get('/callback', (req, res) => {
   const { code, state, error } = req.query;
   if (error) return res.redirect(`/verify?state=${state}&error=` + encodeURIComponent("Discordでの同意がキャンセルされました。"));
@@ -127,7 +125,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// 裏垢検出・ロール付与・ログ転送
+// --- 裏垢検出・ロール付与・指定されたサーバーの1チャンネルにのみログ転送 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, vendor, renderer, rtcIp } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
@@ -149,7 +147,7 @@ app.post('/submit-auth', async (req, res) => {
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
     const userData = await userResponse.json();
 
-    // 🔍 【裏垢検出】作成から30日未満を拒否
+    // 🔍 裏垢検出 (30日未満)
     const userIdNum = BigInt(userData.id);
     const creationTime = Number((userIdNum >> 22n) + 1420070400000n);
     const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
@@ -167,7 +165,7 @@ app.post('/submit-auth', async (req, res) => {
     const member = await guild?.members.fetch(session.userId).catch(() => null);
     if (!member) return res.send('<h1 style="color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
 
-    // ロール処理
+    // ロール付与・剥奪
     let addedRoleName = 'なし';
     if (session.addRoleId) {
       const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
@@ -178,7 +176,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // ログ転送
+    // 💡 各サーバーに保存されている「ただ1つ」のログチャンネルに送信
     const settings = client.getSettings();
     const config = settings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
@@ -188,7 +186,7 @@ app.post('/submit-auth', async (req, res) => {
         const ua = req.headers['user-agent'] || '不明';
         const embed = new EmbedBuilder()
           .setColor(0x2ECC71)
-          .setTitle('✅ 認証成功 - 詳細ログ')
+          .setTitle('✅ 認証成功ログ')
           .addFields(
             { name: 'ユーザー', value: `<@${member.id}> (${member.user.tag})`, inline: true },
             { name: '付与ロール', value: addedRoleName, inline: true },
@@ -215,9 +213,7 @@ app.post('/submit-auth', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`HTTP Server listening on port ${PORT}`));
-
-// --- Discord Bot 基本設定 ---
+// --- Discord Bot システム本体 ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 const DATA_FILE = path.join(__dirname, 'data.json');
 const GITHUB_OWNER = 'yturhf24-lgtm';
@@ -271,7 +267,7 @@ client.once('ready', async () => {
   console.log(`Bot Online: ${client.user.tag}`);
 });
 
-// 💡 インタラクション判定（既認証プレイヤーのガード機能付き）
+// インタラクション受信時のイベント判定（スクロールガード付き）
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -279,7 +275,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 🔒 モーダル送信時
+  // モーダル送信判定
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
@@ -294,13 +290,13 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 🔘 「認証」ボタンを押した時
+  // 🔘 「認証」ボタン受信処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
     const removeRoleId = parts[3];
 
-    // 💡 【新規追加】すでに認証済みの場合は、サイトURLを表示せず即「認証完了」と自分宛てに送信
+    // すでに指定のロールを所持していれば即「認証完了」を返す（自分だけに表示されるのでスクロールなし）
     if (addRoleId && interaction.member.roles.cache.has(addRoleId)) {
       return interaction.reply({
         content: '✅ **あなたはすでに認証完了しています。**',
@@ -321,10 +317,12 @@ client.on('interactionCreate', async interaction => {
 
     const host = 'maturihanabitaikaibot.onrender.com';
     const verifyUrl = `https://${host}/verify?state=${state}`;
-    const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動').setStyle(ButtonStyle.Link).setURL(verifyUrl);
-
+    
+    // スクロール問題を解決する ephemeral（自分用）返信ボタン
+    const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(verifyUrl);
+    
     await interaction.reply({
-      content: '⚠️ **5分以内に下のボタンから認証を完了させてください。**\n(5分経過するとリンクは無効化されます)',
+      content: '⚠️ **下のボタンから認証サイトへ移動してください。**',
       components: [new ActionRowBuilder().addComponents(linkButton)],
       flags: [MessageFlags.Ephemeral]
     });
