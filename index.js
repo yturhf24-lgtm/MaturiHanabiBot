@@ -129,7 +129,7 @@ app.get('/callback', (req, res) => {
 // --- アカウント精査・ロール付与 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
-  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり長してください。</h1>');
+  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
 
   const session = pendingStates.get(state);
   pendingStates.delete(state); // セッションの即時消費（多重送信ガード）
@@ -256,7 +256,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) { await member.roles.add(r).catch(() => null); addedRoleName = `<@&${r.id}>`; }
     }
 
-    // 🗑️ 削除ロール the 取得・処理
+    // 🗑️ 削除ロールの取得・処理
     let removedRoleName = 'なし';
     if (session.removeRoleId && session.removeRoleId !== 'none') {
       const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
@@ -315,8 +315,16 @@ app.post('/submit-auth', async (req, res) => {
   }
 });
 
-// --- Discord Bot システム本体 ---
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+// --- Discord Bot システム本体 (インテントにテキスト検知用を追加) ---
+const client = new Client({ 
+  intents: [
+    GatewayIntentBits.Guilds, 
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,    // 👈 テキストメッセージ検知に必要
+    GatewayIntentBits.MessageContent    // 👈 メッセージ本文の読み取りに必要
+  ] 
+});
+
 const DATA_FILE = path.join(__dirname, 'data.json');
 const GITHUB_OWNER = 'yturhf24-lgtm';
 const GITHUB_REPO = 'MaturiHanabiBot';
@@ -364,7 +372,7 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 🟢 起動イベント (clientReadyに統合・v15対策)
+// 🟢 起動イベント
 client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
@@ -387,7 +395,7 @@ client.on('guildDelete', guild => {
   console.log(`[退出] サーバーから退出: ${guild.name} (合計: ${guildCount}サーバー)`);
 });
 
-// 📥 プレイヤー参加時の自動チェック（新規・捨て垢キック機能）
+// 📥 プレイヤー参加時の自動チェック
 client.on('guildMemberAdd', async (member) => {
   const guildId = member.guild.id;
   const allSettings = client.getSettings();
@@ -400,13 +408,11 @@ client.on('guildMemberAdd', async (member) => {
   let shouldKick = false;
   let kickReason = "";
 
-  // 1. 初期アイコンチェック
   if (config.kickDefaultAvatar && !member.user.avatar) {
     shouldKick = true;
     kickReason = "初期アバター（アイコン未設定）アカウントの制限";
   }
 
-  // 2. アカウント作成日数チェック
   if (!shouldKick && config.kickAccountAgeDays > 0) {
     const discordEpoch = 1420070400000;
     const creationTime = Number(BigInt(member.user.id) >> 22n) + discordEpoch;
@@ -418,11 +424,9 @@ client.on('guildMemberAdd', async (member) => {
     }
   }
 
-  // 🚨 条件一致でKick実行
   if (shouldKick) {
     try {
       await member.send(`🔒 参加されたサーバーのセキュリティ設定により、自動Kickされました。\n理由: ${kickReason}`).catch(() => null);
-      
       await member.kick(`[自動防衛システム] ${kickReason}`);
       console.log(`[自動Kick成功] サーバー [${guildId}] にて ${member.user.tag} をKick。理由: ${kickReason}`);
 
@@ -448,10 +452,85 @@ client.on('guildMemberAdd', async (member) => {
   }
 });
 
+// --- 💬 !help コマンド処理 (自分だけに表示される隠しメッセージ仕様) ---
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+
+  if (message.content.toLowerCase().startsWith('!help')) {
+    const isClientAdmin = message.member ? message.member.permissions.has('Administrator') : false;
+
+    // 📄 一般向け
+    const userEmbed = new EmbedBuilder()
+      .setTitle('🏮 まつり花火Bot - ヘルプメニュー (1/2)')
+      .setDescription('コミュニティの安全を守るための端末セキュリティ認証Botです。')
+      .setColor(0x3498DB)
+      .addFields(
+        { name: '🔒 サーバー認証への参加方法', value: '1. 管理者が設置した認証パネルの「認証」ボタンを押します。\n2. Botから送られる専用リンク（URL）をクリックします。\n3. ブラウザが開くので、端末スキャンを許可して認証を完了させてください。', inline: false },
+        { name: '💡 認証がうまくいかないときは？', value: '・Discord内蔵ブラウザではなく、SafariやChromeなどの標準ブラウザでリンクを開き直してください。\n・VPNやプロキシ、プライベートリレー（iCloud）をONにしていると裏垢ブロック判定に引っかかる場合があります。一時的にOFFにしてください。', inline: false }
+      )
+      .setFooter({ text: 'ボタンを押すとページを切り替えられます' })
+      .setTimestamp();
+
+    // 📄 管理者向け
+    const adminEmbed = new EmbedBuilder()
+      .setTitle('🛡️ まつり花火Bot - 管理者向けマニュアル (2/2)')
+      .setDescription('⚠️ このページはサーバーの管理者（Administrator権限保持者）にのみ開示されています。')
+      .setColor(0xFAA61A)
+      .addFields(
+        { name: '⚙️ 認証システムのセットアップ', value: '`/v_setup` コマンドを実行して、認証成功時に付与するロール、剥奪するロール、案内テキストを設定してパネルを設置します。', inline: false },
+        { name: '🤖 不正・捨て垢自動防衛システム', value: 'アカウント作成日から30日未満の捨てアカウント、およびアバター初期状態（アイコン未設定）のユーザーがサーバーに参加した際、自動でキック(Kick)しログに報告する防衛機能が標準搭載されています。', inline: false },
+        { name: '🔄 制限の個別リセット', value: '`/v_reset` コマンドを使って、誤ってブロックされてしまった正規ユーザーを各サーバー個別に救済（ブロック解除）できます。', inline: false }
+      )
+      .setTimestamp();
+
+    const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
+    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary);
+
+    if (!isClientAdmin) {
+      btnAdmin.setDisabled(true).setLabel('👑 管理者向け (権限なし)');
+    }
+
+    const row = new ActionRowBuilder().addComponents(btnUser, btnAdmin);
+
+    try {
+      // 🟢 誰が打っても「送信者本人」にしか見えないシークレット返信
+      const response = await message.reply({
+        embeds: [userEmbed],
+        components: [row],
+        flags: [MessageFlags.Ephemeral]
+      });
+
+      const collector = response.createMessageComponentCollector({ time: 300000 });
+
+      collector.on('collect', async i => {
+        if (i.customId === 'help_page_user') {
+          btnUser.setDisabled(true).setStyle(ButtonStyle.Primary);
+          btnAdmin.setDisabled(!isClientAdmin).setStyle(ButtonStyle.Secondary);
+          await i.update({ embeds: [userEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
+        } else if (i.customId === 'help_page_admin') {
+          btnUser.setDisabled(false).setStyle(ButtonStyle.Secondary);
+          btnAdmin.setDisabled(true).setStyle(ButtonStyle.Primary);
+          await i.update({ embeds: [adminEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
+        }
+      });
+
+      collector.on('end', async () => {
+        btnUser.setDisabled(true);
+        btnAdmin.setDisabled(true);
+        await response.edit({ components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
+      });
+
+    } catch (err) {
+      console.error('[!help 実行失敗]', err);
+    }
+  }
+});
+
 // エラーセーフティハンドラ
 client.on('error', error => console.error('[Discordクライアントエラー]', error));
 process.on('unhandledRejection', error => console.error('[未処理の非同期エラー]', error));
 
+// --- インタラクション（スラッシュコマンド・ボタン・モーダル）制御 ---
 client.on('interactionCreate', async interaction => {
   // ⌨️ スラッシュコマンド処理
   if (interaction.isChatInputCommand()) {
