@@ -129,7 +129,7 @@ app.get('/callback', (req, res) => {
 // --- アカウント精査・ロール付与 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
-  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
+  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり長してください。</h1>');
 
   const session = pendingStates.get(state);
   pendingStates.delete(state); // セッションの即時消費（多重送信ガード）
@@ -256,7 +256,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) { await member.roles.add(r).catch(() => null); addedRoleName = `<@&${r.id}>`; }
     }
 
-    // 🗑️ 削除ロールの取得・処理
+    // 🗑️ 削除ロール the 取得・処理
     let removedRoleName = 'なし';
     if (session.removeRoleId && session.removeRoleId !== 'none') {
       const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
