@@ -44,7 +44,7 @@
       "1330918759455789126": "1266013271518089258"
     },
     "antiRaid": {
-      "kickDefaultAvatar": false,
+      "kickDefaultAvatar": true,
       "kickAccountAgeDays": 5
     }
   }
