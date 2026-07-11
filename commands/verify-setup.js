@@ -1,56 +1,54 @@
-const { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder } = require('discord.js');
-const MASTER_USER_ID = '1266013271518089258';
+const { SlashCommandBuilder, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('verify-setup')
-    .setDescription('Web認証パネルを設置します')
-    .addRoleOption(option => option.setName('add_role').setDescription('認証成功時に付与するロール').setRequired(true))
-    .addRoleOption(option => option.setName('remove_role').setDescription('認証成功時に削除するロール（任意）').setRequired(false)),
+    .setDescription('認証パネルを設置します（管理者のみ）')
+    // 💡 スラッシュコマンド自体を最初から「管理者のみ」に制限する（これで権限不足エラーを防げます）
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction) {
-    const isMasterUser = interaction.user.id === MASTER_USER_ID;
-    const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
-    const settings = interaction.client.getSettings();
-    const allowedRoles = settings[interaction.guildId]?.roles || [];
-    const hasAllowedRole = interaction.member.roles.cache.some(role => allowedRoles.includes(role.id));
-
-    if (!isMasterUser && !isAdmin && !hasAllowedRole) {
-      return interaction.reply({
-        embeds: [new EmbedBuilder().setColor(0xFF0000).setTitle('❌ 権限エラー').setDescription('このコマンドを使用する権限がありません。')],
-        flags: [MessageFlags.Ephemeral]
-      });
+    // 💡 サーバー外（DMなど）での実行をブロック
+    if (!interaction.guild) {
+      return interaction.reply({ content: '❌ このコマンドはサーバー内でのみ実行できます。', ephemeral: true });
     }
 
-    const addRole = interaction.options.getRole('add_role');
-    const removeRole = interaction.options.getRole('remove_role');
-
-    // 💡 Botの最高順位ロールと比較してエラーを返すガード
-    const botMember = await interaction.guild.members.fetch(interaction.client.user.id);
-    if (addRole.position >= botMember.roles.highest.position) {
-      return interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('❌ 設定不可能なロール')
-            .setDescription(`付与ロール権限が高すぎるため、パネルを作成できません。\n\n**対象ロール:** <@&${addRole.id}>\nBotのロールより下に並び替えるか、別のロールを指定してください。`)
-        ],
-        flags: [MessageFlags.Ephemeral]
-      });
+    // 💡 安全な権限チェック方法に修正
+    if (!interaction.memberPermissions || !interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+      return interaction.reply({ content: '❌ このコマンドを実行する権限（管理者権限）が不足しています。', ephemeral: true });
     }
 
+    // --- 以下、既存のモーダル処理 ---
     const modal = new ModalBuilder()
-      .setCustomId(`v_setup_modal_${addRole.id}_${removeRole ? removeRole.id : 'none'}`)
-      .setTitle('🔒 認証パネルの作成');
+      .setCustomId(`v_setup_modal_${interaction.guild.id}`) // 念のためguildIDを含めて安全化
+      .setTitle('認証パネルの設定');
 
-    const textInput = new TextInputBuilder()
-      .setCustomId('panel_text')
-      .setLabel('パネルに表示する案内文を入力してください')
-      .setStyle(TextInputStyle.Paragraph)
-      .setValue('サーバーに参加するには、下の「認証」ボタンを押してウェブサイト連携を行ってください。')
+    const addRoleInput = new TextInputBuilder()
+      .setCustomId('add_role_id')
+      .setLabel('付与するロールID')
+      .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
-    modal.addComponents(new ActionRowBuilder().addComponents(textInput));
+    const removeRoleInput = new TextInputBuilder()
+      .setCustomId('remove_role_id')
+      .setLabel('剥奪するロールID（なければ none）')
+      .setStyle(TextInputStyle.Short)
+      .setValue('none')
+      .setRequired(false);
+
+    const panelTextInput = new TextInputBuilder()
+      .setCustomId('panel_text')
+      .setLabel('パネルに表示する説明文')
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue('サーバーに参加するには、下の「認証」ボタンを押してセキュリティチェックを完了させてください。')
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(addRoleInput),
+      new ActionRowBuilder().addComponents(removeRoleInput),
+      new ActionRowBuilder().addComponents(panelTextInput)
+    );
+
     await interaction.showModal(modal);
   },
 };
