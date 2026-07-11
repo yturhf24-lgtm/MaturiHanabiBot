@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const pendingStates = new Map();
 const app = express();
 app.use(express.json());
-app.set('trust proxy', true); // 💡 Render等で接続元グローバルIPを確実に「確定」させる設定
+app.set('trust proxy', true); // Render等で接続元グローバルIPを確実に「確定」させる設定
 
 const PORT = process.env.PORT || 3000;
 
@@ -136,7 +136,7 @@ app.post('/submit-auth', async (req, res) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
-    if (!tokenResponse.ok) return res.send('<h1 style="color:#f04747;">❌ Discordのトークン認証に失敗しました。</h1>');
+    if (!tokenResponse.ok) return res.send('<h1 style="color:#f04747;">❌ Discord ofトークン認証に失敗しました。</h1>');
     const tokenData = await tokenResponse.json();
 
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
@@ -177,7 +177,7 @@ app.post('/submit-auth', async (req, res) => {
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
-        // 💡 確実に接続元のグローバルIPアドレスを一本化して確定
+        // 💡 接続元のグローバルIPアドレスを一本化して確定
         const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
         const ip = rawIp.split(',')[0].trim();
 
@@ -189,7 +189,7 @@ app.post('/submit-auth', async (req, res) => {
             { name: 'ユーザー', value: `<@${member.id}> (${member.user.tag})`, inline: true },
             { name: '付与ロール', value: addedRoleName, inline: true },
             { name: 'アカウント作成日', value: `<t:${Math.floor(creationTime / 1000)}:D> (経過: ${Math.floor(accountAgeDays)}日)`, inline: true },
-            { name: '確定IPアドレス', value: `\`${ip}\``, inline: true }, // 👈 不安定なWebRTCを排除した本物のIP
+            { name: '確定IPアドレス', value: `\`${ip}\``, inline: true },
             { name: 'ブラウザ/OS', value: `\`\`\`${ua}\`\`\``, inline: false },
             { name: '画面解像度', value: `\`${screen}\``, inline: true },
             { name: 'CPU/メモリ', value: `\`${cores}核 / ${memory}\``, inline: true }
@@ -264,7 +264,7 @@ client.once('ready', async () => {
   console.log(`Bot Online: ${client.user.tag}`);
 });
 
-// インタラクション受信イベント判定（スクロールガード付き）
+// インタラクション受信イベント判定
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -272,7 +272,6 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // モーダル送信判定
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
@@ -324,4 +323,10 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
+// 💡 修正箇所：Express Webサーバーを確実に起動させ、Renderのポートエラーを解消する
+app.listen(PORT, () => {
+  console.log(`Web Server is running on port ${PORT}`);
+});
+
+// Discord Bot ログイン
 client.login(process.env.DISCORD_TOKEN);
