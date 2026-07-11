@@ -249,14 +249,21 @@ app.post('/submit-auth', async (req, res) => {
       `);
     }
 
+    // 🏷️ 付与ロールの取得・処理
     let addedRoleName = 'なし';
     if (session.addRoleId) {
       const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
       if (r) { await member.roles.add(r).catch(() => null); addedRoleName = `<@&${r.id}>`; }
     }
+
+    // 🗑️ 【修正】削除（剥奪）ロールの取得・処理とログ反映用テキスト生成
+    let removedRoleName = 'なし';
     if (session.removeRoleId && session.removeRoleId !== 'none') {
       const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
-      if (r) await member.roles.remove(r).catch(() => null);
+      if (r) { 
+        await member.roles.remove(r).catch(() => null); 
+        removedRoleName = `<@&${r.id}>`; 
+      }
     }
 
     config.verifiedIps[currentIp] = userData.id;
@@ -274,6 +281,7 @@ app.post('/submit-auth', async (req, res) => {
           .addFields(
             { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
             { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
+            { name: '🗑️ 削除ロール', value: `${removedRoleName}`, inline: true }, // 🛠️ 横並びで追加
             { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: true },
             { name: '💻 ブラウザ情報', value: `\`\`\`${ua}\`\`\``, inline: false },
             { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
@@ -379,7 +387,7 @@ client.on('guildDelete', guild => {
   console.log(`[退出] サーバーから退出: ${guild.name} (合計: ${guildCount}サーバー)`);
 });
 
-// 📥 【新規追加】プレイヤー参加時の自動チェック（新規・捨て垢キック機能）
+// 📥 プレイヤー参加時の自動チェック（新規・捨て垢キック機能）
 client.on('guildMemberAdd', async (member) => {
   const guildId = member.guild.id;
   const allSettings = client.getSettings();
@@ -445,7 +453,7 @@ client.on('error', error => console.error('[Discordクライアントエラー]'
 process.on('unhandledRejection', error => console.error('[未処理の非同期エラー]', error));
 
 client.on('interactionCreate', async interaction => {
-  // ⌨️ スラッシュコマンド処理（3秒タイムアウト対策強化ガード）
+  // ⌨️ スラッシュコマンド処理
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -480,7 +488,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 🖱️ ボタンのクリック処理（Unknown interaction 対策強化版）
+  // 🖱️ ボタンのクリック処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
