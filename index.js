@@ -167,7 +167,7 @@ app.post('/submit-auth', async (req, res) => {
     const creationTime = Number((userIdNum >> 22n) + 1420070400000n);
     const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
 
-    // 💡 裏アカウント判定時のメッセージ修正（正しく裏垢に対して本垢での実行を促す）
+    // 💡 裏アカウント警告文
     if (accountAgeDays < 30) {
       return res.send(`
         <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
@@ -295,7 +295,8 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-client.once('ready', async () => {
+// 💡 警告対策: ready から clientReady に変更
+client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
 });
@@ -308,6 +309,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
+  // 💡 モーダル受付（セレクトボックスから引き継いだIDを反映）
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
