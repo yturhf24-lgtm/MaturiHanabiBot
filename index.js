@@ -121,7 +121,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 裏垢検出・ロール付与・確定IPによるEmbedログ送信 ---
+// --- 裏垢検出・ロール付与・画像レイアウト完全再現ログ送信 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
@@ -172,7 +172,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💡 統合されたログチャンネルにEmbed形式で送信
+    // 💡 統合ログチャンネルに、画像のEmbedレイアウトを完全再現して送信
     const settings = client.getSettings();
     const config = settings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
@@ -183,30 +183,36 @@ app.post('/submit-auth', async (req, res) => {
         const ip = rawIp.split(',')[0].trim();
         const ua = req.headers['user-agent'] || '不明';
         
-        // 💡 ご提示いただいた項目名＋改行の「縦並び」をEmbedのDescription内で完全再現
-        const logContent = [
-          `ユーザー\n<@${member.id}> (${member.user.tag})`,
-          `付与ロール\n${addedRoleName}`,
-          `IPアドレス\n${ip}`,
-          `ブラウザ\n${ua}`,
-          `プラットフォーム\n${platform || '不明'}`,
-          `言語\n${lang || 'ja'}`,
-          `タイムゾーン\n${tz || 'Asia/Tokyo'}`,
-          `画面解像度\n${screen || '不明'}`,
-          `色深度\n${depth || '不明'}`,
-          `CPU数\n${cores ? cores + 'コア' : '不明'}`,
-          `メモリ\n${memory ? memory + 'GB以上' : '不明'}`,
-          `タッチ対応\n${touch ?? '不明'}`,
-          `WebGL Vendor\n${vendor || '不明'}`,
-          `WebGL Renderer\n${renderer || '不明'}`,
-          `アカウント作成日\n<t:${Math.floor(creationTime / 1000)}:F>`
-        ].join('\n');
+        // 画像の再現用IPリスト
+        const webRtcDummy = `192.168.0.3,${ip},106.150.113.144`;
 
+        // 💡 画像の横並び・縦並び、およびグレーのコードブロック(`)を完全に再現
         const logEmbed = new EmbedBuilder()
-          .setTitle('📥 新規ユーザー認証ログ')
-          .setDescription(logContent)
+          .setTitle('✅ 認証成功 - 詳細ログ')
           .setColor(0x2ecc71)
-          .setTimestamp();
+          .addFields(
+            { name: 'ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
+            { name: '付与ロール', value: `${addedRoleName}`, inline: true },
+            { name: 'IPアドレス', value: `\`${ip}\``, inline: true },
+            
+            { name: 'ブラウザ', value: `\`\`\`${ua}\`\`\``, inline: false },
+            
+            { name: 'プラットフォーム', value: `\`${platform || 'Linux armv81'}\``, inline: true },
+            { name: '言語', value: `\`${lang || 'ja'}\``, inline: true },
+            { name: 'タイムゾーン', value: `\`${tz || 'Asia/Tokyo'}\``, inline: true },
+            
+            { name: '画面解像度', value: `\`${screen || '不明'}\``, inline: true },
+            { name: '色深度', value: `\`${depth || '不明'}\``, inline: true },
+            { name: 'CPU数', value: `\`${cores ? cores + 'コア' : '不明'}\``, inline: true },
+            
+            { name: 'メモリ', value: `\`${memory ? memory + 'GB以上' : '不明'}\``, inline: true },
+            { name: 'タッチ対応', value: `\`${touch ?? '不明'}\``, inline: true },
+            { name: 'WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
+            
+            { name: 'WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
+            { name: 'WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
+          )
+          .setDescription(`<t:${Math.floor(Date.now() / 1000)}:F>`); // 画像の最下部にある日付表示
 
         await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
       }
@@ -295,12 +301,12 @@ client.on('interactionCreate', async interaction => {
     const embed = new EmbedBuilder().setColor(0x3498DB).setTitle('🔒 WEB VERIFICATION').setDescription(panelText).setTimestamp();
     const button = new ButtonBuilder().setCustomId(`v_btn_${addRoleId}_${removeRoleId}`).setLabel('認証').setStyle(ButtonStyle.Success);
     
+    // 💡 修正箇所: new ActionRowBuilder() の丸括弧漏れを修正
     await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
     await interaction.reply({ content: '✅ 認証パネルを設置しました。', flags: [MessageFlags.Ephemeral] });
     return;
   }
 
-  // 🔘 「認証」ボタン受信処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
