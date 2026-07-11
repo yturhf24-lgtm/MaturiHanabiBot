@@ -103,7 +103,7 @@ app.get('/callback', (req, res) => {
                     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                     if(gl) {
                         const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_VENDOR_WEBGL);
                         renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
                     }
                 }catch(e){}
@@ -129,7 +129,7 @@ app.get('/callback', (req, res) => {
 // --- アカウント精査・ロール付与・確定IPによるEmbedログ送信 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
-  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
+  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり難してください。</h1>');
 
   const session = pendingStates.get(state);
   pendingStates.delete(state);
@@ -218,6 +218,9 @@ app.post('/submit-auth', async (req, res) => {
     allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
+    // ✨【修正】サーバーの設定（ログチャンネル等）を安全に取得
+    const config = allSettings[session.guildId] || {};
+
     // 💡 ログ送信
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
@@ -264,6 +267,7 @@ app.post('/submit-auth', async (req, res) => {
       </div>
     `);
   } catch (err) {
+    console.error('[内部エラー詳細]', err);
     res.send('<h1 style="text-align:center; color:#f04747;">❌ 内部エラーが発生しました。</h1>');
   }
 });
@@ -317,7 +321,7 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 💡 確実なイベント名 'ready' に固定
+// 💡 イベント名は 'ready' に固定
 client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
