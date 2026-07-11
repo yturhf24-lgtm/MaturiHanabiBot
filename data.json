@@ -30,7 +30,9 @@
     "verifiedIps": {
       "1.21.108.52": "1266013271518089258"
     },
-    "bypassUsers": [],
+    "bypassUsers": [
+      "1266013271518089258"
+    ],
     "blockedUsers": {}
   }
 }
