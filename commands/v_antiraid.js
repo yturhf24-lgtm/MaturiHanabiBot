@@ -1,10 +1,16 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('v_antiraid')
-    .setDescription('【管理者専用】新規・捨てアカウントの自動Kick機能を設定します')
+    .setDescription('【管理者専用】新規・捨てアカウントの自動Kick機能を設定・確認します')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    // 📊 追加：現在の設定ステータス確認
+    .addSubcommand(subcmd =>
+      subcmd
+        .setName('status')
+        .setDescription('現在の自動Kick防衛システムの設定状況を確認します')
+    )
     // サブコマンド1: 初期アイコンキックのON/OFF
     .addSubcommand(subcmd =>
       subcmd
@@ -48,6 +54,25 @@ module.exports = {
     }
 
     const config = allSettings[guildId].antiRaid;
+
+    // 📊 【新規追加】設定確認処理
+    if (sub === 'status') {
+      const avatarStatus = config.kickDefaultAvatar ? '🟢 有効 (ON)' : '🔴 無効 (OFF)';
+      const ageStatus = config.kickAccountAgeDays > 0 ? `🟢 ${config.kickAccountAgeDays}日未満はKick` : '🔴 無い（無効）';
+
+      const embed = new EmbedBuilder()
+        .setTitle('🛡️ 自動防衛システム 設定ステータス')
+        .setColor(0x3498DB)
+        .setDescription('このサーバーにおける新規・捨て垢対策の現在の設定状況です。')
+        .addFields(
+          { name: '👤 初期アイコン自動Kick', value: `\`${avatarStatus}\``, inline: true },
+          { name: '📅 アカウント作成日数制限', value: `\`${ageStatus}\``, inline: true }
+        )
+        .setFooter({ text: `Server ID: ${guildId}` })
+        .setTimestamp();
+
+      return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+    }
 
     // 👤 初期アイコンキックの設定変更
     if (sub === 'default_avatar') {
