@@ -148,11 +148,10 @@ app.post('/submit-auth', async (req, res) => {
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
     const userData = await userResponse.json();
 
-    // 🌐 IPアドレスの特定処理
     const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
     const currentIp = rawIp.split(',')[0].trim();
 
-    // 🏢【サーバー個別データ管理】セクションの初期化・独立化
+    // 🏢【サーバー個別データ管理】の独立化
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
     
@@ -164,21 +163,18 @@ app.post('/submit-auth', async (req, res) => {
     const verifiedIps = config.verifiedIps;
     const bypassUsers = config.bypassUsers;
 
-    // 🛑 【最優先ガード】同一サーバー内での同一IP重複チェック
+    // 🛑 同一サーバー内での同一IP重複チェック
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
       
-      // ✨【特定ユーザー ＆ コマンド許可ユーザーの免除判定】
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
-        console.log(`[例外許可適用] サーバー [${session.guildId}] にて制限免除ユーザーのアクセスを許可: ${userData.username} (${userData.id})`);
+        console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー許可: ${userData.username} (${userData.id})`);
       } else {
 
-        // 📝 このサーバー固有のブロックリストへ追記
         config.blockedUsers[userData.id] = verifiedIps[currentIp]; 
         await client.saveSettings(allSettings);
 
-        console.log(`[裏垢ブロック成功] サーバー [${session.guildId}] 内の同一IP接続を検知: ${userData.username} (IP: ${currentIp})`);
+        console.log(`[裏垢ブロック成功] サーバー [${session.guildId}] 同一IP接続検知: ${userData.username} (IP: ${currentIp})`);
 
-        // 🚨 サーバー個別のログチャンネルへ通知
         if (config.vLogStatus && config.vLogChannel) {
           const guild = await client.guilds.fetch(session.guildId).catch(() => null);
           const logChannel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
@@ -221,7 +217,7 @@ app.post('/submit-auth', async (req, res) => {
       }
     }
 
-    // 🔍 【第2ガード】アカウント作成日の判定 (30日未満チェック) - 免除ユーザーはパス
+    // 🔍 アカウント作成日の判定 (30日未満チェック) - 免除ユーザーはパス
     if (userData.id !== '1266013271518089258') {
       const discordEpoch = 1420070400000;
       const creationTime = Number(BigInt(userData.id) >> 22n) + discordEpoch;
@@ -240,12 +236,10 @@ app.post('/submit-auth', async (req, res) => {
       }
     }
 
-    // 🟢 安全なアカウントのみ実行（個別サーバーへのロール付与）
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
     if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
 
-    // 二重処理防止
     if (session.addRoleId && member.roles.cache.has(session.addRoleId)) {
       return res.send(`
         <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71; color: white; text-align: center; font-family: sans-serif;">
@@ -255,7 +249,6 @@ app.post('/submit-auth', async (req, res) => {
       `);
     }
 
-    // ロール付与・剥奪処理を実行
     let addedRoleName = 'なし';
     if (session.addRoleId) {
       const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
@@ -266,11 +259,9 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💾 このサーバー固有のIPデータに本アカウント情報を格納
     config.verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // 📝 通常の成功ログ送信 (個別サーバーのチャンネルへ)
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
@@ -365,31 +356,91 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 🟢 起動イベント（サーバー数を初期設定）
+// 🟢 起動イベント（サーバー数を設定）
 client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
 
-  // 📊 起動時に導入サーバー数をリアルタイムアクティビティとしてセット
   const guildCount = client.guilds.cache.size;
-  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 }); // 0 = プレイ中
+  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 }); 
 });
 
-// ➕ 新しいサーバーに導入された時、数を更新
+// ➕ 新しいサーバーに導入された時
 client.on('guildCreate', guild => {
   const guildCount = client.guilds.cache.size;
   client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 });
   console.log(`[参加] 新規サーバーへの導入: ${guild.name} (合計: ${guildCount}サーバー)`);
 });
 
-// ➖ サーバーから蹴られた/退出した時、数を更新
+// ➖ サーバーから退出した時
 client.on('guildDelete', guild => {
   const guildCount = client.guilds.cache.size;
   client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 });
   console.log(`[退出] サーバーから退出: ${guild.name} (合計: ${guildCount}サーバー)`);
 });
 
-// 万が一のエラーでBot全体が落ちるのを防ぐグローバルハンドラ
+// 📥 【新規追加】プレイヤー参加時の自動チェック（新規・捨て垢キック機能）
+client.on('guildMemberAdd', async (member) => {
+  const guildId = member.guild.id;
+  const allSettings = client.getSettings();
+  
+  if (!allSettings[guildId] || !allSettings[guildId].antiRaid) return;
+  
+  const config = allSettings[guildId].antiRaid;
+  const logConfig = allSettings[guildId];
+
+  let shouldKick = false;
+  let kickReason = "";
+
+  // 1. 初期アイコンチェック
+  if (config.kickDefaultAvatar && !member.user.avatar) {
+    shouldKick = true;
+    kickReason = "初期アバター（アイコン未設定）アカウントの制限";
+  }
+
+  // 2. アカウント作成日数チェック
+  if (!shouldKick && config.kickAccountAgeDays > 0) {
+    const discordEpoch = 1420070400000;
+    const creationTime = Number(BigInt(member.user.id) >> 22n) + discordEpoch;
+    const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
+
+    if (accountAgeDays < config.kickAccountAgeDays) {
+      shouldKick = true;
+      kickReason = `アカウント作成日数が指定日数（${config.kickAccountAgeDays}日）未満の新規制限`;
+    }
+  }
+
+  // 🚨 条件一致でKick実行
+  if (shouldKick) {
+    try {
+      await member.send(`🔒 参加されたサーバーのセキュリティ設定により、自動Kickされました。\n理由: ${kickReason}`).catch(() => null);
+      
+      await member.kick(`[自動防衛システム] ${kickReason}`);
+      console.log(`[自動Kick成功] サーバー [${guildId}] にて ${member.user.tag} をKick。理由: ${kickReason}`);
+
+      if (logConfig.vLogStatus && logConfig.vLogChannel) {
+        const logChannel = await member.guild.channels.fetch(logConfig.vLogChannel).catch(() => null);
+        if (logChannel) {
+          const alertEmbed = new EmbedBuilder()
+            .setTitle('🛡️ 自動防衛システム - Kickログ')
+            .setColor(0xfaa61a)
+            .setDescription(`不正アカウントの可能性があるため、参加時に自動的にKickしました。`)
+            .addFields(
+              { name: '👤 対象ユーザー', value: `<@${member.id}>\n名称: \`${member.user.tag}\`\nID: \`${member.id}\``, inline: false },
+              { name: '⚠️ 判定理由', value: `\`${kickReason}\``, inline: false }
+            )
+            .setTimestamp();
+
+          await logChannel.send({ embeds: [alertEmbed] }).catch(() => null);
+        }
+      }
+    } catch (err) {
+      console.error(`[自動Kickエラー] メンバーのKickに失敗しました:`, err);
+    }
+  }
+});
+
+// エラーセーフティハンドラ
 client.on('error', error => console.error('[Discordクライアントエラー]', error));
 process.on('unhandledRejection', error => console.error('[未処理の非同期エラー]', error));
 
@@ -435,7 +486,6 @@ client.on('interactionCreate', async interaction => {
     const addRoleId = parts[2];
     const removeRoleId = parts[3];
 
-    // ⚡【超重要】3秒の制限タイマーを即座に止める（15分間へ延長）
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
 
     const isAlreadyVerified = addRoleId && interaction.member.roles.cache.has(addRoleId);
