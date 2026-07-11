@@ -126,7 +126,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- アカウント精査・ロール付与・確定IPによるEmbedログ送信 ---
+// --- アカウント精査・ロール付与 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
@@ -167,7 +167,6 @@ app.post('/submit-auth', async (req, res) => {
       // ✨【特定プレイヤー ＆ コマンド許可ユーザーの免除判定】
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
         console.log(`[例外許可適用] 裏垢制限免除ユーザーのためアクセスを許可しました: ${userData.username} (${userData.id})`);
-        // 裏垢ブロック処理を完全にスルーして通常のロール付与へ進みます
       } else {
 
         // 📝 ブロックされた裏垢の履歴をサーバーデータに保存
@@ -220,7 +219,7 @@ app.post('/submit-auth', async (req, res) => {
       }
     }
 
-    // 🔍 【第2ガード】アカウント作成日の判定 (30日未満チェック) - 免除ユーザーはここもパス
+    // 🔍 【第2ガード】アカウント作成日の判定 (30日未満チェック) - 免除ユーザーはパス
     if (userData.id !== '1266013271518089258') {
       const discordEpoch = 1420070400000;
       const creationTime = Number(BigInt(userData.id) >> 22n) + discordEpoch;
@@ -370,10 +369,14 @@ client.once('ready', async () => {
   console.log(`Bot Online: ${client.user.tag}`);
 });
 
+// 万が一のエラーでBot全体が落ちるのを防ぐグローバルハンドラ
+client.on('error', error => console.error('[Discordクライアントエラー]', error));
+process.on('unhandledRejection', error => console.error('[未処理の非同期エラー]', error));
+
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
-    if (command) await command.execute(interaction);
+    if (command) await command.execute(interaction).catch(err => console.error(err));
     return;
   }
 
@@ -386,23 +389,26 @@ client.on('interactionCreate', async interaction => {
     const embed = new EmbedBuilder().setColor(0x3498DB).setTitle('🔒 WEB VERIFICATION').setDescription(panelText).setTimestamp();
     const button = new ButtonBuilder().setCustomId(`v_btn_${addRoleId}_${removeRoleId}`).setLabel('認証').setStyle(ButtonStyle.Success);
     
-    await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
-    await interaction.reply({ content: '✅ 認証パネルを設置しました。', flags: [MessageFlags.Ephemeral] });
+    await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] }).catch(() => null);
+    await interaction.reply({ content: '✅ 認証パネルを設置しました。', flags: [MessageFlags.Ephemeral] }).catch(() => null);
     return;
   }
 
+  // 🖱️ ボタンのクリック処理（Unknown interaction 対策強化版）
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
     const removeRoleId = parts[3];
 
+    // ⚡【超重要】3秒の制限タイマーを即座に止める（15分間へ延長）
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+
     const isAlreadyVerified = addRoleId && interaction.member.roles.cache.has(addRoleId);
 
     if (isAlreadyVerified) {
-      return interaction.reply({
-        content: '✅ **あなたはすでに認証完了しています。**',
-        flags: [MessageFlags.Ephemeral]
-      });
+      return interaction.editReply({
+        content: '✅ **あなたはすでに認証完了しています。**'
+      }).catch(() => null);
     }
 
     const state = crypto.randomBytes(16).toString('hex');
@@ -421,11 +427,11 @@ client.on('interactionCreate', async interaction => {
     
     const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(verifyUrl);
     
-    await interaction.reply({
+    // ⚡ すでに保留させているため、editReply で回答を書き換える
+    await interaction.editReply({
       content: '⚠️ **下のボタンから認証サイトへ移動してください。**',
-      components: [new ActionRowBuilder().addComponents(linkButton)],
-      flags: [MessageFlags.Ephemeral]
-    });
+      components: [new ActionRowBuilder().addComponents(linkButton)]
+    }).catch(() => null);
   }
 });
 
