@@ -27,8 +27,8 @@ module.exports = {
       .setColor(0xFAA61A)
       .addFields(
         { name: '⚙️ 認証システムのセットアップ', value: '`/v_setup` コマンドを実行して、認証成功時に付与するロール、剥奪するロール（任意）、およびパネルの案内テキストを設定・設置します。', inline: false },
-        { name: '🤖 不正・捨て垢自動防衛システム', value: 'アカウント作成日から30日未満の捨てアカウント、およびアバター初期状態（アイコン未設定）のユーザーがサーバーに参加した際、自動でキック(Kick)しログに報告する防衛機能が標準搭載されています。', inline: false },
-        { name: '🚨 ログチャンネルの確認', value: '認証の成功ログや、同一IPによる多重接続（裏アカウント検知によるブロック）の警告は、セットアップ時に指定したログ用チャンネルへリアルタイムに通知されます。', inline: false }
+        { name: '🤖 不正・捨て垢自動防衛システム', value: '`/v_antiraid` コマンドで設定可能です。アカウント作成日から指定日数未満の捨てアカウント、およびアバター初期状態（アイコン未設定）のユーザーがサーバーに参加した際、自動でキック(Kick)しログに報告する防衛機能です。', inline: false },
+        { name: '🔄 制限の個別リセット', value: '`/v_reset` コマンドを使って、誤ってブロックされてしまった正規ユーザーをサーバー個別に救済（ブロック解除）できます。', inline: false }
       )
       .setTimestamp();
 
@@ -36,7 +36,7 @@ module.exports = {
     const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
     const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary);
 
-    // 管理者ではない場合、管理者ボタンを非表示、または無効化
+    // 管理者ではない場合、管理者ボタンを無効化
     if (!isClientAdmin) {
       btnAdmin.setDisabled(true).setLabel('👑 管理者向け (権限なし)');
     }
