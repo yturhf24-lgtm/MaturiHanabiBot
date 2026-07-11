@@ -25,7 +25,6 @@ module.exports = {
     const addRole = interaction.options.getRole('add_role');
     const removeRole = interaction.options.getRole('remove_role');
 
-    // 一時的にロールデータをモーダルのカスタムIDに埋め込む
     const modal = new ModalBuilder()
       .setCustomId(`v_setup_modal_${addRole.id}_${removeRole ? removeRole.id : 'none'}`)
       .setTitle('🔒 認証パネルの作成');
