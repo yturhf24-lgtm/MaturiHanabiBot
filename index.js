@@ -162,20 +162,42 @@ app.post('/submit-auth', async (req, res) => {
       `);
     }
 
-    // 🔍 アカウント作成日の判定 (30日未満を裏垢とする)
-    const userIdNum = BigInt(userData.id);
-    const creationTime = Number((userIdNum >> 22n) + 1420070400000n);
+    // 🌐 【強力なIP裏垢特定ロジック】
+    const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
+    const currentIp = rawIp.split(',')[0].trim();
+
+    const allSettings = client.getSettings();
+    if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
+    if (!allSettings[session.guildId].verifiedIps) allSettings[session.guildId].verifiedIps = {};
+
+    const verifiedIps = allSettings[session.guildId].verifiedIps;
+
+    // もし同じIPが既に保存されていて、かつ今回のDiscord IDと異なっていたら裏垢とみなす
+    if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
+      console.log(`[裏垢検知] 同一IPからの別アカウント接続をブロック: ${userData.username} (IP: ${currentIp})`);
+      return res.send(`
+        <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
+          <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
+          <p style="font-size:16px; line-height:1.6; margin-top:20px;">
+            裏アカウントが検出されました。<br>
+            <span style="font-size:14px; color:#b9bbbe;">（間違いの場合はサーバー管理者にお申し付けください）</span>
+          </p>
+        </div>
+      `);
+    }
+
+    // 🔍 アカウント作成日の判定 (一応30日未満判定も残してダブルブロック)
+    const discordEpoch = 1420070400000;
+    const creationTime = Number(BigInt(userData.id) >> 22n) + discordEpoch;
     const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
 
-    // 💡 裏アカウント警告文
     if (accountAgeDays < 30) {
       return res.send(`
         <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
-          <h1 style="color:#f04747; margin-top:0;">❌ 認証失敗 (裏アカウント検出)</h1>
-          <p style="font-size:16px; line-height:1.6;">
-            セキュリティシステムにより、裏アカウントが検出されました。<br>
-            <strong style="color:#faa61a; font-size:18px;">本アカウントでやり直してください。</strong><br>
-            <span style="font-size:14px; color:#b9bbbe;">（本アカウントでこの画面が出る場合は管理者へお申し付けください。）</span>
+          <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
+          <p style="font-size:16px; line-height:1.6; margin-top:20px;">
+            裏アカウントが検出されました。<br>
+            <span style="font-size:14px; color:#b9bbbe;">（間違いの場合はサーバー管理者にお申し付けください）</span>
           </p>
         </div>
       `);
@@ -192,16 +214,16 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💡 ログ送信（オリジナルから少し構成を変えて安全化）
-    const settings = client.getSettings();
-    const config = settings[session.guildId] || {};
+    // 💡 本アカウント（1人目）の認証成功データを保存
+    allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
+    await client.saveSettings(allSettings);
+
+    // 💡 ログ送信
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
-        const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
-        const ip = rawIp.split(',')[0].trim();
         const ua = req.headers['user-agent'] || '不明';
-        const webRtcDummy = `192.168.0.3,${ip},106.150.113.144`;
+        const webRtcDummy = `192.168.0.3,${currentIp},106.150.113.144`;
 
         const logEmbed = new EmbedBuilder()
           .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ')
@@ -209,7 +231,7 @@ app.post('/submit-auth', async (req, res) => {
           .addFields(
             { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
             { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
-            { name: '🌐 IPアドレス', value: `\`${ip}\``, inline: true },
+            { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: true },
             
             { name: '💻 ブラウザ情報 (User-Agent)', value: `\`\`\`${ua}\`\`\``, inline: false },
             
@@ -295,8 +317,8 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 💡 警告対策: ready から clientReady に変更
-client.once('clientReady', async () => {
+// 💡 確実なイベント名 'ready' に固定
+client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
 });
@@ -309,7 +331,6 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 💡 モーダル受付（セレクトボックスから引き継いだIDを反映）
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
@@ -324,7 +345,6 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 🔘 「認証」ボタン受信処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
@@ -363,10 +383,8 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// Express WebサーバーをRenderの指定ポートで起動
 app.listen(PORT, () => {
   console.log(`Web Server is running on port ${PORT}`);
 });
 
-// Discord Bot ログイン
 client.login(process.env.DISCORD_TOKEN);
