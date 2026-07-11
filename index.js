@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const pendingStates = new Map();
 const app = express();
 app.use(express.json());
-app.set('trust proxy', true); // Render等で接続元グローバルIPを確実に「確定」させる設定
+app.set('trust proxy', true); // Render等のプロキシ環境下で接続元IPを確実に確定させる設定
 
 const PORT = process.env.PORT || 3000;
 
@@ -108,7 +108,8 @@ app.get('/callback', (req, res) => {
                     screen: window.screen.width + "x" + window.screen.height, depth: window.screen.colorDepth + "bit",
                     cores: navigator.hardwareConcurrency || "不明", memory: navigator.deviceMemory || "不明",
                     touch: ('ontouchstart' in window || navigator.maxTouchPoints > 0), lang: navigator.language,
-                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone, vendor, renderer
+                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    platform: navigator.platform || "不明", vendor, renderer
                 };
                 const res = await fetch('/submit-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                 document.body.innerHTML = await res.text();
@@ -120,9 +121,9 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 裏垢検出・ロール付与・確定IPによるログ送信 ---
+// --- 裏垢検出・ロール付与・確定IPによるテキストログ送信 ---
 app.post('/submit-auth', async (req, res) => {
-  const { code, state, screen, depth, cores, memory, touch, lang, tz, vendor, renderer } = req.body;
+  const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
 
   const session = pendingStates.get(state);
@@ -136,7 +137,7 @@ app.post('/submit-auth', async (req, res) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
-    if (!tokenResponse.ok) return res.send('<h1 style="color:#f04747;">❌ Discord ofトークン認証に失敗しました。</h1>');
+    if (!tokenResponse.ok) return res.send('<h1 style="color:#f04747;">❌ Discordのトークン認証に失敗しました。</h1>');
     const tokenData = await tokenResponse.json();
 
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
@@ -171,30 +172,37 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💡 各サーバーに保存されている「ただ1つ」のログチャンネルに送信
+    // 💡 1本化された最新ログチャンネルに指定のプレーンテキスト形式で送信
     const settings = client.getSettings();
     const config = settings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
-        // 💡 接続元のグローバルIPアドレスを一本化して確定
+        // 💡 接続元の確定グローバルIPアドレスを取得
         const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
         const ip = rawIp.split(',')[0].trim();
-
         const ua = req.headers['user-agent'] || '不明';
-        const embed = new EmbedBuilder()
-          .setColor(0x2ECC71)
-          .setTitle('✅ 認証成功ログ')
-          .addFields(
-            { name: 'ユーザー', value: `<@${member.id}> (${member.user.tag})`, inline: true },
-            { name: '付与ロール', value: addedRoleName, inline: true },
-            { name: 'アカウント作成日', value: `<t:${Math.floor(creationTime / 1000)}:D> (経過: ${Math.floor(accountAgeDays)}日)`, inline: true },
-            { name: '確定IPアドレス', value: `\`${ip}\``, inline: true },
-            { name: 'ブラウザ/OS', value: `\`\`\`${ua}\`\`\``, inline: false },
-            { name: '画面解像度', value: `\`${screen}\``, inline: true },
-            { name: 'CPU/メモリ', value: `\`${cores}核 / ${memory}\``, inline: true }
-          ).setTimestamp();
-        await logChannel.send({ embeds: [embed] }).catch(() => null);
+        
+        // 💡 ご提示いただいた縦並びプレーンテキストのレイアウトを完全に再現
+        const logMessage = [
+          `ユーザー\n<@${member.id}> (${member.user.tag})`,
+          `付与ロール\n${addedRoleName}`,
+          `IPアドレス\n${ip}`,
+          `ブラウザ\n${ua}`,
+          `プラットフォーム\n${platform || '不明'}`,
+          `言語\n${lang || 'ja'}`,
+          `タイムゾーン\n${tz || 'Asia/Tokyo'}`,
+          `画面解像度\n${screen || '不明'}`,
+          `色深度\n${depth || '不明'}`,
+          `CPU数\n${cores ? cores + 'コア' : '不明'}`,
+          `メモリ\n${memory ? memory + 'GB以上' : '不明'}`,
+          `タッチ対応\n${touch ?? '不明'}`,
+          `WebGL Vendor\n${vendor || '不明'}`,
+          `WebGL Renderer\n${renderer || '不明'}`,
+          `アカウント作成日\n<t:${Math.floor(creationTime / 1000)}:F>` // Discord上で自動的に「2026/07/04 22:58」のような書式になります
+        ].join('\n');
+
+        await logChannel.send({ content: logMessage }).catch(() => null);
       }
     }
 
@@ -264,7 +272,7 @@ client.once('ready', async () => {
   console.log(`Bot Online: ${client.user.tag}`);
 });
 
-// インタラクション受信イベント判定
+// インタラクション判定
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -323,7 +331,7 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// 💡 修正箇所：Express Webサーバーを確実に起動させ、Renderのポートエラーを解消する
+// Express WebサーバーをRenderの指定ポートで起動
 app.listen(PORT, () => {
   console.log(`Web Server is running on port ${PORT}`);
 });
