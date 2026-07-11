@@ -151,7 +151,7 @@ app.post('/submit-auth', async (req, res) => {
     const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
     const currentIp = rawIp.split(',')[0].trim();
 
-    // 🏢【サーバー個別データ管理】の独立化
+    // 🏢 サーバー個別データの読み込み・初期化
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
     
@@ -163,7 +163,7 @@ app.post('/submit-auth', async (req, res) => {
     const verifiedIps = config.verifiedIps;
     const bypassUsers = config.bypassUsers;
 
-    // 🛑 同一サーバー内での同一IP重複チェック
+    // 🛑 同一サーバー内での同一IP重複（裏垢）チェック
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
       
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
@@ -256,7 +256,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) { await member.roles.add(r).catch(() => null); addedRoleName = `<@&${r.id}>`; }
     }
 
-    // 🗑️ 【修正】削除（剥奪）ロールの取得・処理とログ反映用テキスト生成
+    // 🗑️ 削除ロールの取得・処理
     let removedRoleName = 'なし';
     if (session.removeRoleId && session.removeRoleId !== 'none') {
       const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
@@ -281,7 +281,7 @@ app.post('/submit-auth', async (req, res) => {
           .addFields(
             { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
             { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
-            { name: '🗑️ 削除ロール', value: `${removedRoleName}`, inline: true }, // 🛠️ 横並びで追加
+            { name: '🗑️ 削除ロール', value: `${removedRoleName}`, inline: true },
             { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: true },
             { name: '💻 ブラウザ情報', value: `\`\`\`${ua}\`\`\``, inline: false },
             { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
@@ -364,8 +364,8 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 🟢 起動イベント（サーバー数を設定）
-client.once('ready', async () => {
+// 🟢 起動イベント (clientReadyに統合・v15対策)
+client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
 
@@ -431,7 +431,7 @@ client.on('guildMemberAdd', async (member) => {
         if (logChannel) {
           const alertEmbed = new EmbedBuilder()
             .setTitle('🛡️ 自動防衛システム - Kickログ')
-            .setColor(0xfaa61a)
+            .setColor(0x2ecc71)
             .setDescription(`不正アカウントの可能性があるため、参加時に自動的にKickしました。`)
             .addFields(
               { name: '👤 対象ユーザー', value: `<@${member.id}>\n名称: \`${member.user.tag}\`\nID: \`${member.id}\``, inline: false },
