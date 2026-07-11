@@ -41,10 +41,13 @@ module.exports = {
       });
     }
 
-    // 💡 常に新しいチャンネルデータに上書き保存（1本に強制）
+    // 💡 常に新しいチャンネルデータに上書き保存
     settings[interaction.guildId].vLogChannel = channel.id;
     settings[interaction.guildId].vLogStatus = (status === 'on');
     await interaction.client.saveSettings(settings);
+
+    // 💡 安全対策：すでに返信済みの場合は処理を中断して二重返信(40060)を防ぐ
+    if (interaction.replied || interaction.deferred) return;
 
     await interaction.reply({
       content: `✅ このサーバーの認証ログを <#${channel.id}> で **${status.toUpperCase()}** に設定しました。\n(新しく設定されたため、今後はこのチャンネルにのみ返信・転送されます)`,
