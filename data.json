@@ -14,7 +14,11 @@
       "1.21.108.52": "1266013271518089258"
     },
     "bypassUsers": [],
-    "blockedUsers": {}
+    "blockedUsers": {},
+    "antiRaid": {
+      "kickDefaultAvatar": false,
+      "kickAccountAgeDays": 0
+    }
   },
   "1523238859670819007": {
     "roles": [],
