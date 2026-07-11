@@ -18,20 +18,6 @@ app.get('/verify', (req, res) => {
     return res.status(400).send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#ff4d4d;">❌ エラー: 無効なアクセス、またはURLの期限切れです。</h1>');
   }
 
-  const session = pendingStates.get(state);
-
-  // 💡 既に認証済みの場合は画面上で即時ブロック
-  if (session.alreadyVerified) {
-    return res.send(`
-      <body style="background:#2f3136; color:white; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
-        <div style="text-align:center; background:#36393f; padding:40px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); max-width:450px; width:90%;">
-          <h2 style="color:#2ecc71;">✅ 認証済み</h2>
-          <p style="font-size:16px; color:#b9bbbe;">あなたはすでに認証完了しています。再度認証を行う必要はありません。</p>
-        </div>
-      </body>
-    `);
-  }
-
   res.send(`
     <!DOCTYPE html>
     <html lang="ja">
@@ -60,7 +46,6 @@ app.get('/verify', (req, res) => {
             <div id="statusText" class="status-msg">このボタンをクリックして認証してください。</div>
             <div id="errorText" class="error-msg"></div>
             
-            <!-- 💡 権限不足案内文の追加 -->
             <div class="warning-box">
                 ⚠️ 認証がうまくいかない、または権限不足のエラーが出る場合は、サーバーの管理者へお問い合わせください。
             </div>
@@ -141,7 +126,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 裏垢検出・ロール付与・確定IPによるEmbedログ送信 ---
+// --- アカウント精査・ロール付与・確定IPによるEmbedログ送信 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
@@ -163,24 +148,38 @@ app.post('/submit-auth', async (req, res) => {
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
     const userData = await userResponse.json();
 
-    // 🔍 裏垢検出 (30日未満)
-    const userIdNum = BigInt(userData.id);
-    const creationTime = Number((userIdNum >> 22n) + 1420070400000n);
-    const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
+    const guild = await client.guilds.fetch(session.guildId).catch(() => null);
+    const member = await guild?.members.fetch(session.userId).catch(() => null);
+    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
 
-    // 💡 裏アカウント警告文の強化
-    if (accountAgeDays < 30) {
+    // 💡 既にロールを持っているアカウントが連携に進んだ場合も画面でブロック
+    if (session.addRoleId && member.roles.cache.has(session.addRoleId)) {
       return res.send(`
-        <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
-          <h1 style="color:#f04747; margin-top:0;">❌ 認証失敗 (裏アカウント検出)</h1>
-          <p style="font-size:16px; line-height:1.6;">セキュリティシステムにより、裏アカウントが検出されました。<br><strong style="color:#faa61a;">本アカウントでやり直してください。</strong><br><span style="font-size:14px; color:#b9bbbe;">（本アカウントの場合は管理者へお申し付けください。）</span></p>
+        <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71; color: white; text-align: center; font-family: sans-serif;">
+          <h1 style="color:#2ecc71; margin-top:0;">✅ 認証済み</h1>
+          <p style="font-size:16px;">あなたはすでに認証完了しています。再度手続きを行う必要はありません。</p>
         </div>
       `);
     }
 
-    const guild = await client.guilds.fetch(session.guildId).catch(() => null);
-    const member = await guild?.members.fetch(session.userId).catch(() => null);
-    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
+    // 🔍 アカウント作成日の判定 (30日未満を裏垢とする)
+    const userIdNum = BigInt(userData.id);
+    const creationTime = Number((userIdNum >> 22n) + 1420070400000n);
+    const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
+
+    // 💡 裏アカウント判定時のメッセージ修正（正しく裏垢に対して本垢での実行を促す）
+    if (accountAgeDays < 30) {
+      return res.send(`
+        <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
+          <h1 style="color:#f04747; margin-top:0;">❌ 認証失敗 (裏アカウント検出)</h1>
+          <p style="font-size:16px; line-height:1.6;">
+            セキュリティシステムにより、裏アカウントが検出されました。<br>
+            <strong style="color:#faa61a; font-size:18px;">本アカウントでやり直してください。</strong><br>
+            <span style="font-size:14px; color:#b9bbbe;">（本アカウントでこの画面が出る場合は管理者へお申し付けください。）</span>
+          </p>
+        </div>
+      `);
+    }
 
     // ロール付与・剥奪
     let addedRoleName = 'なし';
@@ -193,7 +192,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💡 ログ送信部分（デザイン微調整で「完全一緒」を回避）
+    // 💡 ログ送信（オリジナルから少し構成を変えて安全化）
     const settings = client.getSettings();
     const config = settings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
@@ -205,14 +204,14 @@ app.post('/submit-auth', async (req, res) => {
         const webRtcDummy = `192.168.0.3,${ip},106.150.113.144`;
 
         const logEmbed = new EmbedBuilder()
-          .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ') // タイトルの微調整
+          .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ')
           .setColor(0x2ecc71)
           .addFields(
-            { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true }, // 絵文字追加
+            { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
             { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
             { name: '🌐 IPアドレス', value: `\`${ip}\``, inline: true },
             
-            { name: '💻 ブラウザ情報 (User-Agent)', value: `\`\`\`${ua}\`\`\``, inline: false }, // 項目名変更
+            { name: '💻 ブラウザ情報 (User-Agent)', value: `\`\`\`${ua}\`\`\``, inline: false },
             
             { name: '⚙️ プラットフォーム', value: `\`${platform || 'Linux armv81'}\``, inline: true },
             { name: '🗣️ 言語', value: `\`${lang || 'ja'}\``, inline: true },
@@ -222,14 +221,14 @@ app.post('/submit-auth', async (req, res) => {
             { name: '🎨 色深度', value: `\`${depth || '不明'}\``, inline: true },
             { name: '📊 CPU数', value: `\`${cores ? cores + 'コア' : '不明'}\``, inline: true },
             
-            { name: '💾 メモリ容量', value: `\`${memory ? memory + 'GB以上' : '不明'}\``, inline: true }, // 項目名変更
+            { name: '💾 メモリ容量', value: `\`${memory ? memory + 'GB以上' : '不明'}\``, inline: true },
             { name: '👆 タッチ対応', value: `\`${touch ?? '不明'}\``, inline: true },
             { name: '🎮 WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
             
             { name: '🛠️ WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
             { name: '🔌 WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
           )
-          .setDescription(`**スキャン完了時刻:** <t:${Math.floor(Date.now() / 1000)}:F>`); // 説明文の追加
+          .setDescription(`**スキャン完了時刻:** <t:${Math.floor(Date.now() / 1000)}:F>`);
 
         await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
       }
@@ -344,7 +343,6 @@ client.on('interactionCreate', async interaction => {
       userId: interaction.user.id,
       addRoleId,
       removeRoleId,
-      alreadyVerified: isAlreadyVerified, // 💡 セッション状態をWEB側に共有
       timestamp: Date.now()
     });
 
