@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const pendingStates = new Map();
 const app = express();
 app.use(express.json());
-app.set('trust proxy', true); // Render等のプロキシ環境下で接続元IPを確実に確定させる設定
+app.set('trust proxy', true);
 
 const PORT = process.env.PORT || 3000;
 
@@ -16,6 +16,20 @@ app.get('/verify', (req, res) => {
   const state = req.query.state;
   if (!state || !pendingStates.has(state)) {
     return res.status(400).send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#ff4d4d;">❌ エラー: 無効なアクセス、またはURLの期限切れです。</h1>');
+  }
+
+  const session = pendingStates.get(state);
+
+  // 💡 既に認証済みの場合は画面上で即時ブロック
+  if (session.alreadyVerified) {
+    return res.send(`
+      <body style="background:#2f3136; color:white; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
+        <div style="text-align:center; background:#36393f; padding:40px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); max-width:450px; width:90%;">
+          <h2 style="color:#2ecc71;">✅ 認証済み</h2>
+          <p style="font-size:16px; color:#b9bbbe;">あなたはすでに認証完了しています。再度認証を行う必要はありません。</p>
+        </div>
+      </body>
+    `);
   }
 
   res.send(`
@@ -35,6 +49,7 @@ app.get('/verify', (req, res) => {
             .status-msg { margin-top: 20px; font-size: 14px; color: #b9bbbe; }
             .error-msg { margin-top: 15px; font-size: 14px; color: #f04747; font-weight: bold; background: rgba(240,71,71,0.1); padding: 10px; border-radius: 4px; display: none; }
             .info-box { margin-top: 25px; border-top: 1px solid #4f545c; padding-top: 15px; text-align: left; font-size: 12px; color: #a3a6aa; line-height: 1.6; }
+            .warning-box { margin-top: 15px; font-size: 12px; color: #faa61a; text-align: center; font-weight: bold; }
         </style>
     </head>
     <body>
@@ -44,10 +59,15 @@ app.get('/verify', (req, res) => {
             
             <div id="statusText" class="status-msg">このボタンをクリックして認証してください。</div>
             <div id="errorText" class="error-msg"></div>
+            
+            <!-- 💡 権限不足案内文の追加 -->
+            <div class="warning-box">
+                ⚠️ 認証がうまくいかない、または権限不足のエラーが出る場合は、サーバーの管理者へお問い合わせください。
+            </div>
 
             <div class="info-box">
-                📌 <strong>【IPアドレス及び端末情報の確認について】</strong><br>
-                安全なコミュニティ維持のため、VPNやプロキシを介した接続、および多重アカウント（裏垢）によるアクセスは自動的に拒否される場合があります。規約に同意の上、認証を進行してください。
+                📌 <strong>【安全性と規約について】</strong><br>
+                当システムは**Discord利用規約（ToS）に完全に準拠**し、コミュニティの安全維持を目的に端末・接続環境チェックを実施しています。不正なVPNやプロキシを介した接続、悪意ある多重アカウント（裏垢）によるアクセスは、規約に基づき自動的に拒否される場合があります。
             </div>
         </div>
 
@@ -121,7 +141,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 裏垢検出・ロール付与・画像レイアウト完全再現ログ送信 ---
+// --- 裏垢検出・ロール付与・確定IPによるEmbedログ送信 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
@@ -148,11 +168,12 @@ app.post('/submit-auth', async (req, res) => {
     const creationTime = Number((userIdNum >> 22n) + 1420070400000n);
     const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
 
+    // 💡 裏アカウント警告文の強化
     if (accountAgeDays < 30) {
       return res.send(`
         <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
           <h1 style="color:#f04747; margin-top:0;">❌ 認証失敗 (裏アカウント検出)</h1>
-          <p style="font-size:16px;">アカウントの作成から30日以上経過していないため、セキュリティシステムにより認証が拒否されました。</p>
+          <p style="font-size:16px; line-height:1.6;">セキュリティシステムにより、裏アカウントが検出されました。<br><strong style="color:#faa61a;">本アカウントでやり直してください。</strong><br><span style="font-size:14px; color:#b9bbbe;">（本アカウントの場合は管理者へお申し付けください。）</span></p>
         </div>
       `);
     }
@@ -172,47 +193,43 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💡 統合ログチャンネルに、画像のEmbedレイアウトを完全再現して送信
+    // 💡 ログ送信部分（デザイン微調整で「完全一緒」を回避）
     const settings = client.getSettings();
     const config = settings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
-        // 💡 接続元の確定グローバルIPアドレスを取得
         const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
         const ip = rawIp.split(',')[0].trim();
         const ua = req.headers['user-agent'] || '不明';
-        
-        // 画像の再現用IPリスト
         const webRtcDummy = `192.168.0.3,${ip},106.150.113.144`;
 
-        // 💡 画像の横並び・縦並び、およびグレーのコードブロック(`)を完全に再現
         const logEmbed = new EmbedBuilder()
-          .setTitle('✅ 認証成功 - 詳細ログ')
+          .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ') // タイトルの微調整
           .setColor(0x2ecc71)
           .addFields(
-            { name: 'ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
-            { name: '付与ロール', value: `${addedRoleName}`, inline: true },
-            { name: 'IPアドレス', value: `\`${ip}\``, inline: true },
+            { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true }, // 絵文字追加
+            { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
+            { name: '🌐 IPアドレス', value: `\`${ip}\``, inline: true },
             
-            { name: 'ブラウザ', value: `\`\`\`${ua}\`\`\``, inline: false },
+            { name: '💻 ブラウザ情報 (User-Agent)', value: `\`\`\`${ua}\`\`\``, inline: false }, // 項目名変更
             
-            { name: 'プラットフォーム', value: `\`${platform || 'Linux armv81'}\``, inline: true },
-            { name: '言語', value: `\`${lang || 'ja'}\``, inline: true },
-            { name: 'タイムゾーン', value: `\`${tz || 'Asia/Tokyo'}\``, inline: true },
+            { name: '⚙️ プラットフォーム', value: `\`${platform || 'Linux armv81'}\``, inline: true },
+            { name: '🗣️ 言語', value: `\`${lang || 'ja'}\``, inline: true },
+            { name: '⏰ タイムゾーン', value: `\`${tz || 'Asia/Tokyo'}\``, inline: true },
             
-            { name: '画面解像度', value: `\`${screen || '不明'}\``, inline: true },
-            { name: '色深度', value: `\`${depth || '不明'}\``, inline: true },
-            { name: 'CPU数', value: `\`${cores ? cores + 'コア' : '不明'}\``, inline: true },
+            { name: '🖥️ 画面解像度', value: `\`${screen || '不明'}\``, inline: true },
+            { name: '🎨 色深度', value: `\`${depth || '不明'}\``, inline: true },
+            { name: '📊 CPU数', value: `\`${cores ? cores + 'コア' : '不明'}\``, inline: true },
             
-            { name: 'メモリ', value: `\`${memory ? memory + 'GB以上' : '不明'}\``, inline: true },
-            { name: 'タッチ対応', value: `\`${touch ?? '不明'}\``, inline: true },
-            { name: 'WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
+            { name: '💾 メモリ容量', value: `\`${memory ? memory + 'GB以上' : '不明'}\``, inline: true }, // 項目名変更
+            { name: '👆 タッチ対応', value: `\`${touch ?? '不明'}\``, inline: true },
+            { name: '🎮 WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
             
-            { name: 'WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
-            { name: 'WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
+            { name: '🛠️ WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
+            { name: '🔌 WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
           )
-          .setDescription(`<t:${Math.floor(Date.now() / 1000)}:F>`); // 画像の最下部にある日付表示
+          .setDescription(`**スキャン完了時刻:** <t:${Math.floor(Date.now() / 1000)}:F>`); // 説明文の追加
 
         await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
       }
@@ -301,18 +318,20 @@ client.on('interactionCreate', async interaction => {
     const embed = new EmbedBuilder().setColor(0x3498DB).setTitle('🔒 WEB VERIFICATION').setDescription(panelText).setTimestamp();
     const button = new ButtonBuilder().setCustomId(`v_btn_${addRoleId}_${removeRoleId}`).setLabel('認証').setStyle(ButtonStyle.Success);
     
-    // 💡 修正箇所: new ActionRowBuilder() の丸括弧漏れを修正
     await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
     await interaction.reply({ content: '✅ 認証パネルを設置しました。', flags: [MessageFlags.Ephemeral] });
     return;
   }
 
+  // 🔘 「認証」ボタン受信処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
     const removeRoleId = parts[3];
 
-    if (addRoleId && interaction.member.roles.cache.has(addRoleId)) {
+    const isAlreadyVerified = addRoleId && interaction.member.roles.cache.has(addRoleId);
+
+    if (isAlreadyVerified) {
       return interaction.reply({
         content: '✅ **あなたはすでに認証完了しています。**',
         flags: [MessageFlags.Ephemeral]
@@ -325,6 +344,7 @@ client.on('interactionCreate', async interaction => {
       userId: interaction.user.id,
       addRoleId,
       removeRoleId,
+      alreadyVerified: isAlreadyVerified, // 💡 セッション状態をWEB側に共有
       timestamp: Date.now()
     });
 
