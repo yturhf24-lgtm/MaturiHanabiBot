@@ -121,10 +121,10 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 裏垢検出・ロール付与・確定IPによるテキストログ送信 ---
+// --- 裏垢検出・ロール付与・確定IPによるEmbedログ送信 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
-  if (!state || !pendingStates.has(state)) return res.send('<h1 style="color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
+  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
 
   const session = pendingStates.get(state);
   pendingStates.delete(state);
@@ -137,7 +137,7 @@ app.post('/submit-auth', async (req, res) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
-    if (!tokenResponse.ok) return res.send('<h1 style="color:#f04747;">❌ Discordのトークン認証に失敗しました。</h1>');
+    if (!tokenResponse.ok) return res.send('<h1 style="text-align:center; color:#f04747;">❌ Discordのトークン認証に失敗しました。</h1>');
     const tokenData = await tokenResponse.json();
 
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
@@ -159,7 +159,7 @@ app.post('/submit-auth', async (req, res) => {
 
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
-    if (!member) return res.send('<h1 style="color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
+    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
 
     // ロール付与・剥奪
     let addedRoleName = 'なし';
@@ -172,7 +172,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💡 1本化された最新ログチャンネルに指定のプレーンテキスト形式で送信
+    // 💡 統合されたログチャンネルにEmbed形式で送信
     const settings = client.getSettings();
     const config = settings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
@@ -183,8 +183,8 @@ app.post('/submit-auth', async (req, res) => {
         const ip = rawIp.split(',')[0].trim();
         const ua = req.headers['user-agent'] || '不明';
         
-        // 💡 ご提示いただいた縦並びプレーンテキストのレイアウトを完全に再現
-        const logMessage = [
+        // 💡 ご提示いただいた項目名＋改行の「縦並び」をEmbedのDescription内で完全再現
+        const logContent = [
           `ユーザー\n<@${member.id}> (${member.user.tag})`,
           `付与ロール\n${addedRoleName}`,
           `IPアドレス\n${ip}`,
@@ -199,10 +199,16 @@ app.post('/submit-auth', async (req, res) => {
           `タッチ対応\n${touch ?? '不明'}`,
           `WebGL Vendor\n${vendor || '不明'}`,
           `WebGL Renderer\n${renderer || '不明'}`,
-          `アカウント作成日\n<t:${Math.floor(creationTime / 1000)}:F>` // Discord上で自動的に「2026/07/04 22:58」のような書式になります
+          `アカウント作成日\n<t:${Math.floor(creationTime / 1000)}:F>`
         ].join('\n');
 
-        await logChannel.send({ content: logMessage }).catch(() => null);
+        const logEmbed = new EmbedBuilder()
+          .setTitle('📥 新規ユーザー認証ログ')
+          .setDescription(logContent)
+          .setColor(0x2ecc71)
+          .setTimestamp();
+
+        await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
       }
     }
 
@@ -214,7 +220,7 @@ app.post('/submit-auth', async (req, res) => {
       </div>
     `);
   } catch (err) {
-    res.send('<h1>❌ 内部エラーが発生しました。</h1>');
+    res.send('<h1 style="text-align:center; color:#f04747;">❌ 内部エラーが発生しました。</h1>');
   }
 });
 
