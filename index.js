@@ -152,31 +152,34 @@ app.post('/submit-auth', async (req, res) => {
     const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
     const currentIp = rawIp.split(',')[0].trim();
 
+    // 🏢【サーバー個別データ管理】セクションの初期化・独立化
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
-    if (!allSettings[session.guildId].verifiedIps) allSettings[session.guildId].verifiedIps = {};
-    if (!allSettings[session.guildId].bypassUsers) allSettings[session.guildId].bypassUsers = [];
-    if (!allSettings[session.guildId].blockedUsers) allSettings[session.guildId].blockedUsers = {};
+    
+    // 各サーバーごとの保存器を完全に切り離して構築
+    const config = allSettings[session.guildId];
+    if (!config.verifiedIps) config.verifiedIps = {};
+    if (!config.bypassUsers) config.bypassUsers = [];
+    if (!config.blockedUsers) config.blockedUsers = {};
 
-    const verifiedIps = allSettings[session.guildId].verifiedIps;
-    const bypassUsers = allSettings[session.guildId].bypassUsers;
+    const verifiedIps = config.verifiedIps;
+    const bypassUsers = config.bypassUsers;
 
-    // 🛑 【最優先ガード】同一IPチェック
+    // 🛑 【最優先ガード】同一サーバー内での同一IP重複チェック
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
       
-      // ✨【特定プレイヤー ＆ コマンド許可ユーザーの免除判定】
+      // ✨【特定ユーザー ＆ コマンド許可ユーザーの免除判定】
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
-        console.log(`[例外許可適用] 裏垢制限免除ユーザーのためアクセスを許可しました: ${userData.username} (${userData.id})`);
+        console.log(`[例外許可適用] サーバー [${session.guildId}] にて制限免除ユーザーのアクセスを許可: ${userData.username} (${userData.id})`);
       } else {
 
-        // 📝 ブロックされた裏垢の履歴をサーバーデータに保存
-        allSettings[session.guildId].blockedUsers[userData.id] = verifiedIps[currentIp]; 
+        // 📝 このサーバー固有のブロックリストへ追記
+        config.blockedUsers[userData.id] = verifiedIps[currentIp]; 
         await client.saveSettings(allSettings);
 
-        console.log(`[裏垢ブロック成功] 同一IPからの別垢接続を検知: ${userData.username} (IP: ${currentIp})`);
+        console.log(`[裏垢ブロック成功] サーバー [${session.guildId}] 内の同一IP接続を検知: ${userData.username} (IP: ${currentIp})`);
 
-        // 🚨 裏垢検知ログをDiscordに送信
-        const config = allSettings[session.guildId] || {};
+        // 🚨 サーバー個別のログチャンネルへ通知
         if (config.vLogStatus && config.vLogChannel) {
           const guild = await client.guilds.fetch(session.guildId).catch(() => null);
           const logChannel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
@@ -189,7 +192,7 @@ app.post('/submit-auth', async (req, res) => {
             const alertEmbed = new EmbedBuilder()
               .setTitle('🚨 【警告】裏アカウント検知システム')
               .setColor(0xf04747)
-              .setDescription(`同一の接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
+              .setDescription(`当サーバー内で同一の接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
               .addFields(
                 { name: '❌ 検出された裏垢', value: `<@${userData.id}>\n名称: \`${userData.username}#${userData.discriminator || '0'}\`\nID: \`${userData.id}\``, inline: false },
                 { name: '👤 最初に認証した本垢', value: `<@${originalUserId}>\nID: \`${originalUserId}\``, inline: false },
@@ -238,7 +241,7 @@ app.post('/submit-auth', async (req, res) => {
       }
     }
 
-    // 🟢 安全なアカウントのみ実行（ロール付与）
+    // 🟢 安全なアカウントのみ実行（個別サーバーへのロール付与）
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
     if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
@@ -264,12 +267,11 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💾 本アカウント（1人目）のIPデータを保存
-    allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
+    // 💾 このサーバー固有のIPデータに本アカウント情報を格納
+    config.verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // 📝 通常の成功ログ送信
-    const config = allSettings[session.guildId] || {};
+    // 📝 通常の成功ログ送信 (個別サーバーのチャンネルへ)
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
@@ -374,12 +376,27 @@ client.on('error', error => console.error('[Discordクライアントエラー]'
 process.on('unhandledRejection', error => console.error('[未処理の非同期エラー]', error));
 
 client.on('interactionCreate', async interaction => {
+  // ⌨️ スラッシュコマンド処理（3秒タイムアウト対策強化ガード）
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
-    if (command) await command.execute(interaction).catch(err => console.error(err));
+    if (!command) return;
+
+    try {
+      await command.execute(interaction);
+    } catch (err) {
+      console.error(`[コマンド実行失敗 - /${interaction.commandName}]`, err);
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: '❌ コマンドの処理中にエラーが発生しました。', flags: [MessageFlags.Ephemeral] });
+        } else {
+          await interaction.editReply({ content: '❌ コマンドの処理中にエラーが発生しました。' });
+        }
+      } catch (innerErr) { /* スルー */ }
+    }
     return;
   }
 
+  // 📝 モーダル送信処理
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
@@ -427,7 +444,6 @@ client.on('interactionCreate', async interaction => {
     
     const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(verifyUrl);
     
-    // ⚡ すでに保留させているため、editReply で回答を書き換える
     await interaction.editReply({
       content: '⚠️ **下のボタンから認証サイトへ移動してください。**',
       components: [new ActionRowBuilder().addComponents(linkButton)]
