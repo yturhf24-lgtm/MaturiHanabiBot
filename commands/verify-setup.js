@@ -25,6 +25,20 @@ module.exports = {
     const addRole = interaction.options.getRole('add_role');
     const removeRole = interaction.options.getRole('remove_role');
 
+    // 💡 Botの最高順位ロールと比較してエラーを返すガード
+    const botMember = await interaction.guild.members.fetch(interaction.client.user.id);
+    if (addRole.position >= botMember.roles.highest.position) {
+      return interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('❌ 設定不可能なロール')
+            .setDescription(`付与ロール権限が高すぎるため、パネルを作成できません。\n\n**対象ロール:** <@&${addRole.id}>\nBotのロールより下に並び替えるか、別のロールを指定してください。`)
+        ],
+        flags: [MessageFlags.Ephemeral]
+      });
+    }
+
     const modal = new ModalBuilder()
       .setCustomId(`v_setup_modal_${addRole.id}_${removeRole ? removeRole.id : 'none'}`)
       .setTitle('🔒 認証パネルの作成');
