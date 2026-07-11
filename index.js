@@ -103,7 +103,7 @@ app.get('/callback', (req, res) => {
                     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                     if(gl) {
                         const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_VENDOR_WEBGL);
+                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
                         renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
                     }
                 }catch(e){}
@@ -129,10 +129,10 @@ app.get('/callback', (req, res) => {
 // --- アカウント精査・ロール付与・確定IPによるEmbedログ送信 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
-  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり難してください。</h1>');
+  if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
 
   const session = pendingStates.get(state);
-  pendingStates.delete(state);
+  pendingStates.delete(state); // セッションの即時消費（多重送信防止）
 
   try {
     const redirectUri = `https://${req.get('host')}/callback`;
@@ -148,21 +148,7 @@ app.post('/submit-auth', async (req, res) => {
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
     const userData = await userResponse.json();
 
-    const guild = await client.guilds.fetch(session.guildId).catch(() => null);
-    const member = await guild?.members.fetch(session.userId).catch(() => null);
-    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
-
-    // 💡 既にロールを持っているアカウントが連携に進んだ場合も画面でブロック
-    if (session.addRoleId && member.roles.cache.has(session.addRoleId)) {
-      return res.send(`
-        <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71; color: white; text-align: center; font-family: sans-serif;">
-          <h1 style="color:#2ecc71; margin-top:0;">✅ 認証済み</h1>
-          <p style="font-size:16px;">あなたはすでに認証完了しています。再度手続きを行う必要はありません。</p>
-        </div>
-      `);
-    }
-
-    // 🌐 【強力なIP裏垢特定ロジック】
+    // 🌐 IPアドレスの特定処理
     const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
     const currentIp = rawIp.split(',')[0].trim();
 
@@ -172,9 +158,9 @@ app.post('/submit-auth', async (req, res) => {
 
     const verifiedIps = allSettings[session.guildId].verifiedIps;
 
-    // もし同じIPが既に保存されていて、かつ今回のDiscord IDと異なっていたら裏垢とみなす
+    // 🛑 【最優先ガード】もし同じIPがデータベースにあって、登録されたユーザーIDと今回のユーザーIDが別物なら「裏垢」として即座に弾く
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
-      console.log(`[裏垢検知] 同一IPからの別アカウント接続をブロック: ${userData.username} (IP: ${currentIp})`);
+      console.log(`[裏垢ブロック成功] 同一IPからの別垢接続を検知: ${userData.username} (IP: ${currentIp})`);
       return res.send(`
         <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
           <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
@@ -186,7 +172,7 @@ app.post('/submit-auth', async (req, res) => {
       `);
     }
 
-    // 🔍 アカウント作成日の判定 (一応30日未満判定も残してダブルブロック)
+    // 🔍 【第2ガード】アカウント作成日の判定 (30日未満チェック)
     const discordEpoch = 1420070400000;
     const creationTime = Number(BigInt(userData.id) >> 22n) + discordEpoch;
     const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
@@ -203,7 +189,22 @@ app.post('/submit-auth', async (req, res) => {
       `);
     }
 
-    // ロール付与・剥奪
+    // 🟢 すべてのチェックを通過した安全な「本アカウント」のみ、ここから下の処理が実行される
+    const guild = await client.guilds.fetch(session.guildId).catch(() => null);
+    const member = await guild?.members.fetch(session.userId).catch(() => null);
+    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
+
+    // 既にロールを持っている場合の二重処理防止
+    if (session.addRoleId && member.roles.cache.has(session.addRoleId)) {
+      return res.send(`
+        <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71; color: white; text-align: center; font-family: sans-serif;">
+          <h1 style="color:#2ecc71; margin-top:0;">✅ 認証済み</h1>
+          <p style="font-size:16px;">あなたはすでに認証完了しています。</p>
+        </div>
+      `);
+    }
+
+    // 🌟 ロール付与・剥奪処理を実行
     let addedRoleName = 'なし';
     if (session.addRoleId) {
       const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
@@ -214,14 +215,12 @@ app.post('/submit-auth', async (req, res) => {
       if (r) await member.roles.remove(r).catch(() => null);
     }
 
-    // 💡 本アカウント（1人目）の認証成功データを保存
+    // 💾 本アカウント（1人目）のIPデータを保存
     allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // ✨【修正】サーバーの設定（ログチャンネル等）を安全に取得
+    // 📝 ログ送信
     const config = allSettings[session.guildId] || {};
-
-    // 💡 ログ送信
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
@@ -235,21 +234,16 @@ app.post('/submit-auth', async (req, res) => {
             { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
             { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
             { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: true },
-            
-            { name: '💻 ブラウザ情報 (User-Agent)', value: `\`\`\`${ua}\`\`\``, inline: false },
-            
-            { name: '⚙️ プラットフォーム', value: `\`${platform || 'Linux armv81'}\``, inline: true },
+            { name: '💻 ブラウザ情報', value: `\`\`\`${ua}\`\`\``, inline: false },
+            { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
             { name: '🗣️ 言語', value: `\`${lang || 'ja'}\``, inline: true },
             { name: '⏰ タイムゾーン', value: `\`${tz || 'Asia/Tokyo'}\``, inline: true },
-            
             { name: '🖥️ 画面解像度', value: `\`${screen || '不明'}\``, inline: true },
             { name: '🎨 色深度', value: `\`${depth || '不明'}\``, inline: true },
             { name: '📊 CPU数', value: `\`${cores ? cores + 'コア' : '不明'}\``, inline: true },
-            
             { name: '💾 メモリ容量', value: `\`${memory ? memory + 'GB以上' : '不明'}\``, inline: true },
             { name: '👆 タッチ対応', value: `\`${touch ?? '不明'}\``, inline: true },
             { name: '🎮 WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
-            
             { name: '🛠️ WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
             { name: '🔌 WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
           )
@@ -321,13 +315,11 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 💡 イベント名は 'ready' に固定
 client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
 });
 
-// インタラクション判定
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
