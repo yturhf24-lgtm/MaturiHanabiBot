@@ -132,7 +132,7 @@ app.post('/submit-auth', async (req, res) => {
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
 
   const session = pendingStates.get(state);
-  pendingStates.delete(state); // セッションの即時消費（多重送信ガード）
+  pendingStates.delete(state); // セッションの即時消費
 
   try {
     const redirectUri = `https://${req.get('host')}/callback`;
@@ -165,15 +165,11 @@ app.post('/submit-auth', async (req, res) => {
 
     // 🛑 同一サーバー内での同一IP重複（裏垢）チェック
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
-      
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
-        console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー許可: ${userData.username} (${userData.id})`);
+        console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー許可: ${userData.username}`);
       } else {
-
         config.blockedUsers[userData.id] = verifiedIps[currentIp]; 
         await client.saveSettings(allSettings);
-
-        console.log(`[裏垢ブロック成功] サーバー [${session.guildId}] 同一IP接続検知: ${userData.username} (IP: ${currentIp})`);
 
         if (config.vLogStatus && config.vLogChannel) {
           const guild = await client.guilds.fetch(session.guildId).catch(() => null);
@@ -189,14 +185,10 @@ app.post('/submit-auth', async (req, res) => {
               .setColor(0xf04747)
               .setDescription(`当サーバー内で同一の接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
               .addFields(
-                { name: '❌ 検出された裏垢', value: `<@${userData.id}>\n名称: \`${userData.username}#${userData.discriminator || '0'}\`\nID: \`${userData.id}\``, inline: false },
+                { name: '❌ 検出された裏垢', value: `<@${userData.id}>\n名称: \`${userData.username}\`\nID: \`${userData.id}\``, inline: false },
                 { name: '👤 最初に認証した本垢', value: `<@${originalUserId}>\nID: \`${originalUserId}\``, inline: false },
                 { name: '🌐 接続IPアドレス', value: `\`${currentIp}\``, inline: true },
                 { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
-                { name: '⏰ タイムゾーン', value: `\`${tz || 'Asia/Tokyo'}\``, inline: true },
-                { name: '💻 ブラウザ情報 (User-Agent)', value: `\`\`\`${ua}\`\`\``, inline: false },
-                { name: '🖥️ 端末環境スペック', value: `解像度: \`${screen || '不明'}\`\nCPU: \`${cores ? cores + 'コア' : '不明'}\` / メモリ: \`${memory ? memory + 'GB以上' : '不明'}\``, inline: false },
-                { name: '🎮 WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
                 { name: '🔌 WebRTC 疑似IP', value: `\`${webRtcDummy}\``, inline: false }
               )
               .setTimestamp();
@@ -208,16 +200,13 @@ app.post('/submit-auth', async (req, res) => {
         return res.send(`
           <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
             <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
-            <p style="font-size:16px; line-height:1.6; margin-top:20px;">
-              裏アカウントが検出されました。<br>
-              <span style="font-size:14px; color:#b9bbbe;">（間違いの場合はサーバー管理者にお申し付けください）</span>
-            </p>
+            <p style="font-size:16px; line-height:1.6; margin-top:20px;">裏アカウントが検出されました。</p>
           </div>
         `);
       }
     }
 
-    // 🔍 アカウント作成日の判定 (30日未満チェック) - 免除ユーザーはパス
+    // 🔍 新規アカウント制限 (30日未満チェック)
     if (userData.id !== '1266013271518089258') {
       const discordEpoch = 1420070400000;
       const creationTime = Number(BigInt(userData.id) >> 22n) + discordEpoch;
@@ -227,10 +216,7 @@ app.post('/submit-auth', async (req, res) => {
         return res.send(`
           <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
             <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
-            <p style="font-size:16px; line-height:1.6; margin-top:20px;">
-              裏アカウントが検出されました。<br>
-              <span style="font-size:14px; color:#b9bbbe;">（間違いの場合はサーバー管理者にお申し付けください）</span>
-            </p>
+            <p style="font-size:16px; line-height:1.6; margin-top:20px;">アカウントのセキュリティ要件を満たしていません。</p>
           </div>
         `);
       }
@@ -238,32 +224,22 @@ app.post('/submit-auth', async (req, res) => {
 
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
-    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
+    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にユーザーが見つかりません。</h1>');
 
     if (session.addRoleId && member.roles.cache.has(session.addRoleId)) {
-      return res.send(`
-        <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71; color: white; text-align: center; font-family: sans-serif;">
-          <h1 style="color:#2ecc71; margin-top:0;">✅ 認証済み</h1>
-          <p style="font-size:16px;">あなたはすでに認証完了しています。</p>
-        </div>
-      `);
+      return res.send('<h1 style="text-align:center; color:#2ecc71;">✅ 既に認証済みです。</h1>');
     }
 
-    // 🏷️ 付与ロールの取得・処理
     let addedRoleName = 'なし';
     if (session.addRoleId) {
       const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
       if (r) { await member.roles.add(r).catch(() => null); addedRoleName = `<@&${r.id}>`; }
     }
 
-    // 🗑️ 削除ロールの取得・処理
     let removedRoleName = 'なし';
     if (session.removeRoleId && session.removeRoleId !== 'none') {
       const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
-      if (r) { 
-        await member.roles.remove(r).catch(() => null); 
-        removedRoleName = `<@&${r.id}>`; 
-      }
+      if (r) { await member.roles.remove(r).catch(() => null); removedRoleName = `<@&${r.id}>`; }
     }
 
     config.verifiedIps[currentIp] = userData.id;
@@ -272,9 +248,6 @@ app.post('/submit-auth', async (req, res) => {
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
-        const ua = req.headers['user-agent'] || '不明';
-        const webRtcDummy = `192.168.0.3,${currentIp},106.150.113.144`;
-
         const logEmbed = new EmbedBuilder()
           .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ')
           .setColor(0x2ecc71)
@@ -282,46 +255,27 @@ app.post('/submit-auth', async (req, res) => {
             { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
             { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
             { name: '🗑️ 削除ロール', value: `${removedRoleName}`, inline: true },
-            { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: true },
-            { name: '💻 ブラウザ情報', value: `\`\`\`${ua}\`\`\``, inline: false },
-            { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
-            { name: '🗣️ 言語', value: `\`${lang || 'ja'}\``, inline: true },
-            { name: '⏰ タイムゾーン', value: `\`${tz || 'Asia/Tokyo'}\``, inline: true },
-            { name: '🖥️ 画面解像度', value: `\`${screen || '不明'}\``, inline: true },
-            { name: '🎨 色深度', value: `\`${depth || '不明'}\``, inline: true },
-            { name: '📊 CPU数', value: `\`${cores ? cores + 'コア' : '不明'}\``, inline: true },
-            { name: '💾 メモリ容量', value: `\`${memory ? memory + 'GB以上' : '不明'}\``, inline: true },
-            { name: '👆 タッチ対応', value: `\`${touch ?? '不明'}\``, inline: true },
-            { name: '🎮 WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
-            { name: '🛠️ WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
-            { name: '🔌 WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
+            { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: true }
           )
-          .setDescription(`**スキャン完了時刻:** <t:${Math.floor(Date.now() / 1000)}:F>`);
-
+          .setTimestamp();
         await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
       }
     }
 
-    res.send(`
-      <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #2ecc71; color: white; text-align: center; font-family: sans-serif;">
-        <h1 style="color:#2ecc71; margin-top:0;">✨ 認証完了</h1>
-        <p style="font-size:18px;">@${member.user.username} さんのセキュリティ認証が成功しました。</p>
-        <p>ロールが正常に付与されました。Discordに戻ってください。</p>
-      </div>
-    `);
+    res.send('<h1 style="text-align:center; color:#2ecc71;">✨ 認証が完了しました！Discordへ戻ってください。</h1>');
   } catch (err) {
-    console.error('[内部エラー詳細]', err);
+    console.error(err);
     res.send('<h1 style="text-align:center; color:#f04747;">❌ 内部エラーが発生しました。</h1>');
   }
 });
 
-// --- Discord Bot システム本体 (インテントにテキスト検知用を追加) ---
+// --- Discord クライアント初期化 (メッセージインテント追加) ---
 const client = new Client({ 
   intents: [
     GatewayIntentBits.Guilds, 
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,    // 👈 テキストメッセージ検知に必要
-    GatewayIntentBits.MessageContent    // 👈 メッセージ本文の読み取りに必要
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ] 
 });
 
@@ -372,39 +326,24 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 🟢 起動イベント
+// 起動処理
 client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
-
-  const guildCount = client.guilds.cache.size;
-  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 }); 
+  client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }); 
 });
 
-// ➕ 新しいサーバーに導入された時
-client.on('guildCreate', guild => {
-  const guildCount = client.guilds.cache.size;
-  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 });
-  console.log(`[参加] 新規サーバーへの導入: ${guild.name} (合計: ${guildCount}サーバー)`);
-});
+client.on('guildCreate', () => client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }));
+client.on('guildDelete', () => client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }));
 
-// ➖ サーバーから退出した時
-client.on('guildDelete', guild => {
-  const guildCount = client.guilds.cache.size;
-  client.user.setActivity(`${guildCount}サーバーで稼働中！`, { type: 0 });
-  console.log(`[退出] サーバーから退出: ${guild.name} (合計: ${guildCount}サーバー)`);
-});
-
-// 📥 プレイヤー参加時の自動チェック
+// 新規メンバー参加（自動キック）防衛ロジック
 client.on('guildMemberAdd', async (member) => {
   const guildId = member.guild.id;
   const allSettings = client.getSettings();
-  
   if (!allSettings[guildId] || !allSettings[guildId].antiRaid) return;
   
   const config = allSettings[guildId].antiRaid;
   const logConfig = allSettings[guildId];
-
   let shouldKick = false;
   let kickReason = "";
 
@@ -428,38 +367,39 @@ client.on('guildMemberAdd', async (member) => {
     try {
       await member.send(`🔒 参加されたサーバーのセキュリティ設定により、自動Kickされました。\n理由: ${kickReason}`).catch(() => null);
       await member.kick(`[自動防衛システム] ${kickReason}`);
-      console.log(`[自動Kick成功] サーバー [${guildId}] にて ${member.user.tag} をKick。理由: ${kickReason}`);
-
       if (logConfig.vLogStatus && logConfig.vLogChannel) {
         const logChannel = await member.guild.channels.fetch(logConfig.vLogChannel).catch(() => null);
         if (logChannel) {
           const alertEmbed = new EmbedBuilder()
             .setTitle('🛡️ 自動防衛システム - Kickログ')
-            .setColor(0x2ecc71)
-            .setDescription(`不正アカウントの可能性があるため、参加時に自動的にKickしました。`)
+            .setColor(0xe74c3c)
+            .setDescription(`不正アカウントの可能性があるため、自動的にKickしました。`)
             .addFields(
-              { name: '👤 対象ユーザー', value: `<@${member.id}>\n名称: \`${member.user.tag}\`\nID: \`${member.id}\``, inline: false },
+              { name: '👤 対象ユーザー', value: `<@${member.id}>\n名称: \`${member.user.tag}\``, inline: false },
               { name: '⚠️ 判定理由', value: `\`${kickReason}\``, inline: false }
             )
             .setTimestamp();
-
           await logChannel.send({ embeds: [alertEmbed] }).catch(() => null);
         }
       }
-    } catch (err) {
-      console.error(`[自動Kickエラー] メンバーのKickに失敗しました:`, err);
-    }
+    } catch (err) { console.error(err); }
   }
 });
 
-// --- 💬 !help コマンド処理 (自分だけに表示される隠しメッセージ仕様) ---
+// --- 💬 !help コマンド処理 (完全個別DM送信 & 送信メッセージ即時自動消去システム) ---
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
   if (message.content.toLowerCase().startsWith('!help')) {
+    // サーバーのチャンネルで打たれた場合は、打った文字（!help）を即座に削除してチャットの見た目を守る
+    if (message.guild) {
+      await message.delete().catch(() => null);
+    }
+
+    // 管理者かどうかを判定
     const isClientAdmin = message.member ? message.member.permissions.has('Administrator') : false;
 
-    // 📄 一般向け
+    // 📄 1ページ目: 一般ユーザー向け
     const userEmbed = new EmbedBuilder()
       .setTitle('🏮 まつり花火Bot - ヘルプメニュー (1/2)')
       .setDescription('コミュニティの安全を守るための端末セキュリティ認証Botです。')
@@ -471,7 +411,7 @@ client.on('messageCreate', async message => {
       .setFooter({ text: 'ボタンを押すとページを切り替えられます' })
       .setTimestamp();
 
-    // 📄 管理者向け
+    // 📄 2ページ目: 管理者向け機能
     const adminEmbed = new EmbedBuilder()
       .setTitle('🛡️ まつり花火Bot - 管理者向けマニュアル (2/2)')
       .setDescription('⚠️ このページはサーバーの管理者（Administrator権限保持者）にのみ開示されています。')
@@ -493,13 +433,13 @@ client.on('messageCreate', async message => {
     const row = new ActionRowBuilder().addComponents(btnUser, btnAdmin);
 
     try {
-      // 🟢 誰が打っても「送信者本人」にしか見えないシークレット返信
-      const response = await message.reply({
+      // 🚀 チャンネルではなく、コマンドを実行した本人の「DM」へ直接送信
+      const response = await message.author.send({
         embeds: [userEmbed],
-        components: [row],
-        flags: [MessageFlags.Ephemeral]
+        components: [row]
       });
 
+      // ⏳ ボタンのインタラクションを5分間受け付ける（DM上でも正常に動きます）
       const collector = response.createMessageComponentCollector({ time: 300000 });
 
       collector.on('collect', async i => {
@@ -521,38 +461,41 @@ client.on('messageCreate', async message => {
       });
 
     } catch (err) {
-      console.error('[!help 実行失敗]', err);
+      console.error(`[!help DM送信失敗] ユーザー ${message.author.tag} のDMが閉じています。`, err);
+      
+      // ユーザーのDMが閉じていた場合のみ、元のチャンネルへ本人にしか見えない隠しメッセージでエラー通知する親切設計
+      if (message.guild) {
+        await message.channel.send({
+          content: `⚠️ <@${message.author.id}> さんのDM（ダイレクトメッセージ）へヘルプを送信できませんでした。Discordの設定から「サーバーメンバーからのダイレクトメッセージを許可する」を有効化して、再度お試しください。`,
+          flags: [MessageFlags.Ephemeral]
+        }).catch(() => null);
+      }
     }
   }
 });
 
-// エラーセーフティハンドラ
-client.on('error', error => console.error('[Discordクライアントエラー]', error));
-process.on('unhandledRejection', error => console.error('[未処理の非同期エラー]', error));
+// 安全用エラーハンドラ
+client.on('error', error => console.error('[Discord Error]', error));
+process.on('unhandledRejection', error => console.error('[Unhandled Rejection]', error));
 
-// --- インタラクション（スラッシュコマンド・ボタン・モーダル）制御 ---
+// --- コマンドおよびコンポーネント（ボタン・モーダル）制御 ---
 client.on('interactionCreate', async interaction => {
-  // ⌨️ スラッシュコマンド処理
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-
     try {
       await command.execute(interaction);
     } catch (err) {
-      console.error(`[コマンド実行失敗 - /${interaction.commandName}]`, err);
+      console.error(err);
       try {
         if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: '❌ コマンドの処理中にエラーが発生しました。', flags: [MessageFlags.Ephemeral] });
-        } else {
-          await interaction.editReply({ content: '❌ コマンドの処理中にエラーが発生しました。' });
+          await interaction.reply({ content: '❌ エラーが発生しました。', flags: [MessageFlags.Ephemeral] });
         }
-      } catch (innerErr) { /* スルー */ }
+      } catch (e) {}
     }
     return;
   }
 
-  // 📝 モーダル送信処理
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
@@ -567,7 +510,6 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 🖱️ ボタンのクリック処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
@@ -575,39 +517,20 @@ client.on('interactionCreate', async interaction => {
 
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
 
-    const isAlreadyVerified = addRoleId && interaction.member.roles.cache.has(addRoleId);
-
-    if (isAlreadyVerified) {
-      return interaction.editReply({
-        content: '✅ **あなたはすでに認証完了しています。**'
-      }).catch(() => null);
+    if (addRoleId && interaction.member.roles.cache.has(addRoleId)) {
+      return interaction.editReply({ content: '✅ **あなたはすでに認証完了しています。**' }).catch(() => null);
     }
 
     const state = crypto.randomBytes(16).toString('hex');
-    pendingStates.set(state, {
-      guildId: interaction.guildId,
-      userId: interaction.user.id,
-      addRoleId,
-      removeRoleId,
-      timestamp: Date.now()
-    });
-
+    pendingStates.set(state, { guildId: interaction.guildId, userId: interaction.user.id, addRoleId, removeRoleId, timestamp: Date.now() });
     setTimeout(() => pendingStates.delete(state), 300000); 
 
     const host = 'maturihanabitaikaibot.onrender.com';
-    const verifyUrl = `https://${host}/verify?state=${state}`;
+    const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(`https://${host}/verify?state=${state}`);
     
-    const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(verifyUrl);
-    
-    await interaction.editReply({
-      content: '⚠️ **下のボタンから認証サイトへ移動してください。**',
-      components: [new ActionRowBuilder().addComponents(linkButton)]
-    }).catch(() => null);
+    await interaction.editReply({ content: '⚠️ **下のボタンから認証サイトへ移動してください。**', components: [new ActionRowBuilder().addComponents(linkButton)] }).catch(() => null);
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Web Server is running on port ${PORT}`);
-});
-
+app.listen(PORT, () => console.log(`Web Server is running on port ${PORT}`));
 client.login(process.env.DISCORD_TOKEN);
