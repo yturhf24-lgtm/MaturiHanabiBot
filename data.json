@@ -58,7 +58,7 @@
   "1406344310072414218": {
     "antiRaid": {
       "kickDefaultAvatar": false,
-      "kickAccountAgeDays": 0
+      "kickAccountAgeDays": 5
     },
     "vLogChannel": "1525488719195406559",
     "vLogStatus": true,
