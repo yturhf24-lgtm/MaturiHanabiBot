@@ -5,7 +5,7 @@ module.exports = {
     .setName('v_antiraid')
     .setDescription('【管理者専用】新規・捨てアカウントの自動Kick機能を設定・確認します')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    // 📊 追加：現在の設定ステータス確認
+    // 📊 現在の設定ステータス確認
     .addSubcommand(subcmd =>
       subcmd
         .setName('status')
@@ -55,7 +55,7 @@ module.exports = {
 
     const config = allSettings[guildId].antiRaid;
 
-    // 📊 【新規追加】設定確認処理
+    // 📊 設定確認処理
     if (sub === 'status') {
       const avatarStatus = config.kickDefaultAvatar ? '🟢 有効 (ON)' : '🔴 無効 (OFF)';
       const ageStatus = config.kickAccountAgeDays > 0 ? `🟢 ${config.kickAccountAgeDays}日未満はKick` : '🔴 無い（無効）';
@@ -71,6 +71,7 @@ module.exports = {
         .setFooter({ text: `Server ID: ${guildId}` })
         .setTimestamp();
 
+      // 🛠️ 修正: flagsを使用
       return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
     }
 
@@ -81,6 +82,7 @@ module.exports = {
       
       await interaction.client.saveSettings(allSettings);
       
+      // 🛠️ 修正: flagsを使用
       return interaction.reply({
         content: `⚙️ 初期アイコンの自動Kick機能を **${status === 'on' ? '🟢 有効 (ON)' : '🔴 無効 (OFF)'}** に設定しました。`,
         flags: [MessageFlags.Ephemeral]
@@ -95,11 +97,13 @@ module.exports = {
       await interaction.client.saveSettings(allSettings);
       
       if (days === 0) {
+        // 🛠️ 修正: flagsを使用
         return interaction.reply({
           content: `⚙️ アカウント作成日数による自動Kick機能を **🔴 無効化** しました。`,
           flags: [MessageFlags.Ephemeral]
         });
       } else {
+        // 🛠️ 修正: flagsを使用
         return interaction.reply({
           content: `⚙️ 作成されてから **${days}日未満** の新規アカウントを自動Kickするように設定しました。`,
           flags: [MessageFlags.Ephemeral]
