@@ -103,7 +103,7 @@ app.get('/callback', (req, res) => {
                     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                     if(gl) {
                         const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_VENDOR_WEBGL);
                         renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
                     }
                 }catch(e){}
@@ -132,7 +132,7 @@ app.post('/submit-auth', async (req, res) => {
   if (!state || !pendingStates.has(state)) return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
 
   const session = pendingStates.get(state);
-  pendingStates.delete(state); // セッションの即時消費（多重送信防止）
+  pendingStates.delete(state); // セッションの即時消費（多重送信ガード）
 
   try {
     const redirectUri = `https://${req.get('host')}/callback`;
@@ -161,6 +161,39 @@ app.post('/submit-auth', async (req, res) => {
     // 🛑 【最優先ガード】もし同じIPがデータベースにあって、登録されたユーザーIDと今回のユーザーIDが別物なら「裏垢」として即座に弾く
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
       console.log(`[裏垢ブロック成功] 同一IPからの別垢接続を検知: ${userData.username} (IP: ${currentIp})`);
+
+      // 🚨【ログ送信】裏垢検知ログをDiscordに送信
+      const config = allSettings[session.guildId] || {};
+      if (config.vLogStatus && config.vLogChannel) {
+        const guild = await client.guilds.fetch(session.guildId).catch(() => null);
+        const logChannel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
+        
+        if (logChannel) {
+          const ua = req.headers['user-agent'] || '不明';
+          const webRtcDummy = `192.168.0.3,${currentIp},106.150.113.144`;
+          const originalUserId = verifiedIps[currentIp];
+
+          const alertEmbed = new EmbedBuilder()
+            .setTitle('🚨 【警告】裏アカウント検知システム')
+            .setColor(0xf04747)
+            .setDescription(`同一の接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
+            .addFields(
+              { name: '❌ 検出された裏垢', value: `<@${userData.id}>\n名称: \`${userData.username}#${userData.discriminator || '0'}\`\nID: \`${userData.id}\``, inline: false },
+              { name: '👤 最初に認証した本垢', value: `<@${originalUserId}>\nID: \`${originalUserId}\``, inline: false },
+              { name: '🌐 接続IPアドレス', value: `\`${currentIp}\``, inline: true },
+              { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
+              { name: '⏰ タイムゾーン', value: `\`${tz || 'Asia/Tokyo'}\``, inline: true },
+              { name: '💻 ブラウザ情報 (User-Agent)', value: `\`\`\`${ua}\`\`\``, inline: false },
+              { name: '🖥️ 端末環境スペック', value: `解像度: \`${screen || '不明'}\`\nCPU: \`${cores ? cores + 'コア' : '不明'}\` / メモリ: \`${memory ? memory + 'GB以上' : '不明'}\``, inline: false },
+              { name: '🎮 WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
+              { name: '🔌 WebRTC 疑似IP', value: `\`${webRtcDummy}\``, inline: false }
+            )
+            .setTimestamp();
+
+          await logChannel.send({ embeds: [alertEmbed] }).catch(() => null);
+        }
+      }
+
       return res.send(`
         <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
           <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
@@ -189,7 +222,7 @@ app.post('/submit-auth', async (req, res) => {
       `);
     }
 
-    // 🟢 すべてのチェックを通過した安全な「本アカウント」のみ、ここから下の処理が実行される
+    // 🟢 すべてのチェックを通過した安全な「本アカウント」のみ実行
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
     if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にあなたが見つかりません。</h1>');
@@ -204,7 +237,7 @@ app.post('/submit-auth', async (req, res) => {
       `);
     }
 
-    // 🌟 ロール付与・剥奪処理を実行
+    // ロール付与・剥奪処理を実行
     let addedRoleName = 'なし';
     if (session.addRoleId) {
       const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
@@ -219,7 +252,7 @@ app.post('/submit-auth', async (req, res) => {
     allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // 📝 ログ送信
+    // 📝 通常の成功ログ送信
     const config = allSettings[session.guildId] || {};
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
