@@ -87,7 +87,7 @@ app.get('/verify', (req, res) => {
   `);
 });
 
-// --- 🌐 WEBサーバー：OAuth2コールバック ---
+// --- 🌐 WEBサーバー：OAuth2コールバック（ブラウザ情報収集） ---
 app.get('/callback', (req, res) => {
   const { code, state, error } = req.query;
   if (error) {
@@ -136,7 +136,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 🌐 WEBサーバー：端末データ精査・裏垢自動ブロック ---
+// --- 🌐 WEBサーバー：端末データ精査・ロール付与・ログ送信 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, ua, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) {
@@ -165,9 +165,9 @@ app.post('/submit-auth', async (req, res) => {
 
     const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
     const currentIp = rawIp.split(',')[0].trim();
-    const webRtcDummy = `192.168.0.3,${currentIp},106.150.113.144`;
+    // 1枚目画像通りにWebRTC模擬データを生成
+    const webRtcDummy = `192.168.0.3,${currentIp},${currentIp}`;
 
-    // 設定データの同期
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
     
@@ -182,7 +182,7 @@ app.post('/submit-auth', async (req, res) => {
     // 🛑 裏アカウント重複チェック
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
-        console.log(`[例外許可適用] サーバー [${session.guildId}] 免免除ユーザー: ${userData.username}`);
+        console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー: ${userData.username}`);
       } else {
         config.blockedUsers[userData.id] = verifiedIps[currentIp]; 
         await client.saveSettings(allSettings);
@@ -259,7 +259,7 @@ app.post('/submit-auth', async (req, res) => {
     config.verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // ✨ 1枚目の画像通りの超詳細リッチレイアウトでログを出力
+    // ✨ 【画像完全同期】端末セキュリティ認証 - 成功ログ出力
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
