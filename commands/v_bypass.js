@@ -1,79 +1,103 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('v_bypass')
-    .setDescription('【管理者専用】指定したユーザーの裏アカウント制限を許可または削除します。')
-    // 🛑 管理者権限（Administrator）を持たないユーザーにはコマンドの使用・表示を一切禁止する
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    // 💡 DM（ダイレクトメッセージ）でのコマンド実行を防ぐ（サーバー内限定）
+    .setDescription('【管理・スタッフ用】裏アカウント検知の例外許可（バイパス）を設定・解除します。')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .setDMPermission(false)
-    .addUserOption(option => 
-      option.setName('target').setDescription('対象のユーザーを選択').setRequired(true)
+    .addUserOption(option =>
+      option.setName('target')
+        .setDescription('対象のユーザーを選択')
+        .setRequired(true)
     )
     .addStringOption(option =>
       option.setName('action')
-        .setDescription('行う操作を選択')
+        .setDescription('実行する操作を選択')
         .setRequired(true)
         .addChoices(
-          { name: '許可（裏垢チェックを免除）', value: 'allow' },
-          { name: '削除（免除を解除して制限に戻す）', value: 'remove' }
+          { name: '🟢 例外許可に追加（ブロック解除）', value: 'add' },
+          { name: '🔴 例外許可から削除（通常通り検知）', value: 'remove' }
         )
     ),
 
   async execute(interaction) {
-    // 🛑 二重チェック: 万が一権限のすり抜けがあった場合に備え、コード上でも管理者か厳格に判定
-    if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return interaction.reply({ 
-        content: '❌ このコマンドはサーバーの最高管理者（管理者権限を付与されたロール）のみ実行可能です。許可ロール等では使用できません。', 
-        ephemeral: true 
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
+    const guildId = interaction.guildId;
+    const client = interaction.client;
+    const allSettings = client.getSettings();
+    const config = allSettings[guildId] || {};
+
+    // 🛑 権限チェック
+    const isAdministrator = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+    const hasPermitRole = config.vPermitRole ? interaction.member.roles.cache.has(config.vPermitRole) : false;
+
+    if (!isAdministrator && !hasPermitRole) {
+      return interaction.editReply({ 
+        content: '❌ このコマンドを実行する権限がありません。'
       });
     }
 
-    const target = interaction.options.getUser('target');
+    const targetUser = interaction.options.getUser('target');
     const action = interaction.options.getString('action');
-    const guildId = interaction.guildId;
 
-    const client = interaction.client;
-    const allSettings = client.getSettings();
+    if (!config.bypassUsers) config.bypassUsers = [];
+    if (!config.verifiedIps) config.verifiedIps = {};
+    if (!config.blockedUsers) config.blockedUsers = {};
 
-    if (!allSettings[guildId]) allSettings[guildId] = {};
-    if (!allSettings[guildId].bypassUsers) allSettings[guildId].bypassUsers = [];
-
-    const bypassList = allSettings[guildId].bypassUsers;
-
-    if (action === 'allow') {
-      if (bypassList.includes(target.id)) {
-        return interaction.reply({ content: `⚠️ <@${target.id}> はすでに裏アカウント許可リストに登録されています。`, ephemeral: true });
-      }
-      
-      bypassList.push(target.id);
-      await client.saveSettings(allSettings);
-
-      const embed = new EmbedBuilder()
-        .setTitle('✅ 裏アカウント例外許可')
-        .setDescription(`<@${target.id}> を裏アカウント制限の対象外（許可）に設定しました。\n今後、このユーザーは同一IPチェックで弾かれなくなります。`)
-        .setColor(0x2ecc71)
-        .setTimestamp();
-
-      return interaction.reply({ embeds: [embed] });
-
-    } else if (action === 'remove') {
-      const index = bypassList.indexOf(target.id);
-      if (index === -1) {
-        return interaction.reply({ content: `⚠️ <@${target.id}> は裏アカウント許可リストに登録されていません。`, ephemeral: true });
+    // ==========================================
+    // 🟢 ACTION: ADD (例外許可に追加 ＆ ブロックデータ削除)
+    // ==========================================
+    if (action === 'add') {
+      // すでに登録されているかチェック
+      if (!config.bypassUsers.includes(targetUser.id)) {
+        config.bypassUsers.push(targetUser.id);
       }
 
-      bypassList.splice(index, 1);
+      // ウェブサイト(index.js)で裏垢判定されたブロックデータを自動解除
+      if (config.blockedUsers[targetUser.id]) {
+        delete config.blockedUsers[targetUser.id];
+      }
+
+      // 同期元のIPデータ側にもし残っていればそれも削除して次から認証を通す
+      let foundIp = null;
+      for (const [ip, userId] of Object.entries(config.verifiedIps)) {
+        if (userId === targetUser.id) {
+          foundIp = ip;
+          break;
+        }
+      }
+      if (foundIp) {
+        delete config.verifiedIps[foundIp];
+      }
+
+      allSettings[guildId] = config;
       await client.saveSettings(allSettings);
 
-      const embed = new EmbedBuilder()
-        .setTitle('🗑️ 裏アカウント許可解除')
-        .setDescription(`<@${target.id}> の例外許可を削除しました。\n次回以降の認証では、通常通り裏垢チェック（重複IPチェック）が適用されます。`)
-        .setColor(0xe74c3c)
-        .setTimestamp();
+      return interaction.editReply({
+        content: `🟢 <@${targetUser.id}> を**例外許可リストに追加**し、裏垢ブロック状態を解除しました。次回から正常に認証可能です。`
+      });
+    }
 
-      return interaction.reply({ embeds: [embed] });
+    // ==========================================
+    // 🔴 ACTION: REMOVE (例外許可から削除)
+    // ==========================================
+    if (action === 'remove') {
+      if (!config.bypassUsers.includes(targetUser.id)) {
+        return interaction.editReply({
+          content: `❌ <@${targetUser.id}> は例外許可リストに登録されていません。`
+        });
+      }
+
+      // 配列から削除
+      config.bypassUsers = config.bypassUsers.filter(id => id !== targetUser.id);
+      allSettings[guildId] = config;
+      await client.saveSettings(allSettings);
+
+      return interaction.editReply({
+        content: `🔴 <@${targetUser.id}> を**例外許可リストから削除**しました。今後は通常通り重複IPチェックの対象になります。`
+      });
     }
   }
 };
