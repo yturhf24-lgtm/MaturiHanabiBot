@@ -47,7 +47,9 @@
     "bypassUsers": [
       "1323527061410676787"
     ],
-    "blockedUsers": {},
+    "blockedUsers": {
+      "1330918759455789126": "1266013271518089258"
+    },
     "antiRaid": {
       "kickDefaultAvatar": true,
       "kickAccountAgeDays": 5
