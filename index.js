@@ -191,9 +191,12 @@ app.post('/submit-auth', async (req, res) => {
       } else {
         console.warn(`[裏垢検知] サーバー: ${session.guildId} | IP: ${currentIp} | 本垢: ${verifiedIps[currentIp]} | 裏垢: ${userData.id}`);
         
-        // 参照エラーを修正：サーバー個別の配列へ直接データを確実に格納
+        // 🔒 サーバー個別の配列へ直接データを確実に格納
         allSettings[session.guildId].blockedUsers[userData.id] = verifiedIps[currentIp]; 
+        
+        // ✨ 【重要修正】GitHubおよびローカルのファイルへの保存同期を徹底強制
         await client.saveSettings(allSettings);
+        await new Promise(resolve => setTimeout(resolve, 1500)); // 非同期処理の安全な完了待ち
 
         if (config.vLogStatus && config.vLogChannel) {
           const guild = await client.guilds.fetch(session.guildId).catch(() => null);
@@ -204,7 +207,7 @@ app.post('/submit-auth', async (req, res) => {
             const alertEmbed = new EmbedBuilder()
               .setTitle('🚨 【警告】裏アカウント検知システム')
               .setColor(0xf04747)
-              .setDescription(`当サーバー内で同一 of 接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
+              .setDescription(`当サーバー内で同一の接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
               .addFields(
                 { name: '❌ 検出された裏垢', value: `<@${userData.id}>\n名称: \`${userData.username}\`\nID: \`${userData.id}\``, inline: false },
                 { name: '👤 最初に認証した本垢', value: `<@${originalUserId}>\nID: \`${originalUserId}\``, inline: false },
@@ -493,7 +496,6 @@ client.on('messageCreate', async message => {
 
     } catch (err) {
       if (message.guild) {
-        // 修正箇所：非推奨の ephemeral を flags に変更して警告を完全解消！
         await message.channel.send({
           content: `⚠️ <@${message.author.id}> さんのDMへヘルプを送信できませんでした。設定を変更して再試行してください。`,
           flags: [MessageFlags.Ephemeral]
