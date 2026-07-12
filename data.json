@@ -92,5 +92,9 @@
     },
     "bypassUsers": [],
     "blockedUsers": {}
+  },
+  "1414209322677833814": {
+    "vLogChannel": "1414209323525210236",
+    "vLogStatus": true
   }
 }
