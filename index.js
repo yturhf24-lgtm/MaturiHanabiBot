@@ -9,9 +9,10 @@ const app = express();
 app.use(express.json());
 app.set('trust proxy', true);
 
+// 🌐 Renderの環境変数PORTにバインド（なければ3000）
 const PORT = process.env.PORT || 3000;
 
-// --- 🌐 WEBサーバー：トップページの生存確認 (ヘルスチェック) ---
+// --- 🌐 WEBサーバー：トップページの生存確認 (Renderのヘルスチェック用) ---
 app.get('/', (req, res) => {
   res.send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#2ecc71;">🟢 MaturiHanabiBotは正常に稼働しています</h1>');
 });
@@ -145,7 +146,7 @@ app.get('/callback', (req, res) => {
 app.post('/submit-auth', async (req, res) => {
   const { code, state, ua, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) {
-    return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
+    return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり長してください。</h1>');
   }
 
   const session = pendingStates.get(state);
@@ -194,7 +195,7 @@ app.post('/submit-auth', async (req, res) => {
         // 🔒 サーバー個別の配列へ直接データを確実に格納
         allSettings[session.guildId].blockedUsers[userData.id] = verifiedIps[currentIp]; 
         
-        // ✨ 【重要修正】GitHubおよびローカルのファイルへの保存同期を徹底強制
+        // ✨ GitHubおよびローカルのファイルへの保存同期を徹底強制
         await client.saveSettings(allSettings);
         await new Promise(resolve => setTimeout(resolve, 1500)); // 非同期処理の安全な完了待ち
 
@@ -270,7 +271,7 @@ app.post('/submit-auth', async (req, res) => {
     allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // ✨ 【画像完全同期】端末セキュリティ認証 - 成功ログ出力
+    // ✨ 端末セキュリティ認証 - 成功ログ出力
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
@@ -555,5 +556,6 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
+// 🌐 Renderが指定するポートをバインドして待ち受けを開始する（ヘルスチェック対策完了）
 app.listen(PORT, () => console.log(`[Web Server] ポート ${PORT} で稼働開始。`));
 client.login(process.env.DISCORD_TOKEN);
