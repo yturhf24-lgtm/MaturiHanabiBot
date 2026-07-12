@@ -33,7 +33,7 @@
       "1.21.108.52": "1330918759455789126"
     },
     "antiRaid": {
-      "kickDefaultAvatar": false,
+      "kickDefaultAvatar": true,
       "kickAccountAgeDays": 5
     }
   },
