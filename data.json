@@ -77,5 +77,11 @@
     },
     "bypassUsers": [],
     "blockedUsers": {}
+  },
+  "1525697338360856756": {
+    "antiRaid": {
+      "kickDefaultAvatar": false,
+      "kickAccountAgeDays": 0
+    }
   }
 }
