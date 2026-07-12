@@ -110,17 +110,20 @@ app.get('/callback', (req, res) => {
                     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                     if(gl) {
                         const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_VENDOR_WEBGL);
-                        renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_VENDOR_WEBGL) || "不明";
+                        renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || "不明";
                     }
                 }catch(e){}
 
                 const payload = {
                     code: "${code}", state: "${state}",
+                    ua: navigator.userAgent,
                     screen: window.screen.width + "x" + window.screen.height, depth: window.screen.colorDepth + "bit",
-                    cores: navigator.hardwareConcurrency || "不明", memory: navigator.deviceMemory || "不明",
-                    touch: ('ontouchstart' in window || navigator.maxTouchPoints > 0), lang: navigator.language,
-                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    cores: navigator.hardwareConcurrency ? navigator.hardwareConcurrency + "コア" : "不明", 
+                    memory: navigator.deviceMemory ? navigator.deviceMemory + "GB以上" : "不明",
+                    touch: ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? "true" : "false", 
+                    lang: navigator.language || "ja",
+                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo",
                     platform: navigator.platform || "不明", vendor, renderer
                 };
                 const res = await fetch('/submit-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -135,15 +138,13 @@ app.get('/callback', (req, res) => {
 
 // --- 🌐 WEBサーバー：端末データ精査・裏垢自動ブロック ---
 app.post('/submit-auth', async (req, res) => {
-  const { code, state, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
+  const { code, state, ua, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) {
     return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり直してください。</h1>');
   }
 
   const session = pendingStates.get(state);
   pendingStates.delete(state);
-
-  console.log(`[データスキャン受信] ユーザー: ${session.userId} | 画面: ${screen} | コア数: ${cores} | メモリ: ${memory} | プラットフォーム: ${platform} | GPU: ${renderer}`);
 
   try {
     const redirectUri = `https://${req.get('host')}/callback`;
@@ -164,8 +165,7 @@ app.post('/submit-auth', async (req, res) => {
 
     const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
     const currentIp = rawIp.split(',')[0].trim();
-
-    console.log(`[OAuthユーザー特定] ID: ${userData.id} | タグ: ${userData.username} | 接続IP: ${currentIp}`);
+    const webRtcDummy = `192.168.0.3,${currentIp},106.150.113.144`;
 
     // 設定データの同期
     const allSettings = client.getSettings();
@@ -182,9 +182,8 @@ app.post('/submit-auth', async (req, res) => {
     // 🛑 裏アカウント重複チェック
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
-        console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー: ${userData.username}`);
+        console.log(`[例外許可適用] サーバー [${session.guildId}] 免免除ユーザー: ${userData.username}`);
       } else {
-        console.warn(`[裏垢検知ブロック] IP重複確認!! IP: ${currentIp} | 既存: ${verifiedIps[currentIp]} | 検出: ${userData.id}`);
         config.blockedUsers[userData.id] = verifiedIps[currentIp]; 
         await client.saveSettings(allSettings);
 
@@ -193,9 +192,7 @@ app.post('/submit-auth', async (req, res) => {
           const logChannel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
           
           if (logChannel) {
-            const webRtcDummy = `192.168.0.3,${currentIp},106.150.113.144`;
             const originalUserId = verifiedIps[currentIp];
-
             const alertEmbed = new EmbedBuilder()
               .setTitle('🚨 【警告】裏アカウント検知システム')
               .setColor(0xf04747)
@@ -229,10 +226,7 @@ app.post('/submit-auth', async (req, res) => {
       const creationTime = Number(BigInt(userData.id) >> 22n) + discordEpoch;
       const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
 
-      console.log(`[アカウント年齢検証] ユーザー: ${userData.username} | 経過日数: ${accountAgeDays.toFixed(1)}日`);
-
       if (accountAgeDays < 30) {
-        console.warn(`[認証拒否] アカウント作成から30日未満の捨て垢制限: ${userData.username} (${accountAgeDays.toFixed(1)}日)`);
         return res.send(`
           <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
             <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
@@ -244,52 +238,57 @@ app.post('/submit-auth', async (req, res) => {
 
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
-    if (!member) {
-      console.error(`[メンバー消失] ギルド ${session.guildId} 内にユーザー ${session.userId} が見つかりません。`);
-      return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にユーザーが見つかりません。</h1>');
-    }
+    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にユーザーが見つかりません。</h1>');
 
     if (session.addRoleId && member.roles.cache.has(session.addRoleId)) {
-      console.log(`[重複適用回避] ユーザー ${member.user.tag} はすでにロールを持っています。`);
       return res.send('<h1 style="text-align:center; color:#2ecc71;">✅ 既に認証済みです。</h1>');
     }
 
     let addedRoleName = 'なし';
     if (session.addRoleId) {
       const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
-      if (r) { 
-        await member.roles.add(r).catch(e => console.error(`[ロール付与エラー]`, e)); 
-        addedRoleName = `<@&${r.id}>`; 
-      }
+      if (r) { await member.roles.add(r).catch(() => null); addedRoleName = `<@&${r.id}>`; }
     }
 
     let removedRoleName = 'なし';
     if (session.removeRoleId && session.removeRoleId !== 'none') {
       const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
-      if (r) { 
-        await member.roles.remove(r).catch(e => console.error(`[ロール剥奪エラー]`, e)); 
-        removedRoleName = `<@&${r.id}>`; 
-      }
+      if (r) { await member.roles.remove(r).catch(() => null); removedRoleName = `<@&${r.id}>`; }
     }
 
     config.verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
-    console.log(`[認証成功データベース記録] サーバー: ${session.guildId} | ユーザー: ${userData.id} -> IP: ${currentIp}`);
 
+    // ✨ 1枚目の画像通りの超詳細リッチレイアウトでログを出力
     if (config.vLogStatus && config.vLogChannel) {
       const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
       if (logChannel) {
+        const now = new Date();
+        const days = ['日', '月', '火', '水', '木', '金', '土'];
+        const timeString = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${days[now.getDay()]}曜日 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
         const logEmbed = new EmbedBuilder()
           .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ')
+          .setDescription(`**スキャン完了時刻:** ${timeString}`)
           .setColor(0x2ecc71)
           .addFields(
             { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
             { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
             { name: '🗑️ 削除ロール', value: `${removedRoleName}`, inline: true },
-            { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: true },
-            { name: '📊 スキャン情報', value: `\`\`\`🖥️ OS/端末: ${platform}\n💻 GPU: ${renderer}\n📱 画面: ${screen}\`\`\``, inline: false }
-          )
-          .setTimestamp();
+            { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: false },
+            { name: '💻 ブラウザ情報', value: `\`\`\`${ua || '不明'}\`\`\``, inline: false },
+            { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
+            { name: '🗣️ 言語', value: `\`${lang || '不明'}\``, inline: true },
+            { name: '⏰ タイムゾーン', value: `\`${tz || '不明'}\``, inline: true },
+            { name: '🖥️ 画面解像度', value: `\`${screen || '不明'}\``, inline: true },
+            { name: '🎨 色深度', value: `\`${depth || '不明'}\``, inline: true },
+            { name: '📊 CPU数', value: `\`${cores || '不明'}\``, inline: true },
+            { name: '💾 メモリ容量', value: `\`${memory || '不明'}\``, inline: true },
+            { name: '👇 タッチ対応', value: `\`${touch || '不明'}\``, inline: true },
+            { name: '✨ WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
+            { name: '🛠️ WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
+            { name: '🔌 WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
+          );
         await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
       }
     }
@@ -301,7 +300,7 @@ app.post('/submit-auth', async (req, res) => {
   }
 });
 
-// --- 🤖 Discord クライアント初期化 (インテント完全版) ---
+// --- 🤖 Discord クライアント初期化 ---
 const client = new Client({ 
   intents: [
     GatewayIntentBits.Guilds, 
@@ -319,7 +318,6 @@ let localSettingsCache = {};
 
 async function loadSettingsFromGitHub() {
   if (!process.env.GITHUB_TOKEN) {
-    console.log("[Local DB Data] GITHUB_TOKENが設定されていないため、ローカルから読み込みます。");
     if (fs.existsSync(DATA_FILE)) localSettingsCache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     return;
   }
@@ -330,11 +328,8 @@ async function loadSettingsFromGitHub() {
       const json = await response.json();
       localSettingsCache = JSON.parse(Buffer.from(json.content, 'base64').toString('utf8'));
       fs.writeFileSync(DATA_FILE, JSON.stringify(localSettingsCache, null, 2));
-      console.log("[GitHub DB Data] データベースの同期・読み込みが正常に完了しました。");
-    } else {
-      console.error(`[GitHub DB Data エラー] ステータス: ${response.status}`);
     }
-  } catch (err) { console.error("[GitHub DB Data 同期失敗]", err.message); }
+  } catch (err) { console.error(err.message); }
 }
 
 client.getSettings = () => localSettingsCache;
@@ -347,13 +342,12 @@ client.saveSettings = async (data) => {
     let sha = null;
     const getRes = await fetch(url, { headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}`, 'User-Agent': 'Render-Bot' } });
     if (getRes.ok) { sha = (await getRes.json()).sha; }
-    const putRes = await fetch(url, {
+    await fetch(url, {
       method: 'PUT',
       headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}`, 'User-Agent': 'Render-Bot', 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: 'chore: update database', content: Buffer.from(JSON.stringify(data, null, 2)).toString('base64'), sha })
     });
-    if (putRes.ok) console.log("[GitHub DB Data] クラウドへのデータベース保存完了。");
-  } catch (err) { console.error("[GitHub DB Data 保存失敗]", err.message); }
+  } catch (err) { console.error(err.message); }
 };
 
 client.commands = new Collection();
@@ -370,20 +364,12 @@ client.once('ready', async () => {
   client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }); 
 });
 
-client.on('guildCreate', (guild) => {
-  console.log(`[サーバー追加] ${guild.name} (${guild.id})`);
-  client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 });
-});
-client.on('guildDelete', (guild) => {
-  console.log(`[サーバー脱退] ${guild.name} (${guild.id})`);
-  client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 });
-});
+client.on('guildCreate', () => client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }));
+client.on('guildDelete', () => client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }));
 
-// 🛡️ 新規メンバー参加時（自動防衛キック機能）
+// 🛡️ 自動防衛システム
 client.on('guildMemberAdd', async (member) => {
   const guildId = member.guild.id;
-  console.log(`[新規メンバー参加] サーバー: ${member.guild.name} | ユーザー: ${member.user.tag} (${member.id})`);
-  
   const allSettings = client.getSettings();
   if (!allSettings[guildId] || !allSettings[guildId].antiRaid) return;
   
@@ -404,16 +390,14 @@ client.on('guildMemberAdd', async (member) => {
 
     if (accountAgeDays < config.kickAccountAgeDays) {
       shouldKick = true;
-      kickReason = `アカウント作成日数が指定日数（${config.kickAccountAgeDays}日）未満の新規制限 (判定結果: ${accountAgeDays.toFixed(1)}日)`;
+      kickReason = `アカウント作成日数が指定日数（${config.kickAccountAgeDays}日）未満の新規制限`;
     }
   }
 
   if (shouldKick) {
-    console.warn(`[防衛システムトリガー] ユーザー ${member.user.tag} を自動キックします。理由: ${kickReason}`);
     try {
       await member.send(`🔒 参加されたサーバーのセキュリティ設定により、自動Kickされました。\n理由: ${kickReason}`).catch(() => null);
       await member.kick(`[自動防衛システム] ${kickReason}`);
-      
       if (logConfig.vLogStatus && logConfig.vLogChannel) {
         const logChannel = await member.guild.channels.fetch(logConfig.vLogChannel).catch(() => null);
         if (logChannel) {
@@ -429,25 +413,21 @@ client.on('guildMemberAdd', async (member) => {
           await logChannel.send({ embeds: [alertEmbed] }).catch(() => null);
         }
       }
-    } catch (err) { console.error(`[自動防衛キックエラー]`, err); }
+    } catch (err) { console.error(err); }
   }
 });
 
-// --- 💬 !help コマンド処理 (完全個別DM送信 & 送信メッセージ即時自動消去システム) ---
+// --- 💬 !help コマンド処理 ---
 client.on('messageCreate', async message => {
   if (message.author.bot) return;
 
   if (message.content.toLowerCase().startsWith('!help')) {
-    console.log(`[!helpコマンド検知] ユーザー: ${message.author.tag} | チャンネル: ${message.channel.name || 'DM'}`);
-    
-    // サーバーのチャンネルで打たれた場合は、打った文字（!help）を即座に削除してチャットの見た目を守る
     if (message.guild) {
-      await message.delete().catch(e => console.error(`[!help削除失敗] 元メッセージを消去できませんでした。`, e));
+      await message.delete().catch(() => null);
     }
 
     const isClientAdmin = message.member ? message.member.permissions.has('Administrator') : false;
 
-    // 📄 一般向け埋め込み
     const userEmbed = new EmbedBuilder()
       .setTitle('🏮 まつり花火Bot - ヘルプメニュー (1/2)')
       .setDescription('コミュニティの安全を守るための端末セキュリティ認証Botです。')
@@ -459,7 +439,6 @@ client.on('messageCreate', async message => {
       .setFooter({ text: 'ボタンを押すとページを切り替えられます' })
       .setTimestamp();
 
-    // 📄 管理者向け埋め込み
     const adminEmbed = new EmbedBuilder()
       .setTitle('🛡️ まつり花火Bot - 管理者向けマニュアル (2/2)')
       .setDescription('⚠️ このページはサーバーの管理者（Administrator権限保持者）にのみ開示されています。')
@@ -481,18 +460,11 @@ client.on('messageCreate', async message => {
     const row = new ActionRowBuilder().addComponents(btnUser, btnAdmin);
 
     try {
-      // 本人のDM宛てに直接配送
-      const response = await message.author.send({
-        embeds: [userEmbed],
-        components: [row]
-      });
-      console.log(`[!help DM送信成功] 送信先: ${message.author.tag}`);
-
+      const response = await message.author.send({ embeds: [userEmbed], components: [row] });
       const collector = response.createMessageComponentCollector({ time: 300000 });
 
       collector.on('collect', async i => {
         if (i.user.id !== message.author.id) return;
-        console.log(`[!helpボタン押下] ユーザー: ${i.user.tag} -> アクション: ${i.customId}`);
 
         if (i.customId === 'help_page_user') {
           btnUser.setDisabled(true).setStyle(ButtonStyle.Primary);
@@ -506,18 +478,15 @@ client.on('messageCreate', async message => {
       });
 
       collector.on('end', async () => {
-        console.log(`[!helpコレクター終了] ユーザー: ${message.author.tag}`);
         btnUser.setDisabled(true);
         btnAdmin.setDisabled(true);
         await response.edit({ components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
       });
 
     } catch (err) {
-      console.error(`[!help DM送信失敗] ユーザー ${message.author.tag} のDM制限設定によるエラー。`, err);
-      
       if (message.guild) {
         await message.channel.send({
-          content: `⚠️ <@${message.author.id}> さんのDM（ダイレクトメッセージ）へヘルプを送信できませんでした。Discordの設定から「サーバーメンバーからのダイレクトメッセージを許可する」を有効化して、再度お試しください。`,
+          content: `⚠️ <@${message.author.id}> さんのDMへヘルプを送信できませんでした。設定を変更して再試行してください。`,
           flags: [MessageFlags.Ephemeral]
         }).catch(() => null);
       }
@@ -525,33 +494,21 @@ client.on('messageCreate', async message => {
   }
 });
 
-// 安全用グローバルエラーハンドラ
-client.on('error', error => console.error('[Discord 内部エラーイベント]', error));
-process.on('unhandledRejection', error => console.error('[非同期処理エラーハンドラ捕捉]', error));
+client.on('error', error => console.error('[Discord Error]', error));
+process.on('unhandledRejection', error => console.error('[Unhandled Rejection]', error));
 
-// --- 🎮 インタラクション制御（スラッシュコマンド・パネルボタン・モーダル） ---
+// --- 🎮 インタラクション制御 ---
 client.on('interactionCreate', async interaction => {
-  // 1. スラッシュコマンド
   if (interaction.isChatInputCommand()) {
-    console.log(`[コマンド実行] コマンド名: /${interaction.commandName} | 実行者: ${interaction.user.tag} | サーバー: ${interaction.guildId}`);
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-    try {
-      await command.execute(interaction);
-    } catch (err) {
-      console.error(`[コマンド実行時エラー] /${interaction.commandName}`, err);
-      try {
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: '❌ エラーが発生しました。', flags: [MessageFlags.Ephemeral] });
-        }
-      } catch (e) {}
+    try { await command.execute(interaction); } catch (err) {
+      try { await interaction.reply({ content: '❌ エラーが発生しました。', flags: [MessageFlags.Ephemeral] }); } catch (e) {}
     }
     return;
   }
 
-  // 2. 認証セットアップモーダル送信イベント
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
-    console.log(`[モーダル送信受信] カスタムID: ${interaction.customId} | 送信者: ${interaction.user.tag}`);
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
     const removeRoleId = parts[4];
@@ -565,9 +522,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
-  // 3. 認証パネルのボタン押下時処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
-    console.log(`[認証ボタン押下] カスタムID: ${interaction.customId} | 押したユーザー: ${interaction.user.tag} (${interaction.user.id})`);
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
     const removeRoleId = parts[3];
@@ -575,26 +530,19 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
 
     if (addRoleId && interaction.member.roles.cache.has(addRoleId)) {
-      console.log(`[ボタン認証拒否] すでにロールを付与されています: ${interaction.user.tag}`);
       return interaction.editReply({ content: '✅ **あなたはすでに認証完了しています。**' }).catch(() => null);
     }
 
     const state = crypto.randomBytes(16).toString('hex');
     pendingStates.set(state, { guildId: interaction.guildId, userId: interaction.user.id, addRoleId, removeRoleId, timestamp: Date.now() });
-    setTimeout(() => {
-      if (pendingStates.has(state)) {
-        pendingStates.delete(state);
-        console.log(`[セッションタイムアウト消去] state: ${state}`);
-      }
-    }, 300000); 
+    setTimeout(() => pendingStates.delete(state), 300000); 
 
     const host = 'maturihanabitaikaibot.onrender.com';
     const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(`https://${host}/verify?state=${state}`);
     
-    console.log(`[認証トークン発行成功] state: ${state} を生成してユーザーへ提示しました。`);
     await interaction.editReply({ content: '⚠️ **下のボタンから認証サイトへ移動してください。**', components: [new ActionRowBuilder().addComponents(linkButton)] }).catch(() => null);
   }
 });
 
-app.listen(PORT, () => console.log(`[Web Server] ポート ${PORT} で稼働を開始しました。`));
+app.listen(PORT, () => console.log(`[Web Server] ポート ${PORT} で稼働開始。`));
 client.login(process.env.DISCORD_TOKEN);
