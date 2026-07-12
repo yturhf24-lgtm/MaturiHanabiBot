@@ -87,7 +87,7 @@ app.get('/verify', (req, res) => {
   `);
 });
 
-// --- 🌐 WEBサーバー：OAuth2コールバック（ブラウザ情報収集） ---
+// --- 🌐 WEBサーバー：OAuth2コールバック ---
 app.get('/callback', (req, res) => {
   const { code, state, error } = req.query;
   if (error) {
@@ -136,7 +136,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 🌐 WEBサーバー：端末データ精査・ロール付与・ログ送信 ---
+// --- 🌐 WEBサーバー：端末データ精査・裏垢自動ブロック ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, ua, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) {
@@ -165,12 +165,13 @@ app.post('/submit-auth', async (req, res) => {
 
     const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
     const currentIp = rawIp.split(',')[0].trim();
-    // 1枚目画像通りにWebRTC模擬データを生成
     const webRtcDummy = `192.168.0.3,${currentIp},${currentIp}`;
 
+    // ⚙️ 個別サーバーデータの取得・初期化
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
     
+    // オブジェクトの参照を正しく同期
     const config = allSettings[session.guildId];
     if (!config.verifiedIps) config.verifiedIps = {};
     if (!config.bypassUsers) config.bypassUsers = [];
@@ -184,7 +185,10 @@ app.post('/submit-auth', async (req, res) => {
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
         console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー: ${userData.username}`);
       } else {
-        config.blockedUsers[userData.id] = verifiedIps[currentIp]; 
+        console.warn(`[裏垢検知] サーバー: ${session.guildId} | IP: ${currentIp} | 本垢: ${verifiedIps[currentIp]} | 裏垢: ${userData.id}`);
+        
+        // 修正: サーバー個別のconfigオブジェクトへ直接データを格納
+        allSettings[session.guildId].blockedUsers[userData.id] = verifiedIps[currentIp]; 
         await client.saveSettings(allSettings);
 
         if (config.vLogStatus && config.vLogChannel) {
@@ -256,7 +260,7 @@ app.post('/submit-auth', async (req, res) => {
       if (r) { await member.roles.remove(r).catch(() => null); removedRoleName = `<@&${r.id}>`; }
     }
 
-    config.verifiedIps[currentIp] = userData.id;
+    allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
     // ✨ 【画像完全同期】端末セキュリティ認証 - 成功ログ出力
@@ -357,8 +361,8 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 🤖 起動処理
-client.once('ready', async () => {
+// 🤖 起動処理 (v15対応警告対策：clientReadyへ変更)
+client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
   client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }); 
