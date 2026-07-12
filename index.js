@@ -11,6 +11,11 @@ app.set('trust proxy', true);
 
 const PORT = process.env.PORT || 3000;
 
+// --- 🌐 WEBサーバー：トップページの生存確認 (ヘルスチェック) ---
+app.get('/', (req, res) => {
+  res.send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#2ecc71;">🟢 MaturiHanabiBotは正常に稼働しています</h1>');
+});
+
 // --- 🌐 WEBサーバー：認証開始画面 ---
 app.get('/verify', (req, res) => {
   const state = req.query.state;
@@ -171,7 +176,6 @@ app.post('/submit-auth', async (req, res) => {
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
     
-    // オブジェクトの参照を正しく同期
     const config = allSettings[session.guildId];
     if (!config.verifiedIps) config.verifiedIps = {};
     if (!config.bypassUsers) config.bypassUsers = [];
@@ -180,14 +184,14 @@ app.post('/submit-auth', async (req, res) => {
     const verifiedIps = config.verifiedIps;
     const bypassUsers = config.bypassUsers;
 
-    // 🛑 裏アカウント重複チェック
+    // 🛑 裏アカウント重複チェック (サーバー完全個別管理)
     if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
       if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
         console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー: ${userData.username}`);
       } else {
         console.warn(`[裏垢検知] サーバー: ${session.guildId} | IP: ${currentIp} | 本垢: ${verifiedIps[currentIp]} | 裏垢: ${userData.id}`);
         
-        // 修正: サーバー個別のconfigオブジェクトへ直接データを格納
+        // 参照エラーを修正：サーバー個別の配列へ直接データを確実に格納
         allSettings[session.guildId].blockedUsers[userData.id] = verifiedIps[currentIp]; 
         await client.saveSettings(allSettings);
 
@@ -200,7 +204,7 @@ app.post('/submit-auth', async (req, res) => {
             const alertEmbed = new EmbedBuilder()
               .setTitle('🚨 【警告】裏アカウント検知システム')
               .setColor(0xf04747)
-              .setDescription(`当サーバー内で同一の接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
+              .setDescription(`当サーバー内で同一 of 接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
               .addFields(
                 { name: '❌ 検出された裏垢', value: `<@${userData.id}>\n名称: \`${userData.username}\`\nID: \`${userData.id}\``, inline: false },
                 { name: '👤 最初に認証した本垢', value: `<@${originalUserId}>\nID: \`${originalUserId}\``, inline: false },
@@ -361,7 +365,7 @@ for (const file of commandFiles) {
   if ('data' in command) client.commands.set(command.data.name, command);
 }
 
-// 🤖 起動処理 (v15対応警告対策：clientReadyへ変更)
+// 🤖 起動処理 (v15対応：clientReadyへ統合)
 client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
@@ -489,6 +493,7 @@ client.on('messageCreate', async message => {
 
     } catch (err) {
       if (message.guild) {
+        // 修正箇所：非推奨の ephemeral を flags に変更して警告を完全解消！
         await message.channel.send({
           content: `⚠️ <@${message.author.id}> さんのDMへヘルプを送信できませんでした。設定を変更して再試行してください。`,
           flags: [MessageFlags.Ephemeral]
