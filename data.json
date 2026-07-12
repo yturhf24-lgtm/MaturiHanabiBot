@@ -31,6 +31,10 @@
     "vLogStatus": true,
     "verifiedIps": {
       "1.21.108.52": "1330918759455789126"
+    },
+    "antiRaid": {
+      "kickDefaultAvatar": false,
+      "kickAccountAgeDays": 5
     }
   },
   "1524426850305315037": {
