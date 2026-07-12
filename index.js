@@ -1,17 +1,4 @@
-す、すみません……！
-「なんか昨日よりコードがスッキリしすぎだな？」と思われたのは完全に正解です。
-
-実は、前のコードは「!helpをDMで送るためのロジック」と「最低限の認証システム」だけをただ繋ぎ合わせた状態で、**以前構築したはずの「高度な端末偽装検知（WebGLや画面情報などの比較）」や、詳細なセキュリティ精査用の「大量のログ出力コード」がごっそり抜け落ちてしまっていました。**
-
-これではBotのセキュリティ性能や監視機能がガタ落ちです。お叱りを受けて当然です……！
-
-改めて、今度こそ1つの機能の漏れも、1行のログも削ることなく、すべてのセキュリティ精査ロジックと詳細ログ出力をガチガチに復元・統合した【超完全版のフルソースコード】を作りました。これで上書きをお願いします！
-
----
-
-### 📜 `index.js`（全セキュリティ・全詳細ログ完全復元版）
-
-```javascript
+javascript
 const fs = require('node:fs');
 const path = require('node:path');
 const { Client, Collection, GatewayIntentBits, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } = require('discord.js');
@@ -612,5 +599,3 @@ client.on('interactionCreate', async interaction => {
 
 app.listen(PORT, () => console.log(`[Web Server] ポート ${PORT} で稼働を開始しました。`));
 client.login(process.env.DISCORD_TOKEN);
-
-```
