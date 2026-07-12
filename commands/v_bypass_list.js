@@ -25,6 +25,7 @@ module.exports = {
 
     const verifiedIps = config.verifiedIps || {};
     const bypassUsers = config.bypassUsers || [];
+    const blockedUsers = config.blockedUsers || {}; // 💡 Webサイト側で弾かれたデータ
 
     await interaction.guild.members.fetch().catch(() => null);
 
@@ -33,33 +34,44 @@ module.exports = {
       .setColor(0x3498db)
       .setTimestamp();
 
-    // --- 🚨 パート1: 重複IP（裏垢）の自動計算 ---
+    // --- 🚨 パート1: 重複IPの計算 ＆ blockedUsersの結合 ---
+    const detectedMap = new Map(); // userId -> mainUserId
+
+    // 1. まず現在のIP重複からリアルタイムに裏垢候補を割り出す
     const ipUsers = {}; 
     for (const [ip, userId] of Object.entries(verifiedIps)) {
       if (!ipUsers[ip]) ipUsers[ip] = [];
       if (!ipUsers[ip].includes(userId)) ipUsers[ip].push(userId);
     }
-
-    let detectText = '';
-    let detectCount = 0;
-
     for (const [ip, userIds] of Object.entries(ipUsers)) {
       if (userIds.length > 1) {
         const originalUser = userIds[0];
         const altUsers = userIds.slice(1);
-
         for (const altUser of altUsers) {
-          // 例外許可されている人はここには出さない
-          if (bypassUsers.includes(altUser)) continue;
-
-          detectCount++;
-          detectText += `⚠️ **裏垢対象:** <@${altUser}> (\`${altUser}\`)\n┗ 👤 **登録済みの本垢:** <@${originalUser}> (\`${originalUser}\`)\n\n`;
+          detectedMap.set(altUser, originalUser);
         }
       }
     }
 
+    // 2. Webサイト側で実際にブロックされた履歴(blockedUsers)も結合する
+    for (const [altId, mainId] of Object.entries(blockedUsers)) {
+      detectedMap.set(altId, mainId);
+    }
+
+    // リスト用のテキスト組み立て
+    let detectText = '';
+    let detectCount = 0;
+
+    for (const [altUser, originalUser] of detectedMap.entries()) {
+      // 例外許可（バイパス）されている人は除外
+      if (bypassUsers.includes(altUser)) continue;
+
+      detectCount++;
+      detectText += `⚠️ **裏垢対象:** <@${altUser}> (\`${altUser}\`)\n┗ 👤 **登録済みの本垢:** <@${originalUser}> (\`${originalUser}\`)\n\n`;
+    }
+
     if (detectCount === 0) {
-      embed.addFields({ name: '🚨 現在検知されている裏アカウント', value: '現在、同一IPによるブロック対象プレイヤーはいません。' });
+      embed.addFields({ name: '🚨 現在検知されている裏アカウント', value: '現在、同一IPやシステムでブロック対象となっているプレイヤーはいません。' });
     } else {
       embed.addFields({ name: `🚨 現在検知されている裏アカウント (${detectCount}名)`, value: detectText });
     }
