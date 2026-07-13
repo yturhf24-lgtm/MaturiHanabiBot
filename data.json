@@ -16,7 +16,7 @@
     "bypassUsers": [],
     "blockedUsers": {},
     "antiRaid": {
-      "kickDefaultAvatar": false,
+      "kickDefaultAvatar": true,
       "kickAccountAgeDays": 1000000
     }
   },
