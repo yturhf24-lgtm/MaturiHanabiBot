@@ -17,7 +17,7 @@
     "blockedUsers": {},
     "antiRaid": {
       "kickDefaultAvatar": false,
-      "kickAccountAgeDays": 0
+      "kickAccountAgeDays": 1000000
     }
   },
   "1523238859670819007": {
