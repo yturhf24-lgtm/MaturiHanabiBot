@@ -105,6 +105,11 @@
   },
   "1525278847484956672": {
     "vLogChannel": "1525278848076218494",
-    "vLogStatus": true
+    "vLogStatus": true,
+    "verifiedIps": {
+      "1.21.108.52": "1266013271518089258"
+    },
+    "bypassUsers": [],
+    "blockedUsers": {}
   }
 }
