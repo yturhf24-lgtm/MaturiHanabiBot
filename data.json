@@ -102,5 +102,9 @@
       "kickDefaultAvatar": false,
       "kickAccountAgeDays": 0
     }
+  },
+  "1525278847484956672": {
+    "vLogChannel": "1525278848076218494",
+    "vLogStatus": true
   }
 }
