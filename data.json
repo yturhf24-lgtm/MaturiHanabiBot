@@ -136,7 +136,7 @@
   },
   "1286627808046743562": {
     "antiRaid": {
-      "kickDefaultAvatar": true,
+      "kickDefaultAvatar": false,
       "kickAccountAgeDays": 7
     }
   }
