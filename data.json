@@ -133,5 +133,11 @@
       "kickDefaultAvatar": false,
       "kickAccountAgeDays": 5
     }
+  },
+  "1286627808046743562": {
+    "antiRaid": {
+      "kickDefaultAvatar": true,
+      "kickAccountAgeDays": 0
+    }
   }
 }
