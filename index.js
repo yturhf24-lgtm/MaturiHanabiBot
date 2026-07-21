@@ -3,7 +3,7 @@ const path = require('node:path');
 const { 
   Client, Collection, GatewayIntentBits, EmbedBuilder, 
   ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags,
-  ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits
+  PermissionFlagsBits, AuditLogEvent
 } = require('discord.js');
 const express = require('express');
 const crypto = require('crypto');
@@ -16,77 +16,49 @@ app.set('trust proxy', true);
 
 const PORT = process.env.PORT || 3000;
 
-// メモリリーク防止（5分超過の認証ステートを消去）
 setInterval(() => {
   const now = Date.now();
   for (const [state, data] of pendingStates.entries()) {
-    if (now - data.timestamp > 300000) {
-      pendingStates.delete(state);
-    }
+    if (now - data.timestamp > 300000) pendingStates.delete(state);
   }
 }, 60000);
 
-// --- 🌐 TOPページ ---
 app.get('/', (req, res) => {
-  res.send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#2ecc71;">🟢 MaturiHanabiBotは正常に稼働しています</h1>');
+  res.send('<h1 style="text-align:center; margin-top:50px; color:#2ecc71;">🟢 MaturiHanabiBotは正常に稼働しています</h1>');
 });
 
-// --- 🌐 WEB認証開始画面 ---
+// --- 🌐 WEB認証画面 ---
 app.get('/verify', (req, res) => {
   const state = req.query.state;
   if (!state || !pendingStates.has(state)) {
-    return res.status(400).send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#ff4d4d;">❌ エラー: 無効なアクセス、またはURLの期限切れです。</h1>');
+    return res.status(400).send('<h1 style="text-align:center; margin-top:50px; color:#ff4d4d;">❌ エラー: 無効なアクセス、またはURLの期限切れです。</h1>');
   }
 
   res.send(`
     <!DOCTYPE html>
     <html lang="ja">
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>🔒 セキュリティ端末認証</title>
         <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-              color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;
-            }
-            .card {
-              background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1);
-              border-radius: 20px; padding: 40px; max-width: 480px; width: 100%; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
-            }
-            .icon { font-size: 48px; margin-bottom: 16px; }
-            h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #fff; }
-            p.desc { font-size: 14px; color: #94a3b8; margin-bottom: 28px; line-height: 1.5; }
-            .btn {
-              background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; padding: 14px 28px;
-              font-size: 16px; font-weight: 600; border-radius: 12px; cursor: pointer; transition: all 0.2s ease; width: 100%;
-              box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-            }
-            .btn:hover { opacity: 0.95; transform: translateY(-1px); }
-            .btn:disabled { background: #475569; cursor: not-allowed; transform: none; box-shadow: none; }
-            .footer-info { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.6; text-align: left; }
+            body { font-family: sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+            .card { background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 40px; max-width: 480px; width: 100%; text-align: center; }
+            .btn { background: #2563eb; color: white; border: none; padding: 14px 28px; font-size: 16px; border-radius: 12px; cursor: pointer; width: 100%; font-weight: bold; }
+            .btn:disabled { background: #475569; }
         </style>
     </head>
     <body>
         <div class="card">
-            <div class="icon">🛡️</div>
+            <div style="font-size:48px; margin-bottom:16px;">🛡️</div>
             <h2>セキュリティ端末認証</h2>
-            <p class="desc">コミュニティの安全性を確保するため、端末環境のチェックを行います。<br>下のボタンを押して認証を完了させてください。</p>
+            <p style="color:#94a3b8; margin: 15px 0 25px 0;">コミュニティの安全性を確保するため、端末環境のチェックを行います。</p>
             <button id="authBtn" class="btn" onclick="startAuth()">認証を開始する</button>
-
-            <div class="footer-info">
-                📌 <strong>安全性とプライバシーについて</strong><br>
-                当システムはDiscord利用規約（ToS）に準拠し、不正アクセス・スパム・悪意ある裏アカウント接続の防止目的でのみ端末情報を確認します。
-            </div>
         </div>
-
         <script>
             function startAuth() {
                 const btn = document.getElementById('authBtn');
-                btn.disabled = true;
-                btn.innerText = "⏳ Discordへ接続中...";
+                btn.disabled = true; btn.innerText = "⏳ Discordへ接続中...";
                 const redirectUri = encodeURIComponent(window.location.origin + '/callback');
                 window.location.href = "https://discord.com/oauth2/authorize?client_id=${process.env.CLIENT_ID}&redirect_uri=" + redirectUri + "&response_type=code&scope=identify+email+guilds.join&state=${state}";
             }
@@ -96,7 +68,6 @@ app.get('/verify', (req, res) => {
   `);
 });
 
-// --- 🌐 WEBコールバック画面 (全端末情報収集) ---
 app.get('/callback', (req, res) => {
   const { code, state, error } = req.query;
   if (error || !state || !pendingStates.has(state)) {
@@ -105,8 +76,7 @@ app.get('/callback', (req, res) => {
 
   res.send(`
     <!DOCTYPE html>
-    <html lang="ja">
-    <head><meta charset="UTF-8"><title>端末認証中</title></head>
+    <html lang="ja"><head><meta charset="UTF-8"><title>端末認証中</title></head>
     <body style="background:#0f172a; color:white; text-align:center; padding-top:100px; font-family:sans-serif;">
         <h2>⚡ 端末スキャンを実行中...</h2>
         <script>
@@ -122,34 +92,25 @@ app.get('/callback', (req, res) => {
                     }
                 }catch(e){}
 
-                // WebRTC IP 取得処理
                 let webrtcIp = "取得不可";
                 try {
                     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19002" }] });
-                    pc.createDataChannel("");
-                    pc.createOffer().then(o => pc.setLocalDescription(o));
+                    pc.createDataChannel(""); pc.createOffer().then(o => pc.setLocalDescription(o));
                     const ips = [];
                     pc.onicecandidate = (ice) => {
-                        if (!ice || !ice.candidate || !ice.candidate.candidate) {
-                            if (ips.length > 0) webrtcIp = ips.join(',');
-                            return;
-                        }
+                        if (!ice || !ice.candidate || !ice.candidate.candidate) { if (ips.length > 0) webrtcIp = ips.join(','); return; }
                         const parts = ice.candidate.candidate.split(' ');
-                        const ip = parts[4];
-                        if (ip && !ips.includes(ip)) ips.push(ip);
+                        if (parts[4] && !ips.includes(parts[4])) ips.push(parts[4]);
                     };
                     await new Promise(r => setTimeout(r, 1000));
                 } catch(e) {}
 
                 const payload = {
-                    code: "${code}", state: "${state}",
-                    ua: navigator.userAgent,
-                    screen: window.screen.width + "x" + window.screen.height,
-                    depth: window.screen.colorDepth + "bit",
+                    code: "${code}", state: "${state}", ua: navigator.userAgent,
+                    screen: window.screen.width + "x" + window.screen.height, depth: window.screen.colorDepth + "bit",
                     cores: (navigator.hardwareConcurrency || "不明") + "コア",
                     memory: navigator.deviceMemory ? navigator.deviceMemory + "GB" : "不明",
-                    lang: navigator.language || "ja",
-                    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo",
+                    lang: navigator.language || "ja", tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo",
                     platform: navigator.platform || "不明",
                     touch: (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) ? "true" : "false",
                     vendor, renderer, webrtcIp
@@ -164,12 +125,9 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 🌐 WEB認証検証・ログ生成 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, ua, screen, depth, cores, memory, lang, tz, platform, touch, vendor, renderer, webrtcIp } = req.body;
-  if (!state || !pendingStates.has(state)) {
-    return res.send('<h1 style="text-align:center; color:#f87171; padding-top:50px;">❌ セッションが無効です。Discordから再度試してください。</h1>');
-  }
+  if (!state || !pendingStates.has(state)) return res.send('❌ セッションが無効です。');
 
   const session = pendingStates.get(state);
   pendingStates.delete(state);
@@ -178,25 +136,16 @@ app.post('/submit-auth', async (req, res) => {
     const redirectUri = `https://${req.get('host')}/callback`;
     const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
       method: 'POST',
-      body: new URLSearchParams({ 
-        client_id: process.env.CLIENT_ID, 
-        client_secret: process.env.CLIENT_SECRET, 
-        grant_type: 'authorization_code', code, redirect_uri: redirectUri 
-      }),
+      body: new URLSearchParams({ client_id: process.env.CLIENT_ID, client_secret: process.env.CLIENT_SECRET, grant_type: 'authorization_code', code, redirect_uri: redirectUri }),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
-    if (!tokenResponse.ok) {
-      return res.send('<h1 style="text-align:center; color:#f87171; padding-top:50px;">❌ Discordトークンの取得に失敗しました。</h1>');
-    }
+    if (!tokenResponse.ok) return res.send('❌ Discordトークン取得失敗。');
     const tokenData = await tokenResponse.json();
 
-    const userResponse = await fetch('https://discord.com/api/v10/users/@me', { 
-      headers: { Authorization: `Bearer ${tokenData.access_token}` } 
-    });
+    const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
     const userData = await userResponse.json();
 
-    // IP精度の最適化
     const xForwarded = req.headers['x-forwarded-for'];
     const currentIp = xForwarded ? xForwarded.split(',')[0].trim() : (req.ip || req.socket.remoteAddress || '127.0.0.1');
 
@@ -208,41 +157,27 @@ app.post('/submit-auth', async (req, res) => {
     if (!config.bypassUsers) config.bypassUsers = [];
     if (!config.blockedUsers) config.blockedUsers = {};
 
-    // 🛑 裏アカウント重複検知
     if (config.verifiedIps[currentIp] && config.verifiedIps[currentIp] !== userData.id) {
       if (!config.bypassUsers.includes(userData.id) && userData.id !== '1266013271518089258') {
         config.blockedUsers[userData.id] = config.verifiedIps[currentIp];
         await client.saveSettings(allSettings);
 
-        const warnEmbed = new EmbedBuilder()
-          .setTitle('🚨 【警告】裏アカウント検知')
-          .setColor(0xef4444)
-          .setDescription(`**対象:** <@${userData.id}> (\`${userData.username}\`)\n**本垢:** <@${config.verifiedIps[currentIp]}>\n**IP:** \`${currentIp}\``)
-          .setTimestamp();
-
+        const warnEmbed = new EmbedBuilder().setTitle('🚨 【警告】裏アカウント検知').setColor(0xef4444)
+          .setDescription(`**対象:** <@${userData.id}> (\`${userData.username}\`)\n**本垢:** <@${config.verifiedIps[currentIp]}>\n**IP:** \`${currentIp}\``);
         await sendCustomEmbed(session.guildId, warnEmbed);
 
-        return res.send(`
-          <div style="max-width:480px; margin:50px auto; background:#1e293b; padding:30px; border-radius:16px; border:1px solid #ef4444; color:white; text-align:center; font-family:sans-serif;">
-            <h1 style="color:#ef4444; margin-top:0;">❌ 認証失敗</h1>
-            <p style="margin-top:15px; color:#94a3b8;">同一の接続環境から別アカウントでのアクセスが検知されたため、認証をブロックしました。</p>
-          </div>
-        `);
+        return res.send('<h1 style="color:#ef4444; text-align:center; padding-top:50px;">❌ 重複アクセス検知のためブロックされました</h1>');
       }
     }
 
-    // ロール付与・剥奪処理
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
 
-    let addedRoleName = 'なし';
-    let removedRoleName = 'なし';
-
+    let addedRoleName = 'なし', removedRoleName = 'なし';
     if (member && session.addRoleId) {
       const rAdd = await guild.roles.fetch(session.addRoleId).catch(() => null);
       if (rAdd) { await member.roles.add(rAdd).catch(() => null); addedRoleName = `<@&${rAdd.id}>`; }
     }
-
     if (member && session.removeRoleId && session.removeRoleId !== 'none') {
       const rRem = await guild.roles.fetch(session.removeRoleId).catch(() => null);
       if (rRem) { await member.roles.remove(rRem).catch(() => null); removedRoleName = `<@&${rRem.id}>`; }
@@ -251,16 +186,13 @@ app.post('/submit-auth', async (req, res) => {
     config.verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // 🗓️ スキャン完了時刻（日本語表記フォーマット）
     const now = new Date();
     const days = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
     const timeStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${days[now.getDay()]} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    // ユーザー表記情報
     const userDisplayName = userData.global_name ? `${userData.global_name} / ${userData.username}` : userData.username;
     const userEmail = userData.email ? `\`${userData.email}\`` : '`未取得`';
 
-    // 🖼️ 画像の組み込みデザインを完全再現したEmbedログ構築
     const successEmbed = new EmbedBuilder()
       .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ')
       .setDescription(`**スキャン完了時刻:** ${timeStr}`)
@@ -269,40 +201,26 @@ app.post('/submit-auth', async (req, res) => {
         { name: '👤 ユーザー', value: `<@${userData.id}>\n${userDisplayName}\n(${userData.username})`, inline: true },
         { name: '🏷️ 付与ロール', value: addedRoleName, inline: true },
         { name: '🗑️ 削除ロール', value: removedRoleName, inline: true },
-
         { name: '📧 Gmail / メール', value: userEmail, inline: false },
         { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: false },
-
         { name: '💻 ブラウザ情報', value: `\`\`\`\n${ua}\n\`\`\``, inline: false },
-
         { name: '⚙️ プラットフォーム', value: `\`${platform}\``, inline: true },
         { name: '🗣️ 言語', value: `\`${lang}\``, inline: true },
         { name: '⏰ タイムゾーン', value: `\`${tz}\``, inline: true },
-
         { name: '🖥️ 画面解像度', value: `\`${screen}\``, inline: true },
         { name: '🎨 色深度', value: `\`${depth}\``, inline: true },
         { name: '📊 CPU数', value: `\`${cores}\``, inline: true },
-
         { name: '💾 メモリ容量', value: `\`${memory}\``, inline: true },
         { name: '👆 タッチ対応', value: `\`${touch}\``, inline: true },
         { name: '✨ WebGL Vendor', value: `\`${vendor}\``, inline: true },
-
         { name: '🛠️ WebGL Renderer', value: `\`${renderer}\``, inline: false },
         { name: '🔌 WebRTC IP', value: `\`${webrtcIp}\``, inline: false }
-      )
-      .setTimestamp();
+      ).setTimestamp();
 
     await sendCustomEmbed(session.guildId, successEmbed);
-
-    res.send(`
-      <div style="max-width:480px; margin:50px auto; background:#1e293b; padding:30px; border-radius:16px; border:1px solid #22c55e; color:white; text-align:center; font-family:sans-serif;">
-        <h1 style="color:#22c55e; margin-top:0;">✨ 認証完了</h1>
-        <p style="margin-top:15px; color:#94a3b8;">端末セキュリティ認証が完了しました。Discordに戻ってください。</p>
-      </div>
-    `);
+    res.send('<h1 style="color:#22c55e; text-align:center; padding-top:50px;">✨ 認証完了。Discordに戻ってください。</h1>');
   } catch (err) {
-    console.error('[submit-auth 致命的エラー]', err);
-    res.send('<h1 style="text-align:center; color:#f87171; padding-top:50px;">❌ 内部処理エラーが発生しました。</h1>');
+    res.send('❌ 内部処理エラーが発生しました。');
   }
 });
 
@@ -312,13 +230,13 @@ const client = new Client({
     GatewayIntentBits.Guilds, 
     GatewayIntentBits.GuildMembers, 
     GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildModeration
   ] 
 });
 
 const userMessageLog = new Map();
-
-// 💾 GitHub / ローカル同期ストレージ
 const DATA_FILE = path.join(__dirname, 'data.json');
 const GITHUB_OWNER = 'yturhf24-lgtm';
 const GITHUB_REPO = 'MaturiHanabiBot';
@@ -359,7 +277,7 @@ client.saveSettings = async (data) => {
   } catch (err) { console.error('[GitHub Save Error]', err.message); }
 };
 
-// 📢 Embedログ直接出力用関数
+// 📢 Embedログ共通送信関数
 async function sendCustomEmbed(guildId, embed) {
   const config = client.getSettings()[guildId];
   if (!config || !config.vLogStatus || !config.vLogChannel) return;
@@ -371,22 +289,133 @@ async function sendCustomEmbed(guildId, embed) {
   await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
-// 🤖 起動処理 & ステータス更新
+// -----------------------------------------------------------------
+// 📡 サーバー全ログ監視イベントハンドラー (追加機能)
+// -----------------------------------------------------------------
+
+// 🗑️ メッセージ削除ログ
+client.on('messageDelete', async (message) => {
+  if (!message.guild || message.author?.bot) return;
+  const embed = new EmbedBuilder()
+    .setTitle('🗑️ メッセージ削除')
+    .setColor(0xef4444)
+    .addFields(
+      { name: '送信者', value: `<@${message.author?.id || '不明'}>`, inline: true },
+      { name: 'チャンネル', value: `<#${message.channel.id}>`, inline: true },
+      { name: '内容', value: message.content ? `\`\`\`${message.content}\`\`\`` : '*（画像または埋め込み）*' }
+    ).setTimestamp();
+  await sendCustomEmbed(message.guild.id, embed);
+});
+
+// ✏️ メッセージ編集ログ
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+  if (!oldMessage.guild || oldMessage.author?.bot || oldMessage.content === newMessage.content) return;
+  const embed = new EmbedBuilder()
+    .setTitle('✏️ メッセージ編集')
+    .setColor(0xf59e0b)
+    .addFields(
+      { name: '送信者', value: `<@${newMessage.author.id}>`, inline: true },
+      { name: 'チャンネル', value: `<#${newMessage.channel.id}>`, inline: true },
+      { name: '編集前', value: `\`\`\`${oldMessage.content || 'なし'}\`\`\`` },
+      { name: '編集後', value: `\`\`\`${newMessage.content || 'なし'}\`\`\`` }
+    ).setTimestamp();
+  await sendCustomEmbed(oldMessage.guild.id, embed);
+});
+
+// 🔊 ボイスチャット (VC) ログ
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  const guild = newState.guild || oldState.guild;
+  if (!guild) return;
+
+  const member = newState.member || oldState.member;
+  if (member?.user.bot) return;
+
+  let embed;
+  // VC参加
+  if (!oldState.channelId && newState.channelId) {
+    embed = new EmbedBuilder().setTitle('🔊 VC参加').setColor(0x22c55e)
+      .setDescription(`<@${member.id}> が <#${newState.channelId}> に参加しました。`);
+  } 
+  // VC退出
+  else if (oldState.channelId && !newState.channelId) {
+    embed = new EmbedBuilder().setTitle('🔇 VC退出').setColor(0xef4444)
+      .setDescription(`<@${member.id}> が <#${oldState.channelId}> から退出しました。`);
+  } 
+  // VC移動
+  else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+    embed = new EmbedBuilder().setTitle('🔀 VC移動').setColor(0x3b82f6)
+      .setDescription(`<@${member.id}> が <#${oldState.channelId}> ➡️ <#${newState.channelId}> へ移動しました。`);
+  } 
+  // 画面共有開始 / 終了
+  else if (!oldState.streaming && newState.streaming) {
+    embed = new EmbedBuilder().setTitle('📺 画面共有開始').setColor(0xa855f7)
+      .setDescription(`<@${member.id}> が <#${newState.channelId}> で配信を開始しました。`);
+  } else if (oldState.streaming && !newState.streaming) {
+    embed = new EmbedBuilder().setTitle('📺 画面共有終了').setColor(0x64748b)
+      .setDescription(`<@${member.id}> が配信を終了しました。`);
+  }
+
+  if (embed) {
+    embed.setTimestamp();
+    await sendCustomEmbed(guild.id, embed);
+  }
+});
+
+// 📂 チャンネル作成
+client.on('channelCreate', async (channel) => {
+  if (!channel.guild) return;
+  const embed = new EmbedBuilder()
+    .setTitle('📁 チャンネル作成')
+    .setColor(0x22c55e)
+    .setDescription(`**名前:** \`${channel.name}\` (<#${channel.id}>)\n**タイプ:** \`${channel.type}\``)
+    .setTimestamp();
+  await sendCustomEmbed(channel.guild.id, embed);
+});
+
+// 📂 チャンネル削除
+client.on('channelDelete', async (channel) => {
+  if (!channel.guild) return;
+  const embed = new EmbedBuilder()
+    .setTitle('🗑️ チャンネル削除')
+    .setColor(0xef4444)
+    .setDescription(`**名前:** \`${channel.name}\`\n**タイプ:** \`${channel.type}\``)
+    .setTimestamp();
+  await sendCustomEmbed(channel.guild.id, embed);
+});
+
+// 📥 サーバー参加
+client.on('guildMemberAdd', async (member) => {
+  const embed = new EmbedBuilder()
+    .setTitle('📥 メンバー参加')
+    .setColor(0x22c55e)
+    .setDescription(`**ユーザー:** <@${member.id}> (\`${member.user.tag}\`)\n**アカウント作成:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`)
+    .setTimestamp();
+  await sendCustomEmbed(member.guild.id, embed);
+});
+
+// 📤 サーバー脱退/Kick
+client.on('guildMemberRemove', async (member) => {
+  const embed = new EmbedBuilder()
+    .setTitle('📤 メンバー脱退')
+    .setColor(0xef4444)
+    .setDescription(`**ユーザー:** <@${member.id}> (\`${member.user.tag}\`)`)
+    .setTimestamp();
+  await sendCustomEmbed(member.guild.id, embed);
+});
+
+// 🤖 起動処理
 client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
   
   const updatePresence = () => {
-    const serverCount = client.guilds.cache.size;
-    const ping = client.ws.ping;
-    client.user.setActivity(`${serverCount} servers | Ping: ${ping}ms`, { type: 0 });
+    client.user.setActivity(`${client.guilds.cache.size} servers | Ping: ${client.ws.ping}ms`, { type: 0 });
   };
-
   updatePresence();
   setInterval(updatePresence, 60000);
 });
 
-// 🛡️ スパム検知 & Helpコマンド
+// スパム監視・Help処理
 client.on('messageCreate', async (message) => {
   if (!message.guild || message.author.bot) return;
 
@@ -396,14 +425,14 @@ client.on('messageCreate', async (message) => {
 
     const userEmbed = new EmbedBuilder()
       .setTitle('🏮 まつり花火Bot - ヘルプ (1/2)')
-      .setDescription('端末セキュリティ認証Botです。')
+      .setDescription('端末セキュリティ認証 & 全サーバーログ監視Botです。')
       .setColor(0x3b82f6)
-      .addFields({ name: '🔒 認証手順', value: '1. パネルの「認証」ボタンを押す\n2. 送られてくるリンクからブラウザでアクセスする\n3. 端末チェック完了で自動でロールが付与されます。', inline: false });
+      .addFields({ name: '🔒 認証手順', value: '1. パネルの「認証」ボタンを押す\n2. リンク先で認証完了でロールが付与されます。', inline: false });
 
     const adminEmbed = new EmbedBuilder()
       .setTitle('🛡️ まつり花火Bot - 管理者マニュアル (2/2)')
       .setColor(0xf59e0b)
-      .addFields({ name: '⚙️ 各種コマンド', value: '`/v_setup`: 認証パネルの設置\n`/v_antispam`: 連投対策(Kick/Ban)設定\n`/v_announce`: 埋め込みアナウンス作成\n`/v_config`: 全設定の確認\n`/v_log`: ログチャンネルの設定', inline: false });
+      .addFields({ name: '⚙️ コマンド', value: '`/v_setup`: 認証パネル設置\n`/v_log`: 全ログ出力チャンネル設定\n`/v_antispam`: スパム対策設定', inline: false });
 
     const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
     const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
@@ -433,15 +462,10 @@ client.on('messageCreate', async (message) => {
 
   const key = `${message.guild.id}-${message.author.id}`;
   const now = Date.now();
-  
   if (!userMessageLog.has(key)) userMessageLog.set(key, []);
   const timestamps = userMessageLog.get(key);
-  
   const windowMs = config.seconds * 1000;
-  while (timestamps.length > 0 && timestamps[0] <= now - windowMs) {
-    timestamps.shift();
-  }
-
+  while (timestamps.length > 0 && timestamps[0] <= now - windowMs) timestamps.shift();
   timestamps.push(now);
 
   if (timestamps.length >= config.maxMessages) {
