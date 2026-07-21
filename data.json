@@ -20,6 +20,12 @@
     "antiRaid": {
       "kickDefaultAvatar": true,
       "kickAccountAgeDays": 0
+    },
+    "antiSpam": {
+      "enabled": true,
+      "seconds": 5,
+      "maxMessages": 5,
+      "action": "kick"
     }
   },
   "1523238859670819007": {
