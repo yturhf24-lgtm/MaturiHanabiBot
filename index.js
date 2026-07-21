@@ -1,32 +1,42 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, GatewayIntentBits, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags } = require('discord.js');
+const { 
+  Client, Collection, GatewayIntentBits, EmbedBuilder, 
+  ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags,
+  ModalBuilder, TextInputBuilder, TextInputStyle, PermissionFlagsBits
+} = require('discord.js');
 const express = require('express');
 const crypto = require('crypto');
 
+// --- 🌐 WEBサーバー初期化 ---
 const pendingStates = new Map();
 const app = express();
 app.use(express.json());
 app.set('trust proxy', true);
 
-// 🌐 Renderの環境変数PORTにバインド（なければ3000）
 const PORT = process.env.PORT || 3000;
 
-// --- 🌐 WEBサーバー：トップページの生存確認 (Renderのヘルスチェック用) ---
+// 定期的に期限切れの認証ステートをクリーンアップ（メモリリーク防止）
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, data] of pendingStates.entries()) {
+    if (now - data.timestamp > 300000) { // 5分超過
+      pendingStates.delete(state);
+    }
+  }
+}, 60000);
+
+// --- 🌐 TOPページ (Renderヘルスチェック用) ---
 app.get('/', (req, res) => {
   res.send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#2ecc71;">🟢 MaturiHanabiBotは正常に稼働しています</h1>');
 });
 
-// --- 🌐 WEBサーバー：認証開始画面 ---
+// --- 🌐 WEB認証開始画面 ---
 app.get('/verify', (req, res) => {
   const state = req.query.state;
   if (!state || !pendingStates.has(state)) {
-    console.warn(`[認証アクセス拒否] 無効なstate、または期限切れ: ${state}`);
     return res.status(400).send('<h1 style="text-align:center; margin-top:50px; font-family:sans-serif; color:#ff4d4d;">❌ エラー: 無効なアクセス、またはURLの期限切れです。</h1>');
   }
-
-  const session = pendingStates.get(state);
-  console.log(`[認証画面アクセス] ユーザーID: ${session.userId} サーバーID: ${session.guildId}`);
 
   res.send(`
     <!DOCTYPE html>
@@ -34,58 +44,51 @@ app.get('/verify', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>🔒 端末セキュリティ認証</title>
+        <title>🔒 セキュリティ端末認証</title>
         <style>
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #2f3136; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-            .container { text-align: center; background: #36393f; padding: 40px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); max-width: 450px; width: 90%; }
-            h2 { margin-bottom: 20px; font-size: 24px; }
-            .btn { background: #2ecc71; color: white; border: none; padding: 16px 32px; font-size: 18px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: background 0.2s; width: 100%; box-sizing: border-box; }
-            .btn:hover { background: #27ae60; }
-            .btn:disabled { background: #72767d; cursor: not-allowed; }
-            .status-msg { margin-top: 20px; font-size: 14px; color: #b9bbbe; }
-            .error-msg { margin-top: 15px; font-size: 14px; color: #f04747; font-weight: bold; background: rgba(240,71,71,0.1); padding: 10px; border-radius: 4px; display: none; }
-            .info-box { margin-top: 25px; border-top: 1px solid #4f545c; padding-top: 15px; text-align: left; font-size: 12px; color: #a3a6aa; line-height: 1.6; }
-            .warning-box { margin-top: 15px; font-size: 12px; color: #faa61a; text-align: center; font-weight: bold; }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+              color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;
+            }
+            .card {
+              background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 20px; padding: 40px; max-width: 480px; width: 100%; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+            }
+            .icon { font-size: 48px; margin-bottom: 16px; }
+            h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+            p.desc { font-size: 14px; color: #94a3b8; margin-bottom: 28px; line-height: 1.5; }
+            .btn {
+              background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; padding: 14px 28px;
+              font-size: 16px; font-weight: 600; border-radius: 12px; cursor: pointer; transition: all 0.2s ease; width: 100%;
+              box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            }
+            .btn:hover { opacity: 0.95; transform: translateY(-1px); }
+            .btn:disabled { background: #475569; cursor: not-allowed; transform: none; box-shadow: none; }
+            .footer-info { margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.6; text-align: left; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h2>🔒 セキュリティ認証</h2>
+        <div class="card">
+            <div class="icon">🛡️</div>
+            <h2>セキュリティ端末認証</h2>
+            <p class="desc">コミュニティの安全性を確保するため、端末環境のチェックを行います。<br>下のボタンを押して認証を完了させてください。</p>
             <button id="authBtn" class="btn" onclick="startAuth()">認証を開始する</button>
-            
-            <div id="statusText" class="status-msg">このボタンをクリックして認証してください。</div>
-            <div id="errorText" class="error-msg"></div>
-            
-            <div class="warning-box">
-                ⚠️ 認証がうまくいかない、または権限不足のエラーが出る場合は、サーバーの管理者へお問い合わせください。
-            </div>
 
-            <div class="info-box">
-                📌 <strong>【安全性と規約について】</strong><br>
-                当システムは**Discord利用規約（ToS）に完全に準拠**し、コミュニティの安全維持を目的に端末・接続環境チェックを実施しています。不正なVPNやプロキシを介した接続、悪意ある多重アカウント（裏垢）によるアクセスは、規約に基づき自動的に拒否される場合があります。
+            <div class="footer-info">
+                📌 <strong>安全性とプライバシーについて</strong><br>
+                当システムはDiscord利用規約（ToS）に準拠し、不正アクセス・スパム・悪意ある裏アカウント接続の防止目的でのみ端末情報を確認します。
             </div>
         </div>
 
         <script>
             function startAuth() {
                 const btn = document.getElementById('authBtn');
-                const status = document.getElementById('statusText');
-                const errorDiv = document.getElementById('errorText');
-
                 btn.disabled = true;
-                status.innerText = "⏳ 認証中...";
-                errorDiv.style.display = "none";
-
+                btn.innerText = "⏳ Discordへ接続中...";
                 const redirectUri = encodeURIComponent(window.location.origin + '/callback');
                 window.location.href = "https://discord.com/oauth2/authorize?client_id=${process.env.CLIENT_ID}&redirect_uri=" + redirectUri + "&response_type=code&scope=identify+email+guilds.join&state=${state}";
-            }
-
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('error')) {
-                const errorDiv = document.getElementById('errorText');
-                errorDiv.innerText = "❌ 認証エラー: " + urlParams.get('error');
-                errorDiv.style.display = "block";
-                document.getElementById('statusText').innerText = "ボタンをクリックして再試行してください。";
             }
         </script>
     </body>
@@ -93,21 +96,19 @@ app.get('/verify', (req, res) => {
   `);
 });
 
-// --- 🌐 WEBサーバー：OAuth2コールバック ---
+// --- 🌐 WEBコールバック画面 ---
 app.get('/callback', (req, res) => {
   const { code, state, error } = req.query;
-  if (error) {
-    console.warn(`[OAuth2キャンセル] state: ${state}, エラー: ${error}`);
-    return res.redirect(`/verify?state=${state}&error=` + encodeURIComponent("Discordでの同意がキャンセルされました。"));
+  if (error || !state || !pendingStates.has(state)) {
+    return res.status(400).send('<h1 style="text-align:center; padding-top:50px; color:#f87171;">❌ 認証セッションが無効化または期限切れになりました。</h1>');
   }
-  if (!state || !pendingStates.has(state)) return res.status(400).send('<h1>❌ セッションが無効です。</h1>');
 
   res.send(`
     <!DOCTYPE html>
     <html lang="ja">
-    <head><meta charset="UTF-8"><title>認証処理中</title></head>
-    <body style="background:#2f3136; color:white; text-align:center; padding-top:100px; font-family:sans-serif;">
-        <h2>⚡ 最終セキュリティスキャンを実行中...</h2>
+    <head><meta charset="UTF-8"><title>端末認証中</title></head>
+    <body style="background:#0f172a; color:white; text-align:center; padding-top:100px; font-family:sans-serif;">
+        <h2>⚡ 端末スキャンを実行中...</h2>
         <script>
             async function collect() {
                 let vendor = "不明", renderer = "不明";
@@ -116,7 +117,7 @@ app.get('/callback', (req, res) => {
                     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                     if(gl) {
                         const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_VENDOR_WEBGL) || "不明";
+                        vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || "不明";
                         renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || "不明";
                     }
                 }catch(e){}
@@ -124,10 +125,10 @@ app.get('/callback', (req, res) => {
                 const payload = {
                     code: "${code}", state: "${state}",
                     ua: navigator.userAgent,
-                    screen: window.screen.width + "x" + window.screen.height, depth: window.screen.colorDepth + "bit",
-                    cores: navigator.hardwareConcurrency ? navigator.hardwareConcurrency + "コア" : "不明", 
-                    memory: navigator.deviceMemory ? navigator.deviceMemory + "GB以上" : "不明",
-                    touch: ('ontouchstart' in window || navigator.maxTouchPoints > 0) ? "true" : "false", 
+                    screen: window.screen.width + "x" + window.screen.height,
+                    depth: window.screen.colorDepth + "bit",
+                    cores: navigator.hardwareConcurrency || "不明",
+                    memory: navigator.deviceMemory || "不明",
                     lang: navigator.language || "ja",
                     tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo",
                     platform: navigator.platform || "不明", vendor, renderer
@@ -142,11 +143,11 @@ app.get('/callback', (req, res) => {
   `);
 });
 
-// --- 🌐 WEBサーバー：端末データ精査・裏垢自動ブロック ---
+// --- 🌐 WEB認証検証・裏垢判定（全端末情報ログ化） ---
 app.post('/submit-auth', async (req, res) => {
-  const { code, state, ua, screen, depth, cores, memory, touch, lang, tz, platform, vendor, renderer } = req.body;
+  const { code, state, ua, screen, depth, cores, memory, lang, tz, platform, vendor, renderer } = req.body;
   if (!state || !pendingStates.has(state)) {
-    return res.send('<h1 style="text-align:center; color:#f04747;">❌ セッションが無効です。最初からやり長してください。</h1>');
+    return res.send('<h1 style="text-align:center; color:#f87171; padding-top:50px;">❌ セッションが無効です。Discordから再度試してください。</h1>');
   }
 
   const session = pendingStates.get(state);
@@ -156,159 +157,124 @@ app.post('/submit-auth', async (req, res) => {
     const redirectUri = `https://${req.get('host')}/callback`;
     const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
       method: 'POST',
-      body: new URLSearchParams({ client_id: process.env.CLIENT_ID, client_secret: process.env.CLIENT_SECRET, grant_type: 'authorization_code', code, redirect_uri: redirectUri }),
+      body: new URLSearchParams({ 
+        client_id: process.env.CLIENT_ID, 
+        client_secret: process.env.CLIENT_SECRET, 
+        grant_type: 'authorization_code', code, redirect_uri: redirectUri 
+      }),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
     });
 
     if (!tokenResponse.ok) {
-      console.error(`[Tokenエラー] ステータス: ${tokenResponse.status}`);
-      return res.send('<h1 style="text-align:center; color:#f04747;">❌ Discordのトークン認証に失敗しました。</h1>');
+      return res.send('<h1 style="text-align:center; color:#f87171; padding-top:50px;">❌ Discordトークンの取得に失敗しました。</h1>');
     }
     const tokenData = await tokenResponse.json();
 
-    const userResponse = await fetch('https://discord.com/api/v10/users/@me', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+    const userResponse = await fetch('https://discord.com/api/v10/users/@me', { 
+      headers: { Authorization: `Bearer ${tokenData.access_token}` } 
+    });
     const userData = await userResponse.json();
 
-    const rawIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '取得失敗';
-    const currentIp = rawIp.split(',')[0].trim();
-    const webRtcDummy = `192.168.0.3,${currentIp},${currentIp}`;
+    // IP精度の最適化
+    const xForwarded = req.headers['x-forwarded-for'];
+    const currentIp = xForwarded ? xForwarded.split(',')[0].trim() : (req.ip || req.socket.remoteAddress || '127.0.0.1');
 
-    // ⚙️ 個別サーバーデータの取得・初期化
     const allSettings = client.getSettings();
     if (!allSettings[session.guildId]) allSettings[session.guildId] = {};
-    
     const config = allSettings[session.guildId];
+
     if (!config.verifiedIps) config.verifiedIps = {};
     if (!config.bypassUsers) config.bypassUsers = [];
     if (!config.blockedUsers) config.blockedUsers = {};
 
-    const verifiedIps = config.verifiedIps;
-    const bypassUsers = config.bypassUsers;
-
-    // 🛑 裏アカウント重複チェック (サーバー完全個別管理)
-    if (verifiedIps[currentIp] && verifiedIps[currentIp] !== userData.id) {
-      if (userData.id === '1266013271518089258' || bypassUsers.includes(userData.id)) {
-        console.log(`[例外許可適用] サーバー [${session.guildId}] 免除ユーザー: ${userData.username}`);
-      } else {
-        console.warn(`[裏垢検知] サーバー: ${session.guildId} | IP: ${currentIp} | 本垢: ${verifiedIps[currentIp]} | 裏垢: ${userData.id}`);
-        
-        // 🔒 サーバー個別の配列へ直接データを確実に格納
-        allSettings[session.guildId].blockedUsers[userData.id] = verifiedIps[currentIp]; 
-        
-        // ✨ GitHubおよびローカルのファイルへの保存同期を徹底強制
+    // 🛑 裏アカウント重複検知
+    if (config.verifiedIps[currentIp] && config.verifiedIps[currentIp] !== userData.id) {
+      if (!config.bypassUsers.includes(userData.id) && userData.id !== '1266013271518089258') {
+        config.blockedUsers[userData.id] = config.verifiedIps[currentIp];
         await client.saveSettings(allSettings);
-        await new Promise(resolve => setTimeout(resolve, 1500)); // 非同期処理の安全な完了待ち
 
-        if (config.vLogStatus && config.vLogChannel) {
-          const guild = await client.guilds.fetch(session.guildId).catch(() => null);
-          const logChannel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
-          
-          if (logChannel) {
-            const originalUserId = verifiedIps[currentIp];
-            const alertEmbed = new EmbedBuilder()
-              .setTitle('🚨 【警告】裏アカウント検知システム')
-              .setColor(0xf04747)
-              .setDescription(`当サーバー内で同一の接続環境（IP）から、別のアカウントでの認証試行をブロックしました。`)
-              .addFields(
-                { name: '❌ 検出された裏垢', value: `<@${userData.id}>\n名称: \`${userData.username}\`\nID: \`${userData.id}\``, inline: false },
-                { name: '👤 最初に認証した本垢', value: `<@${originalUserId}>\nID: \`${originalUserId}\``, inline: false },
-                { name: '🌐 接続IPアドレス', value: `\`${currentIp}\``, inline: true },
-                { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
-                { name: '🔌 WebRTC 疑似IP', value: `\`${webRtcDummy}\``, inline: false },
-                { name: '📊 端末詳細（偽装スキャン）', value: `\`\`\`📊 画面サイズ: ${screen}\n💎 深度: ${depth}\n⚡ コア数: ${cores}\n💾 メモリ: ${memory}\n🎨 GPU Vendor: ${vendor}\n🖌️ Renderer: ${renderer}\n🌏 言語/タイムゾーン: ${lang} / ${tz}\`\`\``, inline: false }
-              )
-              .setTimestamp();
-
-            await logChannel.send({ embeds: [alertEmbed] }).catch(() => null);
-          }
-        }
+        // 重複検出時の詳細ログ
+        await sendLog(
+          session.guildId, 
+          '🚨 【警告】裏アカウント検知', 
+          `**対象ユーザー:** <@${userData.id}> (\`${userData.username}\` / \`${userData.id}\`)\n` +
+          `**本アカウント:** <@${config.verifiedIps[currentIp]}>\n` +
+          `**IPアドレス:** \`${currentIp}\`\n` +
+          `**OS/プラットフォーム:** \`${platform}\`\n` +
+          `**User-Agent:** \`${ua}\``, 
+          0xef4444
+        );
 
         return res.send(`
-          <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
-            <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
-            <p style="font-size:16px; line-height:1.6; margin-top:20px;">裏アカウントが検出されました。</p>
+          <div style="max-width:480px; margin:50px auto; background:#1e293b; padding:30px; border-radius:16px; border:1px solid #ef4444; color:white; text-align:center; font-family:sans-serif;">
+            <h1 style="color:#ef4444; margin-top:0;">❌ 認証失敗</h1>
+            <p style="margin-top:15px; color:#94a3b8;">同一の接続環境から別アカウントでのアクセスが検知されたため、認証をブロックしました。</p>
           </div>
         `);
       }
     }
 
-    // 🔍 新規アカウント制限 (30日未満チェック)
-    if (userData.id !== '1266013271518089258') {
-      const discordEpoch = 1420070400000;
-      const creationTime = Number(BigInt(userData.id) >> 22n) + discordEpoch;
-      const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
-
-      if (accountAgeDays < 30) {
-        return res.send(`
-          <div style="max-width:500px; margin:50px auto; background:#36393f; padding:30px; border-radius:8px; border:2px solid #f04747; color: white; text-align: center; font-family: sans-serif;">
-            <h1 style="color:#f04747; margin-top:0; font-size:22px;">❌ 認証失敗</h1>
-            <p style="font-size:16px; line-height:1.6; margin-top:20px;">アカウントのセキュリティ要件を満たしていません。</p>
-          </div>
-        `);
-      }
-    }
-
+    // ロール付与・剥奪処理
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
-    if (!member) return res.send('<h1 style="text-align:center; color:#f04747;">❌ サーバー内にユーザーが見つかりません。</h1>');
-
-    if (session.addRoleId && member.roles.cache.has(session.addRoleId)) {
-      return res.send('<h1 style="text-align:center; color:#2ecc71;">✅ 既に認証済みです。</h1>');
-    }
 
     let addedRoleName = 'なし';
-    if (session.addRoleId) {
-      const r = await guild.roles.fetch(session.addRoleId).catch(() => null);
-      if (r) { await member.roles.add(r).catch(() => null); addedRoleName = `<@&${r.id}>`; }
-    }
-
     let removedRoleName = 'なし';
-    if (session.removeRoleId && session.removeRoleId !== 'none') {
-      const r = await guild.roles.fetch(session.removeRoleId).catch(() => null);
-      if (r) { await member.roles.remove(r).catch(() => null); removedRoleName = `<@&${r.id}>`; }
+
+    if (member && session.addRoleId) {
+      const rAdd = await guild.roles.fetch(session.addRoleId).catch(() => null);
+      if (rAdd) { await member.roles.add(rAdd).catch(() => null); addedRoleName = `<@&${rAdd.id}>`; }
     }
 
-    allSettings[session.guildId].verifiedIps[currentIp] = userData.id;
+    if (member && session.removeRoleId && session.removeRoleId !== 'none') {
+      const rRem = await guild.roles.fetch(session.removeRoleId).catch(() => null);
+      if (rRem) { await member.roles.remove(rRem).catch(() => null); removedRoleName = `<@&${rRem.id}>`; }
+    }
+
+    config.verifiedIps[currentIp] = userData.id;
     await client.saveSettings(allSettings);
 
-    // ✨ 端末セキュリティ認証 - 成功ログ出力
-    if (config.vLogStatus && config.vLogChannel) {
-      const logChannel = await guild.channels.fetch(config.vLogChannel).catch(() => null);
-      if (logChannel) {
-        const now = new Date();
-        const days = ['日', '月', '火', '水', '木', '金', '土'];
-        const timeString = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 ${days[now.getDay()]}曜日 ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    // 🟢 全端末データを含む成功ログ
+    const userEmail = userData.email ? `\`${userData.email}\`` : '未取得';
+    
+    const detailedLogContent = 
+      `**👤 ユーザー情報**\n` +
+      `・ユーザー: <@${userData.id}> (\`${userData.username}\`)\n` +
+      `・ID: \`${userData.id}\`\n` +
+      `・Gmail / Email: ${userEmail}\n\n` +
 
-        const logEmbed = new EmbedBuilder()
-          .setTitle('🛡️ 端末セキュリティ認証 - 成功ログ')
-          .setDescription(`**スキャン完了時刻:** ${timeString}`)
-          .setColor(0x2ecc71)
-          .addFields(
-            { name: '👤 ユーザー', value: `<@${member.id}>\n(${member.user.tag})`, inline: true },
-            { name: '🏷️ 付与ロール', value: `${addedRoleName}`, inline: true },
-            { name: '🗑️ 削除ロール', value: `${removedRoleName}`, inline: true },
-            { name: '🌐 IPアドレス', value: `\`${currentIp}\``, inline: false },
-            { name: '💻 ブラウザ情報', value: `\`\`\`${ua || '不明'}\`\`\``, inline: false },
-            { name: '⚙️ プラットフォーム', value: `\`${platform || '不明'}\``, inline: true },
-            { name: '🗣️ 言語', value: `\`${lang || '不明'}\``, inline: true },
-            { name: '⏰ タイムゾーン', value: `\`${tz || '不明'}\``, inline: true },
-            { name: '🖥️ 画面解像度', value: `\`${screen || '不明'}\``, inline: true },
-            { name: '🎨 色深度', value: `\`${depth || '不明'}\``, inline: true },
-            { name: '📊 CPU数', value: `\`${cores || '不明'}\``, inline: true },
-            { name: '💾 メモリ容量', value: `\`${memory || '不明'}\``, inline: true },
-            { name: '👇 タッチ対応', value: `\`${touch || '不明'}\``, inline: true },
-            { name: '✨ WebGL Vendor', value: `\`${vendor || '不明'}\``, inline: true },
-            { name: '🛠️ WebGL Renderer', value: `\`${renderer || '不明'}\``, inline: false },
-            { name: '🔌 WebRTC IP', value: `\`${webRtcDummy}\``, inline: false }
-          );
-        await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
-      }
-    }
+      `**🎭 役職変更**\n` +
+      `・付与: ${addedRoleName}\n` +
+      `・削除: ${removedRoleName}\n\n` +
 
-    res.send('<h1 style="text-align:center; color:#2ecc71;">✨ 認証が完了しました！Discordへ戻ってください。</h1>');
+      `**🌐 ネットワーク情報**\n` +
+      `・IPアドレス: \`${currentIp}\`\n` +
+      `・タイムゾーン: \`${tz}\`\n\n` +
+
+      `**💻 端末環境 (Fingerprint)**\n` +
+      `・OS / Platform: \`${platform}\`\n` +
+      `・画面解像度: \`${screen}\` (${depth})\n` +
+      `・言語: \`${lang}\` | CPUコア数: \`${cores}\` | メモリ: \`${memory}GB\`\n` +
+      `・GPUベンダー: \`${vendor}\`\n` +
+      `・GPUレンダラー: \`${renderer}\`\n` +
+      `・User-Agent: \`${ua}\``;
+
+    await sendLog(
+      session.guildId, 
+      '🛡️ 端末セキュリティ認証 - 成功', 
+      detailedLogContent, 
+      0x22c55e
+    );
+
+    res.send(`
+      <div style="max-width:480px; margin:50px auto; background:#1e293b; padding:30px; border-radius:16px; border:1px solid #22c55e; color:white; text-align:center; font-family:sans-serif;">
+        <h1 style="color:#22c55e; margin-top:0;">✨ 認証完了</h1>
+        <p style="margin-top:15px; color:#94a3b8;">端末セキュリティ認証が完了しました。Discordに戻ってください。</p>
+      </div>
+    `);
   } catch (err) {
-    console.error(`[submit-auth 致命的エラー]`, err);
-    res.send('<h1 style="text-align:center; color:#f04747;">❌ 内部エラーが発生しました。</h1>');
+    console.error('[submit-auth 致命的エラー]', err);
+    res.send('<h1 style="text-align:center; color:#f87171; padding-top:50px;">❌ 内部処理エラーが発生しました。</h1>');
   }
 });
 
@@ -316,12 +282,15 @@ app.post('/submit-auth', async (req, res) => {
 const client = new Client({ 
   intents: [
     GatewayIntentBits.Guilds, 
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMembers, 
+    GatewayIntentBits.GuildMessages, 
     GatewayIntentBits.MessageContent
   ] 
 });
 
+const userMessageLog = new Map();
+
+// 💾 GitHub / ローカル同期ストレージ
 const DATA_FILE = path.join(__dirname, 'data.json');
 const GITHUB_OWNER = 'yturhf24-lgtm';
 const GITHUB_REPO = 'MaturiHanabiBot';
@@ -341,7 +310,7 @@ async function loadSettingsFromGitHub() {
       localSettingsCache = JSON.parse(Buffer.from(json.content, 'base64').toString('utf8'));
       fs.writeFileSync(DATA_FILE, JSON.stringify(localSettingsCache, null, 2));
     }
-  } catch (err) { console.error(err.message); }
+  } catch (err) { console.error('[GitHub Load Error]', err.message); }
 }
 
 client.getSettings = () => localSettingsCache;
@@ -359,125 +328,70 @@ client.saveSettings = async (data) => {
       headers: { 'Authorization': `token ${process.env.GITHUB_TOKEN}`, 'User-Agent': 'Render-Bot', 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: 'chore: update database', content: Buffer.from(JSON.stringify(data, null, 2)).toString('base64'), sha })
     });
-  } catch (err) { console.error(err.message); }
+  } catch (err) { console.error('[GitHub Save Error]', err.message); }
 };
 
-client.commands = new Collection();
-const commandFiles = fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
-for (const file of commandFiles) {
-  const command = require(path.join(__dirname, 'commands', file));
-  if ('data' in command) client.commands.set(command.data.name, command);
+// 📢 全体共通ログ出力用関数
+async function sendLog(guildId, title, description, color = 0x3b82f6) {
+  const config = client.getSettings()[guildId];
+  if (!config || !config.vLogStatus || !config.vLogChannel) return;
+
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  const channel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
+  if (!channel) return;
+
+  const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(color).setTimestamp();
+  await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
-// 🤖 起動処理 (v15対応：clientReadyへ統合)
+// 🤖 クライアント起動イベント (Botアクティビティに Ping / サーバー数 表示)
 client.once('clientReady', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
-  client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }); 
-});
-
-client.on('guildCreate', () => client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }));
-client.on('guildDelete', () => client.user.setActivity(`${client.guilds.cache.size}サーバーで稼働中！`, { type: 0 }));
-
-// 🛡️ 自動防衛システム
-client.on('guildMemberAdd', async (member) => {
-  const guildId = member.guild.id;
-  const allSettings = client.getSettings();
-  if (!allSettings[guildId] || !allSettings[guildId].antiRaid) return;
   
-  const config = allSettings[guildId].antiRaid;
-  const logConfig = allSettings[guildId];
-  let shouldKick = false;
-  let kickReason = "";
+  const updatePresence = () => {
+    const serverCount = client.guilds.cache.size;
+    const ping = client.ws.ping;
+    client.user.setActivity(`${serverCount} servers | Ping: ${ping}ms`, { type: 0 });
+  };
 
-  if (config.kickDefaultAvatar && !member.user.avatar) {
-    shouldKick = true;
-    kickReason = "初期アバター（アイコン未設定）アカウントの制限";
-  }
-
-  if (!shouldKick && config.kickAccountAgeDays > 0) {
-    const discordEpoch = 1420070400000;
-    const creationTime = Number(BigInt(member.user.id) >> 22n) + discordEpoch;
-    const accountAgeDays = (Date.now() - creationTime) / (1000 * 60 * 60 * 24);
-
-    if (accountAgeDays < config.kickAccountAgeDays) {
-      shouldKick = true;
-      kickReason = `アカウント作成日数が指定日数（${config.kickAccountAgeDays}日）未満の新規制限`;
-    }
-  }
-
-  if (shouldKick) {
-    try {
-      await member.send(`🔒 参加されたサーバーのセキュリティ設定により、自動Kickされました。\n理由: ${kickReason}`).catch(() => null);
-      await member.kick(`[自動防衛システム] ${kickReason}`);
-      if (logConfig.vLogStatus && logConfig.vLogChannel) {
-        const logChannel = await member.guild.channels.fetch(logConfig.vLogChannel).catch(() => null);
-        if (logChannel) {
-          const alertEmbed = new EmbedBuilder()
-            .setTitle('🛡️ 自動防衛システム - Kickログ')
-            .setColor(0xe74c3c)
-            .setDescription(`不正アカウントの可能性があるため、自動的にKickしました。`)
-            .addFields(
-              { name: '👤 対象ユーザー', value: `<@${member.id}>\n名称: \`${member.user.tag}\``, inline: false },
-              { name: '⚠️ 判定理由', value: `\`${kickReason}\``, inline: false }
-            )
-            .setTimestamp();
-          await logChannel.send({ embeds: [alertEmbed] }).catch(() => null);
-        }
-      }
-    } catch (err) { console.error(err); }
-  }
+  updatePresence();
+  setInterval(updatePresence, 60000); // 1分毎に更新
 });
 
-// --- 💬 !help コマンド処理 ---
-client.on('messageCreate', async message => {
-  if (message.author.bot) return;
+// 🛡️ 連投スパム検出 (自動Kick/Ban)
+client.on('messageCreate', async (message) => {
+  if (!message.guild || message.author.bot) return;
 
+  // --- !help コマンド処理 ---
   if (message.content.toLowerCase().startsWith('!help')) {
-    if (message.guild) {
-      await message.delete().catch(() => null);
-    }
-
-    const isClientAdmin = message.member ? message.member.permissions.has('Administrator') : false;
+    await message.delete().catch(() => null);
+    const isClientAdmin = message.member ? message.member.permissions.has(PermissionFlagsBits.Administrator) : false;
 
     const userEmbed = new EmbedBuilder()
-      .setTitle('🏮 まつり花火Bot - ヘルプメニュー (1/2)')
-      .setDescription('コミュニティの安全を守るための端末セキュリティ認証Botです。')
-      .setColor(0x3498DB)
+      .setTitle('🏮 まつり花火Bot - ヘルプ (1/2)')
+      .setDescription('端末セキュリティ認証Botです。')
+      .setColor(0x3b82f6)
       .addFields(
-        { name: '🔒 サーバー認証への参加方法', value: '1. 管理者が設置した認証パネルの「認証」ボタンを押します。\n2. Botから送られる専用リンク（URL）をクリックします。\n3. ブラウザが開くので、端末スキャンを許可して認証を完了させてください。', inline: false },
-        { name: '💡 認証がうまくいかないときは？', value: '・Discord内蔵ブラウザではなく、SafariやChromeなどの標準ブラウザでリンクを開き直してください。\n・VPNやプロキシ、プライベートリレー（iCloud）をONにしていると裏垢ブロック判定に引っかかる場合があります。一時的にOFFにしてください。', inline: false }
-      )
-      .setFooter({ text: 'ボタンを押すとページを切り替えられます' })
-      .setTimestamp();
+        { name: '🔒 認証手順', value: '1. パネルの「認証」ボタンを押す\n2. 送られてくるリンクからブラウザでアクセスする\n3. 端末チェック完了で自動でロールが付与されます。', inline: false }
+      );
 
     const adminEmbed = new EmbedBuilder()
-      .setTitle('🛡️ まつり花火Bot - 管理者向けマニュアル (2/2)')
-      .setDescription('⚠️ このページはサーバーの管理者（Administrator権限保持者）にのみ開示されています。')
-      .setColor(0xFAA61A)
+      .setTitle('🛡️ まつり花火Bot - 管理者マニュアル (2/2)')
+      .setColor(0xf59e0b)
       .addFields(
-        { name: '⚙️ 認証システムのセットアップ', value: '`/v_setup` コマンドを実行して、認証成功時に付与するロール、剥奪するロール、案内テキストを設定してパネルを設置します。', inline: false },
-        { name: '🤖 不正・捨て垢自動防衛システム', value: 'アカウント作成日から30日未満の捨てアカウント、およびアバター初期状態（アイコン未設定）のユーザーがサーバーに参加した際、自動でキック(Kick)しログに報告する防衛機能が標準搭載されています。', inline: false },
-        { name: '🔄 制限の個別リセット', value: '`/v_reset` コマンドを使って、誤ってブロックされてしまった正規ユーザーを各サーバー個別に救済（ブロック解除）できます。', inline: false }
-      )
-      .setTimestamp();
+        { name: '⚙️ 各種コマンド', value: '`/v_setup`: 認証パネルの設置\n`/v_antispam`: 連投対策(Kick/Ban)設定\n`/v_announce`: 埋め込みアナウンス作成\n`/v_config`: 全設定の確認\n`/v_log`: ログチャンネルの設定', inline: false }
+      );
 
     const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
-    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary);
-
-    if (!isClientAdmin) {
-      btnAdmin.setDisabled(true).setLabel('👑 管理者向け (権限なし)');
-    }
-
-    const row = new ActionRowBuilder().addComponents(btnUser, btnAdmin);
+    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
 
     try {
-      const response = await message.author.send({ embeds: [userEmbed], components: [row] });
+      const response = await message.author.send({ embeds: [userEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] });
       const collector = response.createMessageComponentCollector({ time: 300000 });
 
       collector.on('collect', async i => {
         if (i.user.id !== message.author.id) return;
-
         if (i.customId === 'help_page_user') {
           btnUser.setDisabled(true).setStyle(ButtonStyle.Primary);
           btnAdmin.setDisabled(!isClientAdmin).setStyle(ButtonStyle.Secondary);
@@ -488,52 +402,91 @@ client.on('messageCreate', async message => {
           await i.update({ embeds: [adminEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
         }
       });
+    } catch (e) {}
+    return;
+  }
 
-      collector.on('end', async () => {
-        btnUser.setDisabled(true);
-        btnAdmin.setDisabled(true);
-        await response.edit({ components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
-      });
+  // --- スパム監視判定 ---
+  const config = client.getSettings()[message.guild.id]?.antiSpam;
+  if (!config || !config.enabled) return;
 
-    } catch (err) {
-      if (message.guild) {
-        await message.channel.send({
-          content: `⚠️ <@${message.author.id}> さんのDMへヘルプを送信できませんでした。設定を変更して再試行してください。`,
-          flags: [MessageFlags.Ephemeral]
-        }).catch(() => null);
-      }
+  const key = `${message.guild.id}-${message.author.id}`;
+  const now = Date.now();
+  
+  if (!userMessageLog.has(key)) userMessageLog.set(key, []);
+  const timestamps = userMessageLog.get(key);
+  
+  const windowMs = config.seconds * 1000;
+  while (timestamps.length > 0 && timestamps[0] <= now - windowMs) {
+    timestamps.shift();
+  }
+
+  timestamps.push(now);
+
+  if (timestamps.length >= config.maxMessages) {
+    userMessageLog.delete(key);
+    const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+    if (!member) return;
+
+    if (config.action === 'ban' && member.bannable) {
+      await member.ban({ reason: `[Spam Protection] ${config.seconds}秒間に${config.maxMessages}回以上の連続送信` }).catch(() => null);
+      await sendLog(message.guild.id, '🔨 スパム検知 BAN', `**対象:** <@${member.id}>\n**条件:** ${config.seconds}秒間に ${config.maxMessages} メッセージ送信`, 0xef4444);
+    } else if (config.action === 'kick' && member.kickable) {
+      await member.kick(`[Spam Protection] ${config.seconds}秒間に${config.maxMessages}回以上の連続送信`).catch(() => null);
+      await sendLog(message.guild.id, '👞 スパム検知 KICK', `**対象:** <@${member.id}>\n**条件:** ${config.seconds}秒間に ${config.maxMessages} メッセージ送信`, 0xf59e0b);
     }
   }
 });
 
-client.on('error', error => console.error('[Discord Error]', error));
-process.on('unhandledRejection', error => console.error('[Unhandled Rejection]', error));
+// コマンド動的ロード
+client.commands = new Collection();
+const commandFiles = fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
+for (const file of commandFiles) {
+  const command = require(path.join(__dirname, 'commands', file));
+  if ('data' in command) client.commands.set(command.data.name, command);
+}
 
-// --- 🎮 インタラクション制御 ---
+// 🎮 インタラクション制御 (コマンド・ボタン・モーダル)
 client.on('interactionCreate', async interaction => {
+  // 1. スラッシュコマンド実行
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-    try { await command.execute(interaction); } catch (err) {
-      try { await interaction.reply({ content: '❌ エラーが発生しました。', flags: [MessageFlags.Ephemeral] }); } catch (e) {}
-    }
+    if (command) await command.execute(interaction).catch(() => null);
     return;
   }
 
+  // 2. 埋め込みアナウンスモーダル処理 (`/v_announce`)
+  if (interaction.isModalSubmit() && interaction.customId === 'announce_modal') {
+    const title = interaction.fields.getTextInputValue('title');
+    const content = interaction.fields.getTextInputValue('content');
+
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(content)
+      .setColor(0x3b82f6)
+      .setTimestamp();
+
+    await interaction.channel.send({ embeds: [embed] }).catch(() => null);
+    await interaction.reply({ content: '✅ アナウンスを送信しました。', flags: [MessageFlags.Ephemeral] }).catch(() => null);
+    return;
+  }
+
+  // 3. 認証セットアップ用モーダル処理 (`/v_setup`)
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
     const removeRoleId = parts[4];
     const panelText = interaction.fields.getTextInputValue('panel_text');
 
-    const embed = new EmbedBuilder().setColor(0x3498DB).setTitle('🔒 WEB VERIFICATION').setDescription(panelText).setTimestamp();
+    const embed = new EmbedBuilder().setColor(0x3b82f6).setTitle('🔒 セキュリティ認証').setDescription(panelText).setTimestamp();
     const button = new ButtonBuilder().setCustomId(`v_btn_${addRoleId}_${removeRoleId}`).setLabel('認証').setStyle(ButtonStyle.Success);
     
     await interaction.channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] }).catch(() => null);
-    await interaction.reply({ content: '✅ 認証パネルを設置しました。', flags: [MessageFlags.Ephemeral] }).catch(() => null);
+    await interaction.reply({ content: '✅ 認証パネルを正常に設置しました。', flags: [MessageFlags.Ephemeral] }).catch(() => null);
     return;
   }
 
+  // 4. 認証パネルボタン押下処理
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
@@ -542,20 +495,29 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
 
     if (addRoleId && interaction.member.roles.cache.has(addRoleId)) {
-      return interaction.editReply({ content: '✅ **あなたはすでに認証完了しています。**' }).catch(() => null);
+      return interaction.editReply({ content: '✅ **すでに認証が完了しています。**' }).catch(() => null);
     }
 
     const state = crypto.randomBytes(16).toString('hex');
-    pendingStates.set(state, { guildId: interaction.guildId, userId: interaction.user.id, addRoleId, removeRoleId, timestamp: Date.now() });
-    setTimeout(() => pendingStates.delete(state), 300000); 
+    pendingStates.set(state, { 
+      guildId: interaction.guildId, 
+      userId: interaction.user.id, 
+      addRoleId, 
+      removeRoleId, 
+      timestamp: Date.now() 
+    });
 
     const host = 'maturihanabitaikaibot.onrender.com';
-    const linkButton = new ButtonBuilder().setLabel('🔗 ここを押して認証サイトへ移動（5分間有効）').setStyle(ButtonStyle.Link).setURL(`https://${host}/verify?state=${state}`);
+    const linkButton = new ButtonBuilder().setLabel('🔗 認証サイトへアクセス（5分間有効）').setStyle(ButtonStyle.Link).setURL(`https://${host}/verify?state=${state}`);
     
-    await interaction.editReply({ content: '⚠️ **下のボタンから認証サイトへ移動してください。**', components: [new ActionRowBuilder().addComponents(linkButton)] }).catch(() => null);
+    await interaction.editReply({ content: '⚠️ **下のボタンを押してブラウザで認証を完了させてください。**', components: [new ActionRowBuilder().addComponents(linkButton)] }).catch(() => null);
   }
 });
 
-// 🌐 Renderが指定するポートをバインドして待ち受けを開始する（ヘルスチェック対策完了）
-app.listen(PORT, () => console.log(`[Web Server] ポート ${PORT} で稼働開始。`));
+// エラーハンドリング
+client.on('error', error => console.error('[Discord Error]', error));
+process.on('unhandledRejection', error => console.error('[Unhandled Rejection]', error));
+
+// 🌐 サーバー待ち受け
+app.listen(PORT, () => console.log(`[Web Server] ポート ${PORT} で稼働中。`));
 client.login(process.env.DISCORD_TOKEN);
