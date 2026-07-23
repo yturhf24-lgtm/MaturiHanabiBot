@@ -169,6 +169,7 @@
       "action": "kick"
     },
     "vLogChannel": "1529902590182031533",
-    "vLogStatus": true
+    "vLogStatus": true,
+    "antiEveryone": true
   }
 }
