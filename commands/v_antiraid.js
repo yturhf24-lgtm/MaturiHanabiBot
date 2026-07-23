@@ -1,114 +1,155 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('v_antiraid')
-    .setDescription('【管理者専用】新規・捨てアカウントの自動Kick機能を設定・確認します')
+    .setDescription('荒らし対策機能の一括ステータス確認と設定')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    // 📊 現在の設定ステータス確認
-    .addSubcommand(subcmd =>
-      subcmd
+    // 1️⃣ 一括設定確認用サブコマンド
+    .addSubcommand(subcommand =>
+      subcommand
         .setName('status')
-        .setDescription('現在の自動Kick防衛システムの設定状況を確認します')
+        .setDescription('すべての荒らし対策機能のON/OFF設定を一括確認します')
     )
-    // サブコマンド1: 初期アイコンキックのON/OFF
-    .addSubcommand(subcmd =>
-      subcmd
-        .setName('default_avatar')
-        .setDescription('初期アイコンのユーザーを自動Kickするか設定します')
-        .addStringOption(opt =>
-          opt.setName('status')
-            .setDescription('有効(on) / 無効(off)')
+    // 2️⃣ 個別設定変更用サブコマンド
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('set')
+        .setDescription('捨て垢自動防衛（自動キック）の設定を変更します')
+        .addStringOption(option =>
+          option
+            .setName('status')
+            .setDescription('機能のON/OFF')
             .setRequired(true)
-            .addChoices(
-              { name: '有効化 (ON)', value: 'on' },
-              { name: '無効化 (OFF)', value: 'off' }
-            )
+            .addChoices({ name: 'ON', value: 'ON' }, { name: 'OFF', value: 'OFF' })
         )
-    )
-    // サブコマンド2: アカウント作成日数の制限設定
-    .addSubcommand(subcmd =>
-      subcmd
-        .setName('account_age')
-        .setDescription('指定日数未満の新規アカウントを自動Kickします（0で無効）')
-        .addIntegerOption(opt => 
-          opt.setName('days')
-            .setDescription('制限する日数（例: 7日未満をKickしたい場合は「7」を入力）')
-            .setRequired(true)
-            .setMinValue(0)
+        .addIntegerOption(option =>
+          option
+            .setName('min_age_days')
+            .setDescription('キック対象とする作成日数（日）')
+            .setRequired(false)
+        )
+        .addBooleanOption(option =>
+          option
+            .setName('block_no_avatar')
+            .setDescription('初期アイコンを自動キックするか')
+            .setRequired(false)
         )
     ),
 
-  async execute(interaction) {
-    const sub = interaction.options.getSubcommand();
-    const guildId = interaction.guildId;
-    const allSettings = interaction.client.getSettings();
+  async execute(interaction, client) {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] }).catch(() => null);
+    const subcommand = interaction.options.getSubcommand();
+    const guildId = interaction.guild.id;
 
-    // サーバー個別枠の初期化
-    if (!allSettings[guildId]) allSettings[guildId] = {};
-    if (!allSettings[guildId].antiRaid) {
-      allSettings[guildId].antiRaid = {
-        kickDefaultAvatar: false,
-        kickAccountAgeDays: 0
-      };
-    }
+    // -------------------------------------------------------------
+    // パターンA: `/v_antiraid status`（すべての荒らし対策を一括確認）
+    // -------------------------------------------------------------
+    if (subcommand === 'status') {
+      // 各機能の設定をDBから平行して取得（未設定の場合はOFF/デフォルト値を適用）
+      const [
+        antiraid,
+        antiwebhook,
+        antieveryone,
+        antilink,
+        antispam,
+        risklog,
+        log
+      ] = await Promise.all([
+        client.db?.get(`antiraid_${guildId}`) || { status: 'OFF', min_age_days: 3, block_no_avatar: false },
+        client.db?.get(`antiwebhook_${guildId}`) || { status: 'OFF' },
+        client.db?.get(`antieveryone_${guildId}`) || { status: 'OFF' },
+        client.db?.get(`antilink_${guildId}`) || { status: 'OFF' },
+        client.db?.get(`antispam_${guildId}`) || { status: 'OFF' },
+        client.db?.get(`risklog_${guildId}`) || { status: 'OFF' },
+        client.db?.get(`log_${guildId}`) || { status: 'OFF', channelId: null }
+      ]);
 
-    const config = allSettings[guildId].antiRaid;
+      // ON / OFF の表示用ヘルパー関数
+      const formatStatus = (status) => (status === 'ON' ? '🟢 **ON (有効)**' : '🔴 **OFF (無効)**');
 
-    // 📊 設定確認処理
-    if (sub === 'status') {
-      const avatarStatus = config.kickDefaultAvatar ? '🟢 有効 (ON)' : '🔴 無効 (OFF)';
-      const ageStatus = config.kickAccountAgeDays > 0 ? `🟢 ${config.kickAccountAgeDays}日未満はKick` : '🔴 無い（無効）';
-
-      const embed = new EmbedBuilder()
-        .setTitle('🛡️ 自動防衛システム 設定ステータス')
+      const statusEmbed = new EmbedBuilder()
+        .setTitle('🛡️ サーバー荒らし・セキュリティ対策ステータス')
+        .setDescription('現在のサーバーセキュリティ機能の ON / OFF 設定一覧です。')
         .setColor(0x3498DB)
-        .setDescription('このサーバーにおける新規・捨て垢対策の現在の設定状況です。')
         .addFields(
-          { name: '👤 初期アイコン自動Kick', value: `\`${avatarStatus}\``, inline: true },
-          { name: '📅 アカウント作成日数制限', value: `\`${ageStatus}\``, inline: true }
+          {
+            name: '🤖 捨て垢自動防衛 (Auto-Kick)',
+            value: `${formatStatus(antiraid.status)}\n└ 条件: 作成 **${antiraid.min_age_days ?? 3}日未満** / 初期アイコン自動キック: **${antiraid.block_no_avatar ? '有効' : '無効'}**`,
+            inline: false
+          },
+          {
+            name: '🔗 Webhookスパム防御',
+            value: formatStatus(antiwebhook.status),
+            inline: true
+          },
+          {
+            name: '📢 @everyone / @here 乱用対策',
+            value: formatStatus(antieveryone.status),
+            inline: true
+          },
+          {
+            name: '🌐 連続リンク投稿制限',
+            value: formatStatus(antilink.status),
+            inline: true
+          },
+          {
+            name: '⚡ 簡易スパム連投対策',
+            value: formatStatus(antispam.status),
+            inline: true
+          },
+          {
+            name: '⚠️ リスクアカウント参加警告',
+            value: formatStatus(risklog.status),
+            inline: true
+          },
+          {
+            name: '📜 ログ出力機能',
+            value: `${formatStatus(log.status)}\n└ 送信先: ${log.channelId ? `<#${log.channelId}>` : '未設定'}`,
+            inline: false
+          }
         )
-        .setFooter({ text: `Server ID: ${guildId}` })
+        .setFooter({ text: '個別の設定変更は各コマンド（/v_antiraid set, /v_log set など）を実行してください' })
         .setTimestamp();
 
-      // 🛠️ 修正: flagsを使用
-      return interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+      return interaction.editReply({ embeds: [statusEmbed] }).catch(() => null);
     }
 
-    // 👤 初期アイコンキックの設定変更
-    if (sub === 'default_avatar') {
-      const status = interaction.options.getString('status');
-      config.kickDefaultAvatar = (status === 'on');
-      
-      await interaction.client.saveSettings(allSettings);
-      
-      // 🛠️ 修正: flagsを使用
-      return interaction.reply({
-        content: `⚙️ 初期アイコンの自動Kick機能を **${status === 'on' ? '🟢 有効 (ON)' : '🔴 無効 (OFF)'}** に設定しました。`,
-        flags: [MessageFlags.Ephemeral]
-      });
-    }
+    // -------------------------------------------------------------
+    // パターンB: `/v_antiraid set`（捨て垢防衛の設定更新）
+    // -------------------------------------------------------------
+    if (subcommand === 'set') {
+      let currentSettings = (await client.db?.get(`antiraid_${guildId}`)) || {
+        status: 'OFF',
+        min_age_days: 3,
+        block_no_avatar: false
+      };
 
-    // 📅 作成日数の設定変更
-    if (sub === 'account_age') {
-      const days = interaction.options.getInteger('days');
-      config.kickAccountAgeDays = days;
-      
-      await interaction.client.saveSettings(allSettings);
-      
-      if (days === 0) {
-        // 🛠️ 修正: flagsを使用
-        return interaction.reply({
-          content: `⚙️ アカウント作成日数による自動Kick機能を **🔴 無効化** しました。`,
-          flags: [MessageFlags.Ephemeral]
-        });
-      } else {
-        // 🛠️ 修正: flagsを使用
-        return interaction.reply({
-          content: `⚙️ 作成されてから **${days}日未満** の新規アカウントを自動Kickするように設定しました。`,
-          flags: [MessageFlags.Ephemeral]
-        });
-      }
+      const newStatus = interaction.options.getString('status');
+      const newMinAge = interaction.options.getInteger('min_age_days') ?? currentSettings.min_age_days ?? 3;
+      const newBlockNoAvatar = interaction.options.getBoolean('block_no_avatar') ?? currentSettings.block_no_avatar ?? false;
+
+      const updatedSettings = {
+        status: newStatus,
+        min_age_days: newMinAge,
+        block_no_avatar: newBlockNoAvatar
+      };
+
+      await client.db?.set(`antiraid_${guildId}`, updatedSettings);
+
+      const isEnabled = newStatus === 'ON';
+
+      const updateEmbed = new EmbedBuilder()
+        .setTitle('🤖 捨て垢自動防衛 - 設定更新')
+        .setColor(isEnabled ? 0x2ECC71 : 0xE74C3C)
+        .addFields(
+          { name: '⚡ 動作ステータス', value: isEnabled ? '🟢 **ON (有効)**' : '🔴 **OFF (無効)**' },
+          { name: '📅 アカウント作成日数制限', value: `作成から **${newMinAge}日未満** を自動キック` },
+          { name: '🖼️ 初期アイコン制限', value: newBlockNoAvatar ? '🚫 **ブロックする (自動キック)**' : '⚪ **許可する**' }
+        )
+        .setTimestamp();
+
+      return interaction.editReply({ embeds: [updateEmbed] }).catch(() => null);
     }
   }
 };
