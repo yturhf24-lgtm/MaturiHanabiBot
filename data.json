@@ -165,7 +165,7 @@
     "antiSpam": true,
     "vLogChannel": "1529904775221481602",
     "vLogStatus": true,
-    "antiEveryone": true,
+    "antiEveryone": false,
     "antiRaid": {
       "kickDefaultAvatar": false,
       "kickAccountAgeDays": 0
