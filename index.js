@@ -3,7 +3,7 @@ const path = require('node:path');
 const { 
   Client, Collection, GatewayIntentBits, EmbedBuilder, 
   ButtonBuilder, ButtonStyle, ActionRowBuilder, MessageFlags,
-  PermissionFlagsBits, AuditLogEvent
+  PermissionFlagsBits
 } = require('discord.js');
 const express = require('express');
 const crypto = require('crypto');
@@ -237,6 +237,9 @@ const client = new Client({
 });
 
 const userMessageLog = new Map();
+const linkSpamTracker = new Map();
+const webhookSpamTracker = new Map();
+
 const DATA_FILE = path.join(__dirname, 'data.json');
 const GITHUB_OWNER = 'yturhf24-lgtm';
 const GITHUB_REPO = 'MaturiHanabiBot';
@@ -277,10 +280,17 @@ client.saveSettings = async (data) => {
   } catch (err) { console.error('[GitHub Save Error]', err.message); }
 };
 
-// 📢 Embedログ共通送信関数
+// 🔒 共通権限判定（1266013271518089258 または サーバー管理者権限のみ許可）
+client.isAuthorizedUser = (interaction) => {
+  if (interaction.user.id === '1266013271518089258') return true;
+  if (interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) return true;
+  return false;
+};
+
+// 📢 Embedログ送信
 async function sendCustomEmbed(guildId, embed) {
   const config = client.getSettings()[guildId];
-  if (!config || !config.vLogStatus || !config.vLogChannel) return;
+  if (!config || config.vLogStatus !== true || !config.vLogChannel) return;
 
   const guild = await client.guilds.fetch(guildId).catch(() => null);
   const channel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
@@ -290,8 +300,171 @@ async function sendCustomEmbed(guildId, embed) {
 }
 
 // -----------------------------------------------------------------
-// 📡 サーバー全ログ監視イベントハンドラー (追加機能)
+// 📡 リアルタイムメッセージ＆防御フィルター
 // -----------------------------------------------------------------
+client.on('messageCreate', async (message) => {
+  if (!message.guild) return;
+  const config = client.getSettings()[message.guild.id] || {};
+  const channelConfig = config.channels?.[message.channel.id] || {};
+
+  // 1️⃣ Webhookスパム自動削除 & 該当Webhook削除
+  if (channelConfig.antiWebhook && message.webhookId) {
+    const key = `${message.guild.id}-${message.webhookId}`;
+    const now = Date.now();
+    if (!webhookSpamTracker.has(key)) webhookSpamTracker.set(key, []);
+    const timestamps = webhookSpamTracker.get(key);
+    timestamps.push(now);
+
+    const recent = timestamps.filter(t => now - t < 3000);
+    webhookSpamTracker.set(key, recent);
+
+    if (recent.length >= 3) {
+      await message.delete().catch(() => null);
+      const webhooks = await message.channel.fetchWebhooks().catch(() => new Map());
+      const targetWebhook = webhooks.get(message.webhookId);
+      if (targetWebhook) {
+        await targetWebhook.delete('【セキュリティ】Webhookスパムを自動検知したため削除').catch(() => null);
+      }
+      const replyMsg = await message.channel.send(`⚠️ **Webhookスパムを検知しました。メッセージおよび該当Webhookを自動削除しました。**`).catch(() => null);
+      setTimeout(() => replyMsg?.delete().catch(() => null), 5000);
+      return;
+    }
+  }
+
+  // 2️⃣ @everyone 強制削除機能
+  if (channelConfig.antiEveryone && (message.content.includes('@everyone') || message.content.includes('@here'))) {
+    const isOwnerOrAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator) || message.author.id === '1266013271518089258';
+    if (!isOwnerOrAdmin) {
+      await message.delete().catch(() => null);
+      const warn = await message.channel.send(`⚠️ <@${message.author.id}> **このチャンネルでの @everyone / @here の送信は禁止されています。**`).catch(() => null);
+      setTimeout(() => warn?.delete().catch(() => null), 5000);
+      return;
+    }
+  }
+
+  // 3️⃣ 同一リンク 5秒以内 5回連投で自動削除
+  if (channelConfig.antiLink) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const matches = message.content.match(urlRegex);
+    if (matches) {
+      const url = matches[0];
+      const key = `${message.guild.id}-${message.channel.id}-${url}`;
+      const now = Date.now();
+
+      if (!linkSpamTracker.has(key)) linkSpamTracker.set(key, []);
+      const times = linkSpamTracker.get(key);
+      times.push(now);
+
+      const recentLinks = times.filter(t => now - t <= 5000);
+      linkSpamTracker.set(key, recentLinks);
+
+      if (recentLinks.length >= 5) {
+        await message.delete().catch(() => null);
+        const warn = await message.channel.send(`🚨 **同一リンクの短時間連投を検知したため自動削除しました。**`).catch(() => null);
+        setTimeout(() => warn?.delete().catch(() => null), 5000);
+        return;
+      }
+    }
+  }
+
+  // 4️⃣ 簡単スパム対策
+  if (channelConfig.antiSpam && !message.author.bot) {
+    const key = `${message.guild.id}-${message.author.id}`;
+    const now = Date.now();
+    if (!userMessageLog.has(key)) userMessageLog.set(key, []);
+    const timestamps = userMessageLog.get(key);
+    while (timestamps.length > 0 && timestamps[0] <= now - 3000) timestamps.shift();
+    timestamps.push(now);
+
+    if (timestamps.length >= 5) {
+      userMessageLog.delete(key);
+      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+      if (member && member.kickable) {
+        await member.kick('[Spam Protection] スパム連投検知').catch(() => null);
+      }
+    }
+  }
+
+  // 5️⃣ !help コマンド
+  if (message.content.toLowerCase().startsWith('!help')) {
+    await message.delete().catch(() => null);
+    const isClientAdmin = message.member ? (message.member.permissions.has(PermissionFlagsBits.Administrator) || message.author.id === '1266013271518089258') : false;
+
+    const userEmbed = new EmbedBuilder()
+      .setTitle('🏮 まつり花火Bot - ヘルプ (1/2)')
+      .setDescription('端末セキュリティ認証 & 管理Botです。')
+      .setColor(0x3b82f6)
+      .addFields({ name: '🔒 認証手順', value: '1. パネルの「認証」ボタンを押す\n2. リンク先で認証完了でロールが付与されます。', inline: false });
+
+    const adminEmbed = new EmbedBuilder()
+      .setTitle('🛡️ まつり花火Bot - 管理者マニュアル (2/2)')
+      .setColor(0xf59e0b)
+      .addFields(
+        { name: '⚙️ コマンド (管理者 / 指定ID限定)', value: 
+          '`/v_setup`: 認証パネル設置\n' +
+          '`/v_log on/off`: このチャンネルへのログ出力をON/OFF\n' +
+          '`/v_antiwebhook on/off`: このチャンネルでのWebhookスパム対策\n' +
+          '`/v_risklog on/off`: 初期アイコン・新規垢リスク警告\n' +
+          '`/v_antieveryone on/off`: このチャンネルでの@everyone強制削除\n' +
+          '`/v_antilink on/off`: このチャンネルでの5秒5連投リンク削除\n' +
+          '`/v_antispam on/off`: このチャンネルでのスパム対策', inline: false }
+      );
+
+    const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
+    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
+
+    try {
+      const response = await message.author.send({ embeds: [userEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] });
+      const collector = response.createMessageComponentCollector({ time: 300000 });
+
+      collector.on('collect', async i => {
+        if (i.user.id !== message.author.id) return;
+        if (i.customId === 'help_page_user') {
+          btnUser.setDisabled(true).setStyle(ButtonStyle.Primary);
+          btnAdmin.setDisabled(!isClientAdmin).setStyle(ButtonStyle.Secondary);
+          await i.update({ embeds: [userEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
+        } else if (i.customId === 'help_page_admin') {
+          btnUser.setDisabled(false).setStyle(ButtonStyle.Secondary);
+          btnAdmin.setDisabled(true).setStyle(ButtonStyle.Primary);
+          await i.update({ embeds: [adminEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
+        }
+      });
+    } catch (e) {}
+    return;
+  }
+});
+
+// 📥 メンバー参加（初期アイコン・新規アカウント検知）
+client.on('guildMemberAdd', async (member) => {
+  const config = client.getSettings()[member.guild.id] || {};
+
+  if (config.riskLog) {
+    const isDefaultAvatar = !member.user.avatar;
+    const accountAgeDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
+    const isNewAccount = accountAgeDays <= 3;
+
+    if (isDefaultAvatar || isNewAccount) {
+      const riskEmbed = new EmbedBuilder()
+        .setTitle('⚠️ 【警告】リスクアカウント参加検知')
+        .setColor(0xf59e0b)
+        .addFields(
+          { name: 'ユーザー', value: `<@${member.id}> (\`${member.user.tag}\`)`, inline: true },
+          { name: '初期アイコンか', value: isDefaultAvatar ? '⚠️ はい (デフォルト)' : 'いいえ', inline: true },
+          { name: 'アカウント作成日', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R> (${Math.floor(accountAgeDays)}日前)`, inline: true }
+        )
+        .setTimestamp();
+
+      await sendCustomEmbed(member.guild.id, riskEmbed);
+    }
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle('📥 メンバー参加')
+    .setColor(0x22c55e)
+    .setDescription(`**ユーザー:** <@${member.id}> (\`${member.user.tag}\`)\n**作成日:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`)
+    .setTimestamp();
+  await sendCustomEmbed(member.guild.id, embed);
+});
 
 // 🗑️ メッセージ削除ログ
 client.on('messageDelete', async (message) => {
@@ -322,85 +495,26 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
   await sendCustomEmbed(oldMessage.guild.id, embed);
 });
 
-// 🔊 ボイスチャット (VC) ログ
+// 🔊 VCログ
 client.on('voiceStateUpdate', async (oldState, newState) => {
   const guild = newState.guild || oldState.guild;
   if (!guild) return;
-
   const member = newState.member || oldState.member;
   if (member?.user.bot) return;
 
   let embed;
-  // VC参加
   if (!oldState.channelId && newState.channelId) {
-    embed = new EmbedBuilder().setTitle('🔊 VC参加').setColor(0x22c55e)
-      .setDescription(`<@${member.id}> が <#${newState.channelId}> に参加しました。`);
-  } 
-  // VC退出
-  else if (oldState.channelId && !newState.channelId) {
-    embed = new EmbedBuilder().setTitle('🔇 VC退出').setColor(0xef4444)
-      .setDescription(`<@${member.id}> が <#${oldState.channelId}> から退出しました。`);
-  } 
-  // VC移動
-  else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
-    embed = new EmbedBuilder().setTitle('🔀 VC移動').setColor(0x3b82f6)
-      .setDescription(`<@${member.id}> が <#${oldState.channelId}> ➡️ <#${newState.channelId}> へ移動しました。`);
-  } 
-  // 画面共有開始 / 終了
-  else if (!oldState.streaming && newState.streaming) {
-    embed = new EmbedBuilder().setTitle('📺 画面共有開始').setColor(0xa855f7)
-      .setDescription(`<@${member.id}> が <#${newState.channelId}> で配信を開始しました。`);
-  } else if (oldState.streaming && !newState.streaming) {
-    embed = new EmbedBuilder().setTitle('📺 画面共有終了').setColor(0x64748b)
-      .setDescription(`<@${member.id}> が配信を終了しました。`);
+    embed = new EmbedBuilder().setTitle('🔊 VC参加').setColor(0x22c55e).setDescription(`<@${member.id}> が <#${newState.channelId}> に参加しました。`);
+  } else if (oldState.channelId && !newState.channelId) {
+    embed = new EmbedBuilder().setTitle('🔇 VC退出').setColor(0xef4444).setDescription(`<@${member.id}> が <#${oldState.channelId}> から退出しました。`);
+  } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
+    embed = new EmbedBuilder().setTitle('🔀 VC移動').setColor(0x3b82f6).setDescription(`<@${member.id}> が <#${oldState.channelId}> ➡️ <#${newState.channelId}> へ移動しました。`);
   }
 
   if (embed) {
     embed.setTimestamp();
     await sendCustomEmbed(guild.id, embed);
   }
-});
-
-// 📂 チャンネル作成
-client.on('channelCreate', async (channel) => {
-  if (!channel.guild) return;
-  const embed = new EmbedBuilder()
-    .setTitle('📁 チャンネル作成')
-    .setColor(0x22c55e)
-    .setDescription(`**名前:** \`${channel.name}\` (<#${channel.id}>)\n**タイプ:** \`${channel.type}\``)
-    .setTimestamp();
-  await sendCustomEmbed(channel.guild.id, embed);
-});
-
-// 📂 チャンネル削除
-client.on('channelDelete', async (channel) => {
-  if (!channel.guild) return;
-  const embed = new EmbedBuilder()
-    .setTitle('🗑️ チャンネル削除')
-    .setColor(0xef4444)
-    .setDescription(`**名前:** \`${channel.name}\`\n**タイプ:** \`${channel.type}\``)
-    .setTimestamp();
-  await sendCustomEmbed(channel.guild.id, embed);
-});
-
-// 📥 サーバー参加
-client.on('guildMemberAdd', async (member) => {
-  const embed = new EmbedBuilder()
-    .setTitle('📥 メンバー参加')
-    .setColor(0x22c55e)
-    .setDescription(`**ユーザー:** <@${member.id}> (\`${member.user.tag}\`)\n**アカウント作成:** <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`)
-    .setTimestamp();
-  await sendCustomEmbed(member.guild.id, embed);
-});
-
-// 📤 サーバー脱退/Kick
-client.on('guildMemberRemove', async (member) => {
-  const embed = new EmbedBuilder()
-    .setTitle('📤 メンバー脱退')
-    .setColor(0xef4444)
-    .setDescription(`**ユーザー:** <@${member.id}> (\`${member.user.tag}\`)`)
-    .setTimestamp();
-  await sendCustomEmbed(member.guild.id, embed);
 });
 
 // 🤖 起動処理
@@ -415,102 +529,30 @@ client.once('clientReady', async () => {
   setInterval(updatePresence, 60000);
 });
 
-// スパム監視・Help処理
-client.on('messageCreate', async (message) => {
-  if (!message.guild || message.author.bot) return;
-
-  if (message.content.toLowerCase().startsWith('!help')) {
-    await message.delete().catch(() => null);
-    const isClientAdmin = message.member ? message.member.permissions.has(PermissionFlagsBits.Administrator) : false;
-
-    const userEmbed = new EmbedBuilder()
-      .setTitle('🏮 まつり花火Bot - ヘルプ (1/2)')
-      .setDescription('端末セキュリティ認証 & 全サーバーログ監視Botです。')
-      .setColor(0x3b82f6)
-      .addFields({ name: '🔒 認証手順', value: '1. パネルの「認証」ボタンを押す\n2. リンク先で認証完了でロールが付与されます。', inline: false });
-
-    const adminEmbed = new EmbedBuilder()
-      .setTitle('🛡️ まつり花火Bot - 管理者マニュアル (2/2)')
-      .setColor(0xf59e0b)
-      .addFields({ name: '⚙️ コマンド', value: '`/v_setup`: 認証パネル設置\n`/v_log`: 全ログ出力チャンネル設定\n`/v_antispam`: スパム対策設定', inline: false });
-
-    const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
-    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
-
-    try {
-      const response = await message.author.send({ embeds: [userEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] });
-      const collector = response.createMessageComponentCollector({ time: 300000 });
-
-      collector.on('collect', async i => {
-        if (i.user.id !== message.author.id) return;
-        if (i.customId === 'help_page_user') {
-          btnUser.setDisabled(true).setStyle(ButtonStyle.Primary);
-          btnAdmin.setDisabled(!isClientAdmin).setStyle(ButtonStyle.Secondary);
-          await i.update({ embeds: [userEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
-        } else if (i.customId === 'help_page_admin') {
-          btnUser.setDisabled(false).setStyle(ButtonStyle.Secondary);
-          btnAdmin.setDisabled(true).setStyle(ButtonStyle.Primary);
-          await i.update({ embeds: [adminEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
-        }
-      });
-    } catch (e) {}
-    return;
-  }
-
-  const config = client.getSettings()[message.guild.id]?.antiSpam;
-  if (!config || !config.enabled) return;
-
-  const key = `${message.guild.id}-${message.author.id}`;
-  const now = Date.now();
-  if (!userMessageLog.has(key)) userMessageLog.set(key, []);
-  const timestamps = userMessageLog.get(key);
-  const windowMs = config.seconds * 1000;
-  while (timestamps.length > 0 && timestamps[0] <= now - windowMs) timestamps.shift();
-  timestamps.push(now);
-
-  if (timestamps.length >= config.maxMessages) {
-    userMessageLog.delete(key);
-    const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-    if (!member) return;
-
-    if (config.action === 'ban' && member.bannable) {
-      await member.ban({ reason: `[Spam Protection] ${config.seconds}秒間に${config.maxMessages}回以上の連続送信` }).catch(() => null);
-      const embed = new EmbedBuilder().setTitle('🔨 スパム検知 BAN').setDescription(`**対象:** <@${member.id}>\n**条件:** ${config.seconds}秒間に ${config.maxMessages} メッセージ送信`).setColor(0xef4444).setTimestamp();
-      await sendCustomEmbed(message.guild.id, embed);
-    } else if (config.action === 'kick' && member.kickable) {
-      await member.kick(`[Spam Protection] ${config.seconds}秒間に${config.maxMessages}回以上の連続送信`).catch(() => null);
-      const embed = new EmbedBuilder().setTitle('👞 スパム検知 KICK').setDescription(`**対象:** <@${member.id}>\n**条件:** ${config.seconds}秒間に ${config.maxMessages} メッセージ送信`).setColor(0xf59e0b).setTimestamp();
-      await sendCustomEmbed(message.guild.id, embed);
+// コマンドの動的ロード
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, 'commands');
+if (fs.existsSync(commandsPath)) {
+  const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+  for (const file of commandFiles) {
+    const command = require(path.join(commandsPath, file));
+    if ('data' in command && 'execute' in command) {
+      client.commands.set(command.data.name, command);
     }
   }
-});
-
-// コマンド動的ロード
-client.commands = new Collection();
-const commandFiles = fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
-for (const file of commandFiles) {
-  const command = require(path.join(__dirname, 'commands', file));
-  if ('data' in command) client.commands.set(command.data.name, command);
 }
 
 // 🎮 インタラクション制御
 client.on('interactionCreate', async interaction => {
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
-    if (command) await command.execute(interaction).catch(() => null);
+    if (command) {
+      await command.execute(interaction, client).catch(err => console.error(err));
+    }
     return;
   }
 
-  if (interaction.isModalSubmit() && interaction.customId === 'announce_modal') {
-    const title = interaction.fields.getTextInputValue('title');
-    const content = interaction.fields.getTextInputValue('content');
-
-    const embed = new EmbedBuilder().setTitle(title).setDescription(content).setColor(0x3b82f6).setTimestamp();
-    await interaction.channel.send({ embeds: [embed] }).catch(() => null);
-    await interaction.reply({ content: '✅ アナウンスを送信しました。', flags: [MessageFlags.Ephemeral] }).catch(() => null);
-    return;
-  }
-
+  // 認証パネルモーダル受取
   if (interaction.isModalSubmit() && interaction.customId.startsWith('v_setup_modal_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[3];
@@ -525,6 +567,7 @@ client.on('interactionCreate', async interaction => {
     return;
   }
 
+  // 認証ボタン押下時
   if (interaction.isButton() && interaction.customId.startsWith('v_btn_')) {
     const parts = interaction.customId.split('_');
     const addRoleId = parts[2];
