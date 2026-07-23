@@ -287,7 +287,7 @@ client.isAuthorizedUser = (interaction) => {
   return false;
 };
 
-// 📢 Embedログ送信
+// 📢 Embedログ送信（個別サーバー対応）
 async function sendCustomEmbed(guildId, embed) {
   const config = client.getSettings()[guildId];
   if (!config || config.vLogStatus !== true || !config.vLogChannel) return;
@@ -300,15 +300,16 @@ async function sendCustomEmbed(guildId, embed) {
 }
 
 // -----------------------------------------------------------------
-// 📡 リアルタイムメッセージ＆防御フィルター
+// 📡 リアルタイムメッセージ＆防御フィルター（サーバー全体一括適用）
 // -----------------------------------------------------------------
 client.on('messageCreate', async (message) => {
   if (!message.guild) return;
+  
+  // サーバー個別設定のロード
   const config = client.getSettings()[message.guild.id] || {};
-  const channelConfig = config.channels?.[message.channel.id] || {};
 
   // 1️⃣ Webhookスパム自動削除 & 該当Webhook削除
-  if (channelConfig.antiWebhook && message.webhookId) {
+  if (config.antiWebhook && message.webhookId) {
     const key = `${message.guild.id}-${message.webhookId}`;
     const now = Date.now();
     if (!webhookSpamTracker.has(key)) webhookSpamTracker.set(key, []);
@@ -332,18 +333,18 @@ client.on('messageCreate', async (message) => {
   }
 
   // 2️⃣ @everyone 強制削除機能
-  if (channelConfig.antiEveryone && (message.content.includes('@everyone') || message.content.includes('@here'))) {
+  if (config.antiEveryone && (message.content.includes('@everyone') || message.content.includes('@here'))) {
     const isOwnerOrAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator) || message.author.id === '1266013271518089258';
     if (!isOwnerOrAdmin) {
       await message.delete().catch(() => null);
-      const warn = await message.channel.send(`⚠️ <@${message.author.id}> **このチャンネルでの @everyone / @here の送信は禁止されています。**`).catch(() => null);
+      const warn = await message.channel.send(`⚠️ <@${message.author.id}> **このサーバーでの @everyone / @here の送信は禁止されています。**`).catch(() => null);
       setTimeout(() => warn?.delete().catch(() => null), 5000);
       return;
     }
   }
 
   // 3️⃣ 同一リンク 5秒以内 5回連投で自動削除
-  if (channelConfig.antiLink) {
+  if (config.antiLink) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const matches = message.content.match(urlRegex);
     if (matches) {
@@ -368,7 +369,7 @@ client.on('messageCreate', async (message) => {
   }
 
   // 4️⃣ 簡単スパム対策
-  if (channelConfig.antiSpam && !message.author.bot) {
+  if (config.antiSpam && !message.author.bot) {
     const key = `${message.guild.id}-${message.author.id}`;
     const now = Date.now();
     if (!userMessageLog.has(key)) userMessageLog.set(key, []);
@@ -385,40 +386,91 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // 5️⃣ !help コマンド
+  // 5️⃣ !help コマンド（スラッシュコマンド詳細記述版）
   if (message.content.toLowerCase().startsWith('!help')) {
     await message.delete().catch(() => null);
     const isClientAdmin = message.member ? (message.member.permissions.has(PermissionFlagsBits.Administrator) || message.author.id === '1266013271518089258') : false;
 
+    // 👥 一般向けヘルプ (1/2)
     const userEmbed = new EmbedBuilder()
-      .setTitle('🏮 まつり花火Bot - ヘルプ (1/2)')
-      .setDescription('端末セキュリティ認証 & 管理Botです。')
+      .setTitle('🏮 MaturiHanabiBot - ヘルプ (1/2)')
+      .setDescription('端末セキュリティ認証 & サーバー保護機能を提供するBotです。')
       .setColor(0x3b82f6)
-      .addFields({ name: '🔒 認証手順', value: '1. パネルの「認証」ボタンを押す\n2. リンク先で認証完了でロールが付与されます。', inline: false });
+      .addFields(
+        { 
+          name: '🔒 セキュリティ端末認証手順', 
+          value: '1. 認証用チャンネルに設置されたパネルの **「認証」** ボタンを押す\n' +
+                 '2. Botから送られるメッセージ内の **「認証サイトへアクセス」** リンクを開く\n' +
+                 '3. 端末チェック完了後、自動的にロールが付与されます。', 
+          inline: false 
+        },
+        {
+          name: 'ℹ️ 補足事項',
+          value: '※ 複アカ・裏アカによる不正アクセスはシステムにより自動検知・ブロックされます。',
+          inline: false
+        }
+      )
+      .setFooter({ text: '管理者向けコマンドの確認は下のボタンを押してください' })
+      .setTimestamp();
 
+    // 👑 管理者向けスラッシュコマンド一覧 (2/2)
     const adminEmbed = new EmbedBuilder()
-      .setTitle('🛡️ まつり花火Bot - 管理者マニュアル (2/2)')
+      .setTitle('🛡️ MaturiHanabiBot - 管理者マニュアル (2/2)')
+      .setDescription('※ スラッシュコマンド（`/`）を実行して設定を行います。\n※ サーバー管理者権限 または 指定管理者ID のみ実行可能です。')
       .setColor(0xf59e0b)
       .addFields(
-        { name: '⚙️ コマンド (管理者 / 指定ID限定)', value: 
-          '`/v_setup`: 認証パネル設置\n' +
-          '`/v_log on/off`: このチャンネルへのログ出力をON/OFF\n' +
-          '`/v_antiwebhook on/off`: このチャンネルでのWebhookスパム対策\n' +
-          '`/v_risklog on/off`: 初期アイコン・新規垢リスク警告\n' +
-          '`/v_antieveryone on/off`: このチャンネルでの@everyone強制削除\n' +
-          '`/v_antilink on/off`: このチャンネルでの5秒5連投リンク削除\n' +
-          '`/v_antispam on/off`: このチャンネルでのスパム対策', inline: false }
-      );
+        { 
+          name: '⚙️ `/v_setup`', 
+          value: '`認証パネル設置` \n指定した付与ロール・剥奪ロール・案内文を設定し、そのチャンネルに端末認証パネルを送信します。', 
+          inline: false 
+        },
+        { 
+          name: '📜 `/v_log <status>`', 
+          value: '`ログ出力チャンネル設定` \nコマンドを実行したチャンネルをログ送信先に指定します。認証成功ログ・メッセージ削除/編集ログ・VCログが集約されます。\n・`status`: ON / OFF', 
+          inline: false 
+        },
+        { 
+          name: '🤖 `/v_antiwebhook <status>`', 
+          value: '`Webhookスパム自動防御` \n短時間に連続送信されたWebhookメッセージと該当のWebhookをサーバー全体で自動削除・遮断します。\n・`status`: ON / OFF', 
+          inline: false 
+        },
+        { 
+          name: '🚨 `/v_risklog <status>`', 
+          value: '`リスクアカウント検知` \n初期アイコンのユーザーや作成後3日以内の新規アカウント参加時にログへ警告を出力します。\n・`status`: ON / OFF', 
+          inline: false 
+        },
+        { 
+          name: '📢 `/v_antieveryone <status>`', 
+          value: '`@everyone 連投防止` \n一般ユーザーによる `@everyone` および `@here` のメンション送信を全チャンネルで即座に自動削除します。\n・`status`: ON / OFF', 
+          inline: false 
+        },
+        { 
+          name: '🔗 `/v_antilink <status>`', 
+          value: '`同一リンク連投防止` \n5秒以内に同一URLが5回連投された場合、該当メッセージを自動削除します。\n・`status`: ON / OFF', 
+          inline: false 
+        },
+        { 
+          name: '🛡️ `/v_antispam <status>`', 
+          value: '`簡易スパム連投対策` \n3秒以内に5通以上の連投を行ったユーザーをサーバーから自動キックします。\n・`status`: ON / OFF', 
+          inline: false 
+        }
+      )
+      .setTimestamp();
 
     const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
-    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向け').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
+    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向けコマンド').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
 
     try {
-      const response = await message.author.send({ embeds: [userEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] });
+      const response = await message.author.send({ 
+        embeds: [userEmbed], 
+        components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] 
+      });
+
       const collector = response.createMessageComponentCollector({ time: 300000 });
 
       collector.on('collect', async i => {
         if (i.user.id !== message.author.id) return;
+        
         if (i.customId === 'help_page_user') {
           btnUser.setDisabled(true).setStyle(ButtonStyle.Primary);
           btnAdmin.setDisabled(!isClientAdmin).setStyle(ButtonStyle.Secondary);
@@ -429,7 +481,10 @@ client.on('messageCreate', async (message) => {
           await i.update({ embeds: [adminEmbed], components: [new ActionRowBuilder().addComponents(btnUser, btnAdmin)] }).catch(() => null);
         }
       });
-    } catch (e) {}
+    } catch (e) {
+      const fallback = await message.channel.send(`⚠️ <@${message.author.id}> **DMの受信を許可してください。**`).catch(() => null);
+      setTimeout(() => fallback?.delete().catch(() => null), 5000);
+    }
     return;
   }
 });
@@ -529,7 +584,7 @@ client.once('clientReady', async () => {
   setInterval(updatePresence, 60000);
 });
 
-// コマンドの動的ロード
+// コマンドの動的ロード（commands/ フォルダからの個別ファイル読み込み）
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
