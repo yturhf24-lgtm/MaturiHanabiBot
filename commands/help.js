@@ -52,7 +52,7 @@ module.exports = {
         },
         { 
           name: '🔄 `/v_reset <user>`', 
-          value: '`制限の個別リセット` \n誤ってブロックされてしまった正規ユーザーをサーバー個別に救済（ブロック解除）します。\n・`user`: 対象のユーザー', 
+          value: '`制限の個別リセット` \n誤ってブロックされてしまった正規ユーザーをサーバー個別に救済（ブロック解除）できます。\n・`user`: 対象のユーザー', 
           inline: false 
         },
         { 
@@ -114,6 +114,7 @@ module.exports = {
     const collector = response.createMessageComponentCollector({ time: 300000 });
 
     collector.on('collect', async i => {
+      // ⚠️ ここも flags: [MessageFlags.Ephemeral] に修正済みです
       if (i.user.id !== interaction.user.id) {
         return i.reply({ content: '❌ この操作はコマンドを実行した人のみ行えます。', flags: [MessageFlags.Ephemeral] });
       }
