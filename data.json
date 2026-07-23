@@ -155,6 +155,18 @@
   },
   "1499972479521783828": {
     "vLogChannel": "1499988986897109094",
-    "vLogStatus": true
+    "vLogStatus": true,
+    "antiRaid": {
+      "kickDefaultAvatar": false,
+      "kickAccountAgeDays": 0
+    }
+  },
+  "1529890621941350600": {
+    "antiSpam": {
+      "enabled": true,
+      "seconds": 5,
+      "maxMessages": 5,
+      "action": "kick"
+    }
   }
 }
