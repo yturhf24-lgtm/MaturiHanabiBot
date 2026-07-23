@@ -1,45 +1,32 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('v_antispam')
-    .setDescription('連投スパムに対する自動Kick/Ban機能を設定します。')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(opt => 
-      opt.setName('status')
-        .setDescription('有効/無効の切り替え')
+    .setDescription('実行したチャンネルでの連投スパム対策を設定します')
+    .addBooleanOption(option =>
+      option.setName('status')
+        .setDescription('ON または OFF')
         .setRequired(true)
-        .addChoices({ name: 'ON (有効)', value: 'on' }, { name: 'OFF (無効)', value: 'off' })
-    )
-    .addIntegerOption(opt => opt.setName('seconds').setDescription('判定する秒数').setMinValue(1).setMaxValue(60))
-    .addIntegerOption(opt => opt.setName('messages').setDescription('何回投稿されたら処罰するか').setMinValue(2).setMaxValue(50))
-    .addStringOption(opt => 
-      opt.setName('action')
-        .setDescription('処罰内容')
-        .addChoices({ name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' })
     ),
-
-  async execute(interaction) {
-    const status = interaction.options.getString('status');
-    const guildId = interaction.guildId;
-    const client = interaction.client;
-    const allSettings = client.getSettings();
-
-    if (!allSettings[guildId]) allSettings[guildId] = {};
-
-    if (status === 'off') {
-      allSettings[guildId].antiSpam = { enabled: false };
-      await client.saveSettings(allSettings);
-      return interaction.reply({ content: '⚙️ スパム保護機能を **OFF** に設定しました。', ephemeral: true });
+  async execute(interaction, client) {
+    if (!client.isAuthorizedUser(interaction)) {
+      return interaction.reply({ content: '❌ **このコマンドを実行する権限がありません。**', flags: [MessageFlags.Ephemeral] });
     }
 
-    const seconds = interaction.options.getInteger('seconds') || 5;
-    const messages = interaction.options.getInteger('messages') || 5;
-    const action = interaction.options.getString('action') || 'kick';
+    const allSettings = client.getSettings();
+    if (!allSettings[interaction.guildId]) allSettings[interaction.guildId] = {};
+    const config = allSettings[interaction.guildId];
+    if (!config.channels) config.channels = {};
+    if (!config.channels[interaction.channelId]) config.channels[interaction.channelId] = {};
 
-    allSettings[guildId].antiSpam = { enabled: true, seconds, maxMessages: messages, action };
+    const status = interaction.options.getBoolean('status');
+    config.channels[interaction.channelId].antiSpam = status;
     await client.saveSettings(allSettings);
 
-    return interaction.reply({ content: `⚙️ スパム保護を設定しました:\n・**条件:** ${seconds}秒間に ${messages}メッセージ\n・**処罰:** ${action.toUpperCase()}`, ephemeral: true });
+    return interaction.reply({ 
+      content: `✅ <#${interaction.channelId}> での **簡易スパム対策を ${status ? '🟢 ON' : '🔴 OFF'} に設定しました。**`, 
+      flags: [MessageFlags.Ephemeral] 
+    });
   }
 };
