@@ -167,6 +167,8 @@
       "seconds": 5,
       "maxMessages": 5,
       "action": "kick"
-    }
+    },
+    "vLogChannel": "1529890622519906559",
+    "vLogStatus": true
   }
 }
