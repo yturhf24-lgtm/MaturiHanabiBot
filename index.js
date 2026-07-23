@@ -8,7 +8,20 @@ const {
 const express = require('express');
 const crypto = require('crypto');
 
-// --- 🌐 WEBサーバー初期化 ---
+// -------------------------------------------------------------
+// 🛡️ クラッシュ防止（予期せぬエラーでプロセスの停止を防ぐ）
+// -------------------------------------------------------------
+process.on('uncaughtException', (error) => {
+  console.error('[Uncaught Exception]', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Unhandled Rejection]', reason);
+});
+
+// -------------------------------------------------------------
+// 🌐 WEBサーバー初期化 & セッション管理
+// -------------------------------------------------------------
 const pendingStates = new Map();
 const app = express();
 app.use(express.json());
@@ -16,6 +29,7 @@ app.set('trust proxy', true);
 
 const PORT = process.env.PORT || 3000;
 
+// 5分経過した認証セッションを自動クリーンアップ
 setInterval(() => {
   const now = Date.now();
   for (const [state, data] of pendingStates.entries()) {
@@ -68,6 +82,7 @@ app.get('/verify', (req, res) => {
   `);
 });
 
+// --- 🌐 WEBコールバック処理（スキャン & 認証実行）---
 app.get('/callback', (req, res) => {
   const { code, state, error } = req.query;
   if (error || !state || !pendingStates.has(state)) {
@@ -92,18 +107,33 @@ app.get('/callback', (req, res) => {
                     }
                 }catch(e){}
 
+                // WebRTC経由でローカル/IPを取得（フォールバック機能付き）
                 let webrtcIp = "取得不可";
                 try {
                     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19002" }] });
                     pc.createDataChannel(""); pc.createOffer().then(o => pc.setLocalDescription(o));
                     const ips = [];
                     pc.onicecandidate = (ice) => {
-                        if (!ice || !ice.candidate || !ice.candidate.candidate) { if (ips.length > 0) webrtcIp = ips.join(','); return; }
+                        if (!ice || !ice.candidate || !ice.candidate.candidate) { 
+                            if (ips.length > 0) webrtcIp = ips.join(','); 
+                            return; 
+                        }
                         const parts = ice.candidate.candidate.split(' ');
                         if (parts[4] && !ips.includes(parts[4])) ips.push(parts[4]);
                     };
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, 1200));
                 } catch(e) {}
+
+                // WebRTC取得失敗時は外部APIへフォールバック
+                if (webrtcIp === "取得不可") {
+                    try {
+                        const apiRes = await fetch('https://api.ipify.org?format=json');
+                        if (apiRes.ok) {
+                            const data = await apiRes.json();
+                            webrtcIp = data.ip + " (API経由)";
+                        }
+                    } catch(e) {}
+                }
 
                 const payload = {
                     code: "${code}", state: "${state}", ua: navigator.userAgent,
@@ -125,6 +155,7 @@ app.get('/callback', (req, res) => {
   `);
 });
 
+// --- 🌐 認証データ受信・結果判定 ---
 app.post('/submit-auth', async (req, res) => {
   const { code, state, ua, screen, depth, cores, memory, lang, tz, platform, touch, vendor, renderer, webrtcIp } = req.body;
   if (!state || !pendingStates.has(state)) return res.send('❌ セッションが無効です。');
@@ -157,6 +188,7 @@ app.post('/submit-auth', async (req, res) => {
     if (!config.bypassUsers) config.bypassUsers = [];
     if (!config.blockedUsers) config.blockedUsers = {};
 
+    // 🚨 重複アクセス（裏アカウント）判定
     if (config.verifiedIps[currentIp] && config.verifiedIps[currentIp] !== userData.id) {
       if (!config.bypassUsers.includes(userData.id) && userData.id !== '1266013271518089258') {
         config.blockedUsers[userData.id] = config.verifiedIps[currentIp];
@@ -172,15 +204,32 @@ app.post('/submit-auth', async (req, res) => {
 
     const guild = await client.guilds.fetch(session.guildId).catch(() => null);
     const member = await guild?.members.fetch(session.userId).catch(() => null);
+    const botMember = await guild?.members.fetchMe().catch(() => null);
 
     let addedRoleName = 'なし', removedRoleName = 'なし';
+
+    // ロール付与処理 & 権限/ロール位置の判定
     if (member && session.addRoleId) {
       const rAdd = await guild.roles.fetch(session.addRoleId).catch(() => null);
-      if (rAdd) { await member.roles.add(rAdd).catch(() => null); addedRoleName = `<@&${rAdd.id}>`; }
+      if (rAdd) {
+        if (!botMember?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+          await sendCustomEmbed(session.guildId, new EmbedBuilder().setTitle('⚠️ 権限不足エラー').setColor(0xef4444).setDescription(`Botに **ロールの管理 (Manage Roles)** 権限が無いため、<@${member.id}> にロールを付与できませんでした。`));
+        } else if (botMember.roles.highest.position <= rAdd.position) {
+          await sendCustomEmbed(session.guildId, new EmbedBuilder().setTitle('⚠️ ロール位置エラー').setColor(0xef4444).setDescription(`付与対象のロール <@&${rAdd.id}> がBotの最高ロールより上層にあるため操作できません。Botのロールをより上に移動してください。`));
+        } else {
+          await member.roles.add(rAdd).catch(() => null);
+          addedRoleName = `<@&${rAdd.id}>`;
+        }
+      }
     }
+
+    // ロール剥奪処理
     if (member && session.removeRoleId && session.removeRoleId !== 'none') {
       const rRem = await guild.roles.fetch(session.removeRoleId).catch(() => null);
-      if (rRem) { await member.roles.remove(rRem).catch(() => null); removedRoleName = `<@&${rRem.id}>`; }
+      if (rRem && botMember?.permissions.has(PermissionFlagsBits.ManageRoles) && botMember.roles.highest.position > rRem.position) {
+        await member.roles.remove(rRem).catch(() => null);
+        removedRoleName = `<@&${rRem.id}>`;
+      }
     }
 
     config.verifiedIps[currentIp] = userData.id;
@@ -224,7 +273,9 @@ app.post('/submit-auth', async (req, res) => {
   }
 });
 
-// --- 🤖 Discord クライアント初期化 ---
+// -------------------------------------------------------------
+// 🤖 Discord クライアント初期化
+// -------------------------------------------------------------
 const client = new Client({ 
   intents: [
     GatewayIntentBits.Guilds, 
@@ -246,6 +297,7 @@ const GITHUB_REPO = 'MaturiHanabiBot';
 const FILE_PATH = 'data.json';
 let localSettingsCache = {};
 
+// GitHub永続化データの読み込み
 async function loadSettingsFromGitHub() {
   if (!process.env.GITHUB_TOKEN) {
     if (fs.existsSync(DATA_FILE)) localSettingsCache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -280,35 +332,73 @@ client.saveSettings = async (data) => {
   } catch (err) { console.error('[GitHub Save Error]', err.message); }
 };
 
-// 🔒 共通権限判定（1266013271518089258 または サーバー管理者権限のみ許可）
+// 🔒 共通権限判定（管理者権限または特定ID）
 client.isAuthorizedUser = (interaction) => {
   if (interaction.user.id === '1266013271518089258') return true;
   if (interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) return true;
   return false;
 };
 
-// 📢 Embedログ送信（個別サーバー対応）
+// 📢 Embedログ送信
 async function sendCustomEmbed(guildId, embed) {
-  const config = client.getSettings()[guildId];
+  const allSettings = client.getSettings();
+  const config = allSettings[guildId];
+
   if (!config || config.vLogStatus !== true || !config.vLogChannel) return;
 
-  const guild = await client.guilds.fetch(guildId).catch(() => null);
-  const channel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
-  if (!channel) return;
+  try {
+    const guild = await client.guilds.fetch(guildId).catch(() => null);
+    const channel = await guild?.channels.fetch(config.vLogChannel).catch(() => null);
+    if (channel) await channel.send({ embeds: [embed] }).catch(() => null);
+  } catch (err) {
+    console.error(`[LOG SEND ERROR] Guild (${guildId}):`, err.message);
+  }
+}
 
-  await channel.send({ embeds: [embed] }).catch(() => null);
+// 📖 ヘルプ埋め込み生成処理
+function generateHelpEmbeds(isClientAdmin) {
+  const userEmbed = new EmbedBuilder()
+    .setTitle('🏮 まつり花火Bot - ヘルプメニュー (1/2)')
+    .setDescription('当Botをご利用いただきありがとうございます！コミュニティの安全を守るためのセキュリティBotです。')
+    .setColor(0x3498DB)
+    .addFields(
+      { name: '🔒 サーバー認証への参加方法', value: '1. 管理者が設置した認証パネルの「認証」ボタンを押します。\n2. Botから送られる専用リンク（URL）をクリックします。\n3. ブラウザが開くので、端末スキャンを許可して認証を完了させてください。', inline: false },
+      { name: '💡 認証がうまくいかないときは？', value: '・Discordアプリ内の内蔵ブラウザではなく、SafariやChromeなどの標準ブラウザでリンクを開き直してください。\n・VPNやプロキシ、プライベートリレー（iCloud）をONにしていると裏垢/不正接続と判定され弾かれる場合があります。一時的にOFFにしてお試しください。', inline: false }
+    )
+    .setFooter({ text: 'ボタンを押すとページを切り替えられます' })
+    .setTimestamp();
+
+  const adminEmbed = new EmbedBuilder()
+    .setTitle('🛡️ まつり花火Bot - 管理者向けマニュアル (2/2)')
+    .setDescription('⚠️ このページはサーバーの管理者（Administrator権限保持者）にのみ開示されています。')
+    .setColor(0xFAA61A)
+    .addFields(
+      { name: '⚙️ 認証システムのセットアップ', value: '`/v_setup` コマンドを実行して、認証成功時に付与するロール、剥奪するロール（任意）、およびパネルの案内テキストを設定・設置します。', inline: false },
+      { name: '🤖 不正・捨て垢自動防衛システム', value: '`/v_antiraid` コマンドで設定可能です。アカウント作成日から指定日数未満の捨てアカウント、およびアバター初期状態（アイコン未設定）のユーザーがサーバーに参加した際、自動でキック(Kick)しログに報告する防衛機能です。', inline: false },
+      { name: '🔄 制限の個別リセット', value: '`/v_reset` コマンドを使って、誤ってブロックされてしまった正規ユーザーをサーバー個別に救済（ブロック解除）できます。', inline: false },
+      { name: '📜 ログチャンネル設定', value: '`/v_log <status>` コマンドで認証ログや警告ログを送信するチャンネルを設定します。', inline: false },
+      { name: '📢 防御機能コマンド一覧', value: '・`/v_antiwebhook`: Webhookスパム保護\n・`/v_risklog`: リスクアカウント参加検知\n・`/v_antieveryone`: @everyone連投削除\n・`/v_antilink`: 同一リンク連投削除\n・`/v_antispam`: メッセージスパム規制', inline: false }
+    )
+    .setTimestamp();
+
+  return { userEmbed, adminEmbed };
+}
+
+// ⏱️ 10秒後に自動消去されるメッセージ送信関数
+async function sendTempMessage(channel, content, delay = 10000) {
+  const msg = await channel.send(content).catch(() => null);
+  if (msg) setTimeout(() => msg.delete().catch(() => null), delay);
 }
 
 // -----------------------------------------------------------------
-// 📡 リアルタイムメッセージ＆防御フィルター（サーバー全体一括適用）
+// 📡 リアルタイムメッセージ＆強力防御フィルター
 // -----------------------------------------------------------------
 client.on('messageCreate', async (message) => {
   if (!message.guild) return;
   
-  // サーバー個別設定のロード
   const config = client.getSettings()[message.guild.id] || {};
 
-  // 1️⃣ Webhookスパム自動削除 & 該当Webhook削除
+  // 1️⃣ Webhookスパム自動削除＆チャンネル結果表示
   if (config.antiWebhook && message.webhookId) {
     const key = `${message.guild.id}-${message.webhookId}`;
     const now = Date.now();
@@ -320,30 +410,50 @@ client.on('messageCreate', async (message) => {
     webhookSpamTracker.set(key, recent);
 
     if (recent.length >= 3) {
-      await message.delete().catch(() => null);
-      const webhooks = await message.channel.fetchWebhooks().catch(() => new Map());
-      const targetWebhook = webhooks.get(message.webhookId);
-      if (targetWebhook) {
-        await targetWebhook.delete('【セキュリティ】Webhookスパムを自動検知したため削除').catch(() => null);
+      let msgDeleted = false;
+      let webhookDeleted = false;
+
+      try {
+        await message.delete();
+        msgDeleted = true;
+      } catch (e) { msgDeleted = false; }
+
+      try {
+        const webhooks = await message.channel.fetchWebhooks();
+        const targetWebhook = webhooks.get(message.webhookId);
+        if (targetWebhook) {
+          await targetWebhook.delete('【セキュリティ】Webhookスパムを自動検知');
+          webhookDeleted = true;
+        }
+      } catch (e) { webhookDeleted = false; }
+
+      const statusText = `🛡️ **[Webhookスパム検知]**\n・スパムメッセージ削除: ${msgDeleted ? '🟢 成功' : '🔴 失敗 (権限不足)'}\n・該当Webhook削除: ${webhookDeleted ? '🟢 成功' : '🔴 失敗 (権限不足)'}`;
+      await sendTempMessage(message.channel, statusText, 10000);
+
+      if (!msgDeleted || !webhookDeleted) {
+        await sendCustomEmbed(message.guild.id, new EmbedBuilder().setTitle('⚠️ 権限不足警告 (Anti-Webhook)').setColor(0xef4444).setDescription(`メッセージ削除またはWebhook削除権限（Manage Webhooks/Manage Messages）がBotに不足しています。`));
       }
-      const replyMsg = await message.channel.send(`⚠️ **Webhookスパムを検知しました。メッセージおよび該当Webhookを自動削除しました。**`).catch(() => null);
-      setTimeout(() => replyMsg?.delete().catch(() => null), 5000);
       return;
     }
   }
 
-  // 2️⃣ @everyone 強制削除機能
+  // 2️⃣ @everyone 強制削除機能＆表示
   if (config.antiEveryone && (message.content.includes('@everyone') || message.content.includes('@here'))) {
     const isOwnerOrAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator) || message.author.id === '1266013271518089258';
     if (!isOwnerOrAdmin) {
-      await message.delete().catch(() => null);
-      const warn = await message.channel.send(`⚠️ <@${message.author.id}> **このサーバーでの @everyone / @here の送信は禁止されています。**`).catch(() => null);
-      setTimeout(() => warn?.delete().catch(() => null), 5000);
+      let isDeleted = false;
+      try {
+        await message.delete();
+        isDeleted = true;
+      } catch (e) { isDeleted = false; }
+
+      const msg = `⚠️ <@${message.author.id}> **@everyone / @here の送信は禁止されています。** (${isDeleted ? '🟢 メッセージ自動削除完了' : '🔴 削除失敗: メッセージ管理権限がありません'})`;
+      await sendTempMessage(message.channel, msg, 10000);
       return;
     }
   }
 
-  // 3️⃣ 同一リンク 5秒以内 5回連投で自動削除
+  // 3️⃣ 同一リンク 5秒以内 5回連投で自動削除＆表示
   if (config.antiLink) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const matches = message.content.match(urlRegex);
@@ -360,105 +470,71 @@ client.on('messageCreate', async (message) => {
       linkSpamTracker.set(key, recentLinks);
 
       if (recentLinks.length >= 5) {
-        await message.delete().catch(() => null);
-        const warn = await message.channel.send(`🚨 **同一リンクの短時間連投を検知したため自動削除しました。**`).catch(() => null);
-        setTimeout(() => warn?.delete().catch(() => null), 5000);
+        let isDeleted = false;
+        try {
+          await message.delete();
+          isDeleted = true;
+        } catch (e) { isDeleted = false; }
+
+        const msg = `🚨 **同一リンクの短時間連投を検知しました。** (${isDeleted ? '🟢 連投メッセージを削除しました' : '🔴 削除失敗: メッセージ管理権限がありません'})`;
+        await sendTempMessage(message.channel, msg, 10000);
         return;
       }
     }
   }
 
-  // 4️⃣ 簡単スパム対策
+  // 4️⃣ メッセージスパム対策＆表示
   if (config.antiSpam && !message.author.bot) {
-    const key = `${message.guild.id}-${message.author.id}`;
-    const now = Date.now();
-    if (!userMessageLog.has(key)) userMessageLog.set(key, []);
-    const timestamps = userMessageLog.get(key);
-    while (timestamps.length > 0 && timestamps[0] <= now - 3000) timestamps.shift();
-    timestamps.push(now);
+    const isOwnerOrAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator) || message.author.id === '1266013271518089258';
+    if (!isOwnerOrAdmin) {
+      const key = `${message.guild.id}-${message.author.id}`;
+      const now = Date.now();
+      if (!userMessageLog.has(key)) userMessageLog.set(key, []);
+      const timestamps = userMessageLog.get(key);
+      while (timestamps.length > 0 && timestamps[0] <= now - 3000) timestamps.shift();
+      timestamps.push(now);
 
-    if (timestamps.length >= 5) {
-      userMessageLog.delete(key);
-      const member = await message.guild.members.fetch(message.author.id).catch(() => null);
-      if (member && member.kickable) {
-        await member.kick('[Spam Protection] スパム連投検知').catch(() => null);
+      if (timestamps.length >= 5) {
+        userMessageLog.delete(key);
+        let isDeleted = false;
+        try {
+          await message.delete();
+          isDeleted = true;
+        } catch (e) { isDeleted = false; }
+
+        const botMember = await message.guild.members.fetchMe().catch(() => null);
+        const member = await message.guild.members.fetch(message.author.id).catch(() => null);
+
+        let punished = 'なし';
+        if (member && botMember) {
+          if (botMember.roles.highest.position <= member.roles.highest.position) {
+            await sendCustomEmbed(message.guild.id, new EmbedBuilder().setTitle('⚠️ 権限・ロール失敗 (Anti-Spam)').setColor(0xef4444).setDescription(`対象ユーザー <@${member.id}> のロール順位がBotより上のため処罰できませんでした。`));
+          } else {
+            const timeoutRes = await member.timeout(10 * 60 * 1000, 'スパム自動検知').then(() => true).catch(() => false);
+            if (timeoutRes) {
+              punished = '10分間タイムアウト';
+            } else if (member.kickable) {
+              await member.kick('[Spam Protection] スパム連投').catch(() => null);
+              punished = 'キック(Kick)';
+            }
+          }
+        }
+
+        const msg = `🚨 **スパム連投を検知・処理しました。**\n・連投メッセージ: ${isDeleted ? '🟢 削除成功' : '🔴 削除失敗'}\n・ユーザー処罰: \`${punished}\``;
+        await sendTempMessage(message.channel, msg, 10000);
       }
     }
   }
 
-  // 5️⃣ !help コマンド（スラッシュコマンド詳細記述版）
+  // 5️⃣ !help コマンド (DM送信)
   if (message.content.toLowerCase().startsWith('!help')) {
     await message.delete().catch(() => null);
     const isClientAdmin = message.member ? (message.member.permissions.has(PermissionFlagsBits.Administrator) || message.author.id === '1266013271518089258') : false;
 
-    // 👥 一般向けヘルプ (1/2)
-    const userEmbed = new EmbedBuilder()
-      .setTitle('🏮 MaturiHanabiBot - ヘルプ (1/2)')
-      .setDescription('端末セキュリティ認証 & サーバー保護機能を提供するBotです。')
-      .setColor(0x3b82f6)
-      .addFields(
-        { 
-          name: '🔒 セキュリティ端末認証手順', 
-          value: '1. 認証用チャンネルに設置されたパネルの **「認証」** ボタンを押す\n' +
-                 '2. Botから送られるメッセージ内の **「認証サイトへアクセス」** リンクを開く\n' +
-                 '3. 端末チェック完了後、自動的にロールが付与されます。', 
-          inline: false 
-        },
-        {
-          name: 'ℹ️ 補足事項',
-          value: '※ 複アカ・裏アカによる不正アクセスはシステムにより自動検知・ブロックされます。',
-          inline: false
-        }
-      )
-      .setFooter({ text: '管理者向けコマンドの確認は下のボタンを押してください' })
-      .setTimestamp();
-
-    // 👑 管理者向けスラッシュコマンド一覧 (2/2)
-    const adminEmbed = new EmbedBuilder()
-      .setTitle('🛡️ MaturiHanabiBot - 管理者マニュアル (2/2)')
-      .setDescription('※ スラッシュコマンド（`/`）を実行して設定を行います。\n※ サーバー管理者権限 または 指定管理者ID のみ実行可能です。')
-      .setColor(0xf59e0b)
-      .addFields(
-        { 
-          name: '⚙️ `/v_setup`', 
-          value: '`認証パネル設置` \n指定した付与ロール・剥奪ロール・案内文を設定し、そのチャンネルに端末認証パネルを送信します。', 
-          inline: false 
-        },
-        { 
-          name: '📜 `/v_log <status>`', 
-          value: '`ログ出力チャンネル設定` \nコマンドを実行したチャンネルをログ送信先に指定します。認証成功ログ・メッセージ削除/編集ログ・VCログが集約されます。\n・`status`: ON / OFF', 
-          inline: false 
-        },
-        { 
-          name: '🤖 `/v_antiwebhook <status>`', 
-          value: '`Webhookスパム自動防御` \n短時間に連続送信されたWebhookメッセージと該当のWebhookをサーバー全体で自動削除・遮断します。\n・`status`: ON / OFF', 
-          inline: false 
-        },
-        { 
-          name: '🚨 `/v_risklog <status>`', 
-          value: '`リスクアカウント検知` \n初期アイコンのユーザーや作成後3日以内の新規アカウント参加時にログへ警告を出力します。\n・`status`: ON / OFF', 
-          inline: false 
-        },
-        { 
-          name: '📢 `/v_antieveryone <status>`', 
-          value: '`@everyone 連投防止` \n一般ユーザーによる `@everyone` および `@here` のメンション送信を全チャンネルで即座に自動削除します。\n・`status`: ON / OFF', 
-          inline: false 
-        },
-        { 
-          name: '🔗 `/v_antilink <status>`', 
-          value: '`同一リンク連投防止` \n5秒以内に同一URLが5回連投された場合、該当メッセージを自動削除します。\n・`status`: ON / OFF', 
-          inline: false 
-        },
-        { 
-          name: '🛡️ `/v_antispam <status>`', 
-          value: '`簡易スパム連投対策` \n3秒以内に5通以上の連投を行ったユーザーをサーバーから自動キックします。\n・`status`: ON / OFF', 
-          inline: false 
-        }
-      )
-      .setTimestamp();
+    const { userEmbed, adminEmbed } = generateHelpEmbeds(isClientAdmin);
 
     const btnUser = new ButtonBuilder().setCustomId('help_page_user').setLabel('👥 一般向け').setStyle(ButtonStyle.Primary).setDisabled(true);
-    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel('👑 管理者向けコマンド').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
+    const btnAdmin = new ButtonBuilder().setCustomId('help_page_admin').setLabel(isClientAdmin ? '👑 管理者向け' : '👑 管理者向け (権限なし)').setStyle(ButtonStyle.Secondary).setDisabled(!isClientAdmin);
 
     try {
       const response = await message.author.send({ 
@@ -482,16 +558,35 @@ client.on('messageCreate', async (message) => {
         }
       });
     } catch (e) {
-      const fallback = await message.channel.send(`⚠️ <@${message.author.id}> **DMの受信を許可してください。**`).catch(() => null);
-      setTimeout(() => fallback?.delete().catch(() => null), 5000);
+      await sendTempMessage(message.channel, `⚠️ <@${message.author.id}> **DMの受信を許可してください。**`, 5000);
     }
     return;
   }
 });
 
-// 📥 メンバー参加（初期アイコン・新規アカウント検知）
+// 📥 メンバー参加・AntiRaid自動処罰・参加ログ
 client.on('guildMemberAdd', async (member) => {
   const config = client.getSettings()[member.guild.id] || {};
+  const botMember = await member.guild.members.fetchMe().catch(() => null);
+
+  // AntiRaid 自動キック処理
+  if (config.antiRaid) {
+    const isDefaultAvatar = !member.user.avatar;
+    const accountAgeDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
+    const isNewAccount = accountAgeDays < (config.antiRaidDays || 7);
+
+    if (isDefaultAvatar || isNewAccount) {
+      if (!botMember?.permissions.has(PermissionFlagsBits.KickMembers)) {
+        await sendCustomEmbed(member.guild.id, new EmbedBuilder().setTitle('⚠️ 権限不足エラー (AntiRaid)').setColor(0xef4444).setDescription(`Botに **メンバーをキック (Kick Members)** 権限が無いため、捨て垢 <@${member.id}> を自動キックできませんでした。`));
+      } else if (botMember.roles.highest.position <= member.roles.highest.position) {
+        await sendCustomEmbed(member.guild.id, new EmbedBuilder().setTitle('⚠️ ロール位置エラー (AntiRaid)').setColor(0xef4444).setDescription(`対象ユーザー <@${member.id}> の最高ロールがBotと同等以上の位置にあるため自動キックできませんでした。`));
+      } else {
+        await member.kick('【AntiRaid防衛】初期アイコンまたはアカウント制限日数を満たしていません').catch(() => null);
+        await sendCustomEmbed(member.guild.id, new EmbedBuilder().setTitle('🛡️ AntiRaid防衛実行').setColor(0xef4444).setDescription(`不正アカウントを自動キックしました:\n**ユーザー:** <@${member.id}> (\`${member.user.tag}\`)`));
+        return;
+      }
+    }
+  }
 
   if (config.riskLog) {
     const isDefaultAvatar = !member.user.avatar;
@@ -573,7 +668,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 // 🤖 起動処理
-client.once('clientReady', async () => {
+client.once('ready', async () => {
   await loadSettingsFromGitHub();
   console.log(`Bot Online: ${client.user.tag}`);
   
@@ -584,7 +679,7 @@ client.once('clientReady', async () => {
   setInterval(updatePresence, 60000);
 });
 
-// コマンドの動的ロード（commands/ フォルダからの個別ファイル読み込み）
+// スラッシュコマンドのロード
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
@@ -652,7 +747,6 @@ client.on('interactionCreate', async interaction => {
 
 // エラーハンドリング
 client.on('error', error => console.error('[Discord Error]', error));
-process.on('unhandledRejection', error => console.error('[Unhandled Rejection]', error));
 
 // 🌐 サーバー起動
 app.listen(PORT, () => console.log(`[Web Server] ポート ${PORT} で稼働中。`));
