@@ -150,7 +150,7 @@
   "1523934854578962543": {
     "antiRaid": {
       "kickDefaultAvatar": false,
-      "kickAccountAgeDays": 7
+      "kickAccountAgeDays": 1
     }
   }
 }
