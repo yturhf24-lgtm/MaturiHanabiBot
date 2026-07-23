@@ -176,6 +176,7 @@
       "kickAccountAgeDays": 0
     },
     "antiWebhook": true,
-    "antiLink": true
+    "antiLink": true,
+    "riskLog": true
   }
 }
