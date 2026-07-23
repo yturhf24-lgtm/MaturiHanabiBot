@@ -170,7 +170,7 @@
       "kickDefaultAvatar": false,
       "kickAccountAgeDays": 0
     },
-    "antiWebhook": true,
+    "antiWebhook": false,
     "antiLink": false,
     "riskLog": true
   }
