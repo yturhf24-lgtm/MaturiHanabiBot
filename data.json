@@ -162,7 +162,7 @@
     }
   },
   "1529890621941350600": {
-    "antiSpam": true,
+    "antiSpam": false,
     "vLogChannel": "1529904775221481602",
     "vLogStatus": true,
     "antiEveryone": false,
