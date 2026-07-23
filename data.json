@@ -163,14 +163,14 @@
   },
   "1529890621941350600": {
     "antiSpam": false,
-    "vLogChannel": "1529904775221481602",
-    "vLogStatus": true,
+    "vLogChannel": "1529928948748652715",
+    "vLogStatus": false,
     "antiEveryone": false,
     "antiRaid": {
       "kickDefaultAvatar": false,
       "kickAccountAgeDays": 0
     },
-    "antiWebhook": false,
+    "antiWebhook": true,
     "antiLink": false,
     "riskLog": true
   }
