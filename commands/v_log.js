@@ -1,27 +1,31 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('v_log')
-    .setDescription('全ログの出力チャンネルと有効/無効を設定します。')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addChannelOption(opt => opt.setName('channel').setDescription('ログを出力するチャンネル').setRequired(true))
-    .addBooleanOption(opt => opt.setName('status').setDescription('ログの有効(true)/無効(false)').setRequired(true)),
-
-  async execute(interaction) {
-    const channel = interaction.options.getChannel('channel');
-    const status = interaction.options.getBoolean('status');
-    const guildId = interaction.guildId;
-    const client = interaction.client;
+    .setDescription('実行したチャンネルへログを出力するように設定します')
+    .addBooleanOption(option =>
+      option.setName('status')
+        .setDescription('ON または OFF')
+        .setRequired(true)
+    ),
+  async execute(interaction, client) {
+    if (!client.isAuthorizedUser(interaction)) {
+      return interaction.reply({ content: '❌ **このコマンドを実行する権限がありません。**', flags: [MessageFlags.Ephemeral] });
+    }
 
     const allSettings = client.getSettings();
-    if (!allSettings[guildId]) allSettings[guildId] = {};
+    if (!allSettings[interaction.guildId]) allSettings[interaction.guildId] = {};
+    const config = allSettings[interaction.guildId];
 
-    allSettings[guildId].vLogChannel = channel.id;
-    allSettings[guildId].vLogStatus = status;
-
+    const status = interaction.options.getBoolean('status');
+    config.vLogStatus = status;
+    config.vLogChannel = interaction.channelId;
     await client.saveSettings(allSettings);
 
-    return interaction.reply({ content: `📜 ログ設定を更新しました:\n・**チャンネル:** <#${channel.id}>\n・**ステータス:** ${status ? 'ON' : 'OFF'}`, ephemeral: true });
+    return interaction.reply({ 
+      content: `✅ **ログ出力機能を ${status ? '🟢 ON' : '🔴 OFF'} に設定しました。** (出力先: <#${interaction.channelId}>)`, 
+      flags: [MessageFlags.Ephemeral] 
+    });
   }
 };
