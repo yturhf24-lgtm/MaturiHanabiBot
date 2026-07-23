@@ -3,7 +3,7 @@ const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('v_antilink')
-    .setDescription('実行したチャンネルでの同一リンク5連投自動削除を設定します')
+    .setDescription('サーバー全体の同一リンク5連投自動削除を設定します')
     .addBooleanOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -17,15 +17,13 @@ module.exports = {
     const allSettings = client.getSettings();
     if (!allSettings[interaction.guildId]) allSettings[interaction.guildId] = {};
     const config = allSettings[interaction.guildId];
-    if (!config.channels) config.channels = {};
-    if (!config.channels[interaction.channelId]) config.channels[interaction.channelId] = {};
 
     const status = interaction.options.getBoolean('status');
-    config.channels[interaction.channelId].antiLink = status;
+    config.antiLink = status; // サーバー全体に適用
     await client.saveSettings(allSettings);
 
     return interaction.reply({ 
-      content: `✅ <#${interaction.channelId}> での **同一リンク5連投自動削除を ${status ? '🟢 ON' : '🔴 OFF'} に設定しました。**`, 
+      content: `✅ **サーバー全体の 同一リンク5連投自動削除を ${status ? '🟢 ON' : '🔴 OFF'} に設定しました。**（新規チャンネル含む）`, 
       flags: [MessageFlags.Ephemeral] 
     });
   }
