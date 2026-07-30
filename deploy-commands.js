@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { REST, Routes } = require('discord.js');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -23,7 +24,7 @@ const rest = new REST().setToken(process.env.DISCORD_TOKEN);
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commands },
     );
-    console.log('すべてのサーバーへのコマンド登録が完了しました！');
+    console.log('✅ すべてのサーバーへのコマンド登録が完了しました！');
   } catch (error) {
     console.error(error);
   }
