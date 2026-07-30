@@ -1,8 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const { QuickDB } = require('quick.db');
-const db = new QuickDB();
+const fs = require('fs');
+const path = require('path');
 
 const SPECIAL_USER_ID = '1266013271518089258';
+const DATA_FILE = path.join(__dirname, '../data.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,11 +26,19 @@ module.exports = {
       });
     }
 
-    const guildId = interaction.guildId;
-    const dbKey = `allowed_roles_${guildId}`;
-    const currentRoles = await db.get(dbKey) || [];
+    let settings = {};
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        settings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      }
+    } catch (e) {
+      settings = {};
+    }
 
-    if (currentRoles.length === 0) {
+    const guildId = interaction.guildId;
+    const allowedRoles = settings[guildId]?.allowedRoles || [];
+
+    if (allowedRoles.length === 0) {
       return interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -41,7 +50,7 @@ module.exports = {
       });
     }
 
-    const roleListText = currentRoles.map(roleId => `<@&${roleId}>`).join('\n');
+    const roleListText = allowedRoles.map(roleId => `<@&${roleId}>`).join('\n');
 
     const embed = new EmbedBuilder()
       .setColor(0x0099FF)
