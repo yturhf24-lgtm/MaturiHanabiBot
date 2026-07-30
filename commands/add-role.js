@@ -1,6 +1,9 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 
 const SPECIAL_USER_ID = '1266013271518089258';
+const DATA_FILE = path.join(__dirname, '../data.json'); // ルートディレクトリにある data.json を指定
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -29,13 +32,30 @@ module.exports = {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const role = interaction.options.getRole('role');
-    const settings = interaction.client.getSettings();
+    const guildId = interaction.guildId;
 
-    if (!settings[interaction.guildId]) {
-      settings[interaction.guildId] = { roles: [] };
+    // 1. data.json を直接読み込む（ファイルがなければ空のオブジェクトを作成）
+    let settings = {};
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        const fileData = fs.readFileSync(DATA_FILE, 'utf8');
+        settings = JSON.parse(fileData);
+      }
+    } catch (error) {
+      console.error('data.json の読み込みエラー:', error);
+      settings = {};
     }
 
-    if (settings[interaction.guildId].roles.includes(role.id)) {
+    // 2. サーバーごとのデータ構造がなければ初期化
+    if (!settings[guildId]) {
+      settings[guildId] = { roles: [] };
+    }
+    if (!Array.isArray(settings[guildId].roles)) {
+      settings[guildId].roles = [];
+    }
+
+    // 3. 既に登録されているか確認
+    if (settings[guildId].roles.includes(role.id)) {
       return interaction.editReply({
         embeds: [
           new EmbedBuilder()
@@ -45,8 +65,17 @@ module.exports = {
       });
     }
 
-    settings[interaction.guildId].roles.push(role.id);
-    await interaction.client.saveSettings(settings);
+    // 4. ロールを追加して data.json へ即座に書き込み保存
+    settings[guildId].roles.push(role.id);
+    
+    try {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(settings, null, 2), 'utf8');
+    } catch (error) {
+      console.error('data.json の保存エラー:', error);
+      return interaction.editReply({
+        content: '⚠️ データの保存中にエラーが発生しました。'
+      });
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
