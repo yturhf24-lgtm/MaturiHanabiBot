@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SPECIAL_USER_ID = '1266013271518089258';
-const DATA_FILE = path.join(__dirname, '../data.json');
+const DATA_FILE = path.resolve(__dirname, '../data.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -65,7 +65,14 @@ module.exports = {
     }
 
     settings[guildId].allowedRoles.splice(index, 1);
-    fs.writeFileSync(DATA_FILE, JSON.stringify(settings, null, 2), 'utf8');
+
+    try {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(settings, null, 2), 'utf8');
+      console.log(`[Data Updated] サーバー ${guildId} からロール ${role.id} を削除しました。`);
+    } catch (e) {
+      console.error('data.json 書き込みエラー:', e);
+      return interaction.editReply({ content: '⚠️ データの保存中にエラーが発生しました。' });
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0xFF9900)
