@@ -1,20 +1,16 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 
 const SPECIAL_USER_ID = '1266013271518089258';
-const DATA_FILE = path.join(__dirname, '../data.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('list-role')
     .setDescription('現在登録されている操作許可ロールの一覧を表示します'),
 
-  async execute(interaction) {
-    const isAdmin = interaction.member?.permissions.has('Administrator');
+  async execute(interaction, client) {
+    const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
     const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
 
-    // 権限チェック（確認コマンドも管理者・特権ユーザー・許可ロール保持者のみに見せる場合はここで調整可能ですが、今回は管理者・特権ユーザー専用としています）
     if (!isAdmin && !isSpecialUser) {
       return interaction.reply({
         embeds: [
@@ -27,20 +23,11 @@ module.exports = {
       });
     }
 
-    // data.json からデータを読み込み
-    let settings = {};
-    try {
-      if (fs.existsSync(DATA_FILE)) {
-        settings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      }
-    } catch (error) {
-      settings = {};
-    }
-
     const guildId = interaction.guildId;
-    const allowedRoles = settings[guildId]?.roles || [];
+    const dbKey = `allowed_roles_${guildId}`;
+    const currentRoles = await client.db.get(dbKey) || [];
 
-    if (allowedRoles.length === 0) {
+    if (currentRoles.length === 0) {
       return interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -52,8 +39,7 @@ module.exports = {
       });
     }
 
-    // 登録されているロールをメンション形式の一覧にする
-    const roleListText = allowedRoles.map(roleId => `<@&${roleId}>`).join('\n');
+    const roleListText = currentRoles.map(roleId => `<@&${roleId}>`).join('\n');
 
     const embed = new EmbedBuilder()
       .setColor(0x0099FF)
