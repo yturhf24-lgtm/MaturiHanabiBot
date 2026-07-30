@@ -19,7 +19,31 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// コマンド読み込み
+// -------------------------------------------------------------
+// 📁 data.json 管理システム（メモリキャッシュ ＆ 自動保存）
+// -------------------------------------------------------------
+const DATA_FILE = path.join(__dirname, 'data.json');
+let localSettingsCache = {};
+
+// 起動時にファイルを読み込む
+if (fs.existsSync(DATA_FILE)) {
+  try {
+    localSettingsCache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch (e) {
+    localSettingsCache = {};
+  }
+}
+
+// コマンド側から呼び出せるようにクライアントに紐付け
+client.getSettings = () => localSettingsCache;
+client.saveSettings = async (data) => {
+  localSettingsCache = data;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+};
+
+// -------------------------------------------------------------
+// コマンドファイルの自動読み込み
+// -------------------------------------------------------------
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
   const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -36,6 +60,7 @@ client.once('clientReady', (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 });
 
+// インタラクション処理（コマンド実行時に client を渡す）
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -43,7 +68,7 @@ client.on('interactionCreate', async (interaction) => {
   if (!command) return;
 
   try {
-    await command.execute(interaction);
+    await command.execute(interaction, client);
   } catch (error) {
     console.error(`コマンド実行エラー [/${interaction.commandName}]:`, error);
     const errorMessage = { content: '⚠️ コマンドの実行中にエラーが発生しました。', flags: [MessageFlags.Ephemeral] };
