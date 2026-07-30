@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SPECIAL_USER_ID = '1266013271518089258';
-const DATA_FILE = path.join(__dirname, '../data.json');
+const DATA_FILE = path.resolve(__dirname, '../data.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
