@@ -1,19 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection } = require('discord.js');
 require('dotenv').config();
 
 // --- 環境変数 ---
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
 
 // --- Discord クライアント設定 ---
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 client.commands = new Collection();
-const commandsArray = [];
 
 // --- 設定保存用ヘルパー (data.json) ---
 const SETTINGS_FILE = path.join(__dirname, 'data.json');
@@ -38,25 +36,12 @@ for (const file of commandFiles) {
   const command = require(filePath);
   if ('data' in command && 'execute' in command) {
     client.commands.set(command.data.name, command);
-    commandsArray.push(command.data.toJSON());
   }
 }
 
-// --- Bot起動 & コマンド登録処理 ---
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-client.once('ready', async () => {
+// --- Bot起動イベント (警告解消済み) ---
+client.once('clientReady', () => {
   console.log(`🤖 ログイン完了: ${client.user.tag}`);
-  try {
-    console.log('スラッシュコマンドを登録中...');
-    await rest.put(
-      Routes.applicationCommands(CLIENT_ID),
-      { body: commandsArray },
-    );
-    console.log('✅ スラッシュコマンドの登録が完了しました。');
-  } catch (error) {
-    console.error('スラッシュコマンド登録エラー:', error);
-  }
 });
 
 // --- インタラクション (コマンド実行) イベント ---
@@ -81,14 +66,14 @@ client.on('interactionCreate', async interaction => {
 
 // --- Render Web Service用 ヘルスチェックサーバー ---
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
   res.send('Discord Bot is Online!');
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 ヘルスチェック用Webサーバーが Port ${PORT} で起動しました`);
+  console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`);
 });
 
 // Botログイン
