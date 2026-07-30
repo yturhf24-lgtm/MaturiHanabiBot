@@ -1,16 +1,13 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
 
 const SPECIAL_USER_ID = '1266013271518089258';
-const DATA_FILE = path.resolve(__dirname, '../data.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('list-role')
     .setDescription('現在登録されている操作許可ロールの一覧を表示します'),
 
-  async execute(interaction) {
+  async execute(interaction, client) {
     const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
     const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
 
@@ -26,15 +23,7 @@ module.exports = {
       });
     }
 
-    let settings = {};
-    try {
-      if (fs.existsSync(DATA_FILE)) {
-        settings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      }
-    } catch (e) {
-      settings = {};
-    }
-
+    const settings = client.getSettings();
     const guildId = interaction.guildId;
     const allowedRoles = settings[guildId]?.allowedRoles || [];
 
