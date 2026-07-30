@@ -1,14 +1,13 @@
 {
-  "name": "discord-lgtm-bot",
-  "version": "1.2.0",
-  "description": "Multi-Guild Hosted Discord Bot",
+  "name": "discord-bot",
+  "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "register": "node deploy-commands.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "dotenv": "^16.4.5"
   }
 }
