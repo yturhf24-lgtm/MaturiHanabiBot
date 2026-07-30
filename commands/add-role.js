@@ -1,4 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const { QuickDB } = require('quick.db');
+const db = new QuickDB();
 
 const SPECIAL_USER_ID = '1266013271518089258';
 
@@ -10,7 +12,7 @@ module.exports = {
       option.setName('role').setDescription('許可するロールを選択').setRequired(true)
     ),
 
-  async execute(interaction, client) {
+  async execute(interaction) {
     const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
     const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
 
@@ -32,8 +34,7 @@ module.exports = {
     const guildId = interaction.guildId;
     const dbKey = `allowed_roles_${guildId}`;
 
-    // quick.db から現在のリストを取得（なければ空配列）
-    let currentRoles = await client.db.get(dbKey) || [];
+    let currentRoles = await db.get(dbKey) || [];
 
     if (currentRoles.includes(role.id)) {
       return interaction.editReply({
@@ -45,9 +46,8 @@ module.exports = {
       });
     }
 
-    // リストに追加して即座にDB保存
     currentRoles.push(role.id);
-    await client.db.set(dbKey, currentRoles);
+    await db.set(dbKey, currentRoles);
 
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
