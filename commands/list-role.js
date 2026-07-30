@@ -1,4 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { QuickDB } = require('quick.db');
+const db = new QuickDB();
 
 const SPECIAL_USER_ID = '1266013271518089258';
 
@@ -7,7 +9,7 @@ module.exports = {
     .setName('list-role')
     .setDescription('現在登録されている操作許可ロールの一覧を表示します'),
 
-  async execute(interaction, client) {
+  async execute(interaction) {
     const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
     const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
 
@@ -25,7 +27,7 @@ module.exports = {
 
     const guildId = interaction.guildId;
     const dbKey = `allowed_roles_${guildId}`;
-    const currentRoles = await client.db.get(dbKey) || [];
+    const currentRoles = await db.get(dbKey) || [];
 
     if (currentRoles.length === 0) {
       return interaction.reply({
