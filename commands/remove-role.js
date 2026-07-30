@@ -1,8 +1,9 @@
 const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
-const { QuickDB } = require('quick.db');
-const db = new QuickDB();
+const fs = require('fs');
+const path = require('path');
 
 const SPECIAL_USER_ID = '1266013271518089258';
+const DATA_FILE = path.join(__dirname, '../data.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,11 +33,27 @@ module.exports = {
 
     const role = interaction.options.getRole('role');
     const guildId = interaction.guildId;
-    const dbKey = `allowed_roles_${guildId}`;
 
-    let currentRoles = await db.get(dbKey) || [];
+    let settings = {};
+    try {
+      if (fs.existsSync(DATA_FILE)) {
+        settings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      }
+    } catch (e) {
+      settings = {};
+    }
 
-    const index = currentRoles.indexOf(role.id);
+    if (!settings[guildId] || !Array.isArray(settings[guildId].allowedRoles)) {
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xFFFF00)
+            .setDescription('このサーバーには登録されている許可ロールがありません。')
+        ]
+      });
+    }
+
+    const index = settings[guildId].allowedRoles.indexOf(role.id);
     if (index === -1) {
       return interaction.editReply({
         embeds: [
@@ -47,8 +64,8 @@ module.exports = {
       });
     }
 
-    currentRoles.splice(index, 1);
-    await db.set(dbKey, currentRoles);
+    settings[guildId].allowedRoles.splice(index, 1);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(settings, null, 2), 'utf8');
 
     const embed = new EmbedBuilder()
       .setColor(0xFF9900)
