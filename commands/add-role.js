@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 const SPECIAL_USER_ID = '1266013271518089258';
-const DATA_FILE = path.join(__dirname, '../data.json');
+// 絶対パスで確実にプロジェクトルートの data.json を指すように変更
+const DATA_FILE = path.resolve(__dirname, '../data.json');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -34,19 +35,22 @@ module.exports = {
     const role = interaction.options.getRole('role');
     const guildId = interaction.guildId;
 
+    // data.json の読み込み
     let settings = {};
     try {
       if (fs.existsSync(DATA_FILE)) {
-        settings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        const fileContent = fs.readFileSync(DATA_FILE, 'utf8');
+        settings = JSON.parse(fileContent);
       }
     } catch (e) {
+      console.error('data.json 読み込みエラー:', e);
       settings = {};
     }
 
     if (!settings[guildId]) {
       settings[guildId] = { allowedRoles: [] };
     }
-    if (!settings[guildId].allowedRoles) {
+    if (!Array.isArray(settings[guildId].allowedRoles)) {
       settings[guildId].allowedRoles = [];
     }
 
@@ -60,8 +64,19 @@ module.exports = {
       });
     }
 
+    // リストに追加
     settings[guildId].allowedRoles.push(role.id);
-    fs.writeFileSync(DATA_FILE, JSON.stringify(settings, null, 2), 'utf8');
+
+    // 同期的にファイルへ書き込み
+    try {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(settings, null, 2), 'utf8');
+      console.log(`[Data Saved] サーバー ${guildId} にロール ${role.id} を保存しました。`);
+    } catch (e) {
+      console.error('data.json 書き込みエラー:', e);
+      return interaction.editReply({
+        content: '⚠️ データの保存中にエラーが発生しました。'
+      });
+    }
 
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
