@@ -14,7 +14,8 @@
   "1532769369703190800": {
     "antiInvite": {
       "enabled": true,
-      "logChannelId": "1532769370726727702"
+      "logChannelId": "1532769370726727702",
+      "timeoutMinutes": 10
     }
   }
 }
