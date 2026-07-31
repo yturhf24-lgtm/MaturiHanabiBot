@@ -162,8 +162,9 @@ client.once('clientReady', async (c) => {
       if (!channel) continue;
 
       let mentionText = '';
-      if (notifyConfig.mention === '@everyone') mentionText = '@everyone';
-      if (notifyConfig.mention === '@here') mentionText = '@here';
+      if (notifyConfig.mentionType === '@everyone') mentionText = '@everyone';
+      if (notifyConfig.mentionType === '@here') mentionText = '@here';
+      if (notifyConfig.mentionRoleId) mentionText = `<@&${notifyConfig.mentionRoleId}>`;
 
       const embed = new EmbedBuilder()
         .setColor(0x0099FF)
