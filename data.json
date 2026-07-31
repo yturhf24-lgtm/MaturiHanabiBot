@@ -7,7 +7,8 @@
     "restartNotify": {
       "enabled": true,
       "channelId": "1521770308871389235",
-      "mention": "@everyone"
+      "mentionType": null,
+      "mentionRoleId": "1523243780285927485"
     }
   },
   "1420273296833773684": {
