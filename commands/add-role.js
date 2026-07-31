@@ -1,29 +1,29 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 
 const SPECIAL_USER_ID = '1266013271518089258';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('add-role')
-    .setDescription('【管理者・特別ユーザー専用】Botの操作を許可するロールを追加します')
+    .setDescription('【特別ユーザー・サーバーオーナー専用】Botの操作を許可するロールを追加します')
     .addRoleOption(option =>
       option.setName('role').setDescription('許可するロールを選択').setRequired(true)
     ),
 
   async execute(interaction, client) {
-    // まず最優先で応答の猶予を稼ぐ（3秒制限対策）
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-    const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
+    // 判定：指定プレイヤー または サーバーの所有者(オーナー)か
     const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
+    const isGuildOwner = interaction.guild?.ownerId === interaction.user.id;
 
-    if (!isAdmin && !isSpecialUser) {
+    if (!isSpecialUser && !isGuildOwner) {
       return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('❌ 権限エラー')
-            .setDescription('このコマンドは管理者または指定プレイヤーのみ実行可能です。')
+            .setDescription('このコマンドはサーバーの所有者または指定されたプレイヤーのみ実行可能です。')
         ]
       });
     }
@@ -51,7 +51,7 @@ module.exports = {
     }
 
     settings[guildId].allowedRoles.push(role.id);
-    await client.saveSettings(settings);
+    await client.saveSettings(settings); // これが自動でGitHubにも同期されます！
 
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
