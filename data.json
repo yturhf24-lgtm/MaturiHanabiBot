@@ -9,6 +9,12 @@
       "channelId": "1521770308871389235",
       "mentionType": null,
       "mentionRoleId": "1523243780285927485"
+    },
+    "antiDefaultAvatar": {
+      "enabled": true,
+      "logChannelId": "1521768242828546049",
+      "mentionRoleId": null,
+      "kick": false
     }
   },
   "1420273296833773684": {
