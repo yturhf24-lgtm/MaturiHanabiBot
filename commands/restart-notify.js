@@ -21,10 +21,18 @@ module.exports = {
         .setRequired(false)
     )
     .addStringOption(option =>
-      option.setName('mention')
-        .setDescription('通知時にメンションする対象（任意）')
+      option.setName('mention-type')
+        .setDescription('特殊メンション（@everyone / @here）を使う場合')
         .setRequired(false)
-        .addChoices({ name: '@everyone', value: '@everyone' }, { name: '@here', value: '@here' })
+        .addChoices(
+          { name: '@everyone', value: '@everyone' },
+          { name: '@here', value: '@here' }
+        )
+    )
+    .addRoleOption(option =>
+      option.setName('mention-role')
+        .setDescription('通知時にメンションするサーバー内のロール（任意）')
+        .setRequired(false)
     ),
 
   async execute(interaction, client) {
@@ -36,7 +44,8 @@ module.exports = {
 
     const status = interaction.options.getString('status');
     const channel = interaction.options.getChannel('channel');
-    const mention = interaction.options.getString('mention') || 'なし';
+    const mentionType = interaction.options.getString('mention-type');
+    const mentionRole = interaction.options.getRole('mention-role');
     const guildId = interaction.guildId;
 
     if (status === 'on' && !channel) {
@@ -49,14 +58,28 @@ module.exports = {
     if (!settings[guildId]) settings[guildId] = {};
 
     if (status === 'on') {
-      settings[guildId].restartNotify = { enabled: true, channelId: channel.id, mention };
+      settings[guildId].restartNotify = {
+        enabled: true,
+        channelId: channel.id,
+        mentionType: mentionType || null,
+        mentionRoleId: mentionRole ? mentionRole.id : null
+      };
       await client.saveSettings(settings);
 
+      let mentionDesc = 'なし';
+      if (mentionType) mentionDesc = mentionType;
+      if (mentionRole) mentionDesc = `<@&${mentionRole.id}>`;
+
       await interaction.editReply({
-        embeds: [new EmbedBuilder().setColor(0x00FF00).setTitle('🔔 再起動通知設定: ON').setDescription(`送信先: <#${channel.id}>\nメンション: ${mention}`)]
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('🔔 再起動通知設定: ON')
+            .setDescription(`送信先: <#${channel.id}>\nメンション: ${mentionDesc}`)
+        ]
       });
     } else {
-      settings[guildId].restartNotify = { enabled: false, channelId: null, mention: 'なし' };
+      settings[guildId].restartNotify = { enabled: false, channelId: null, mentionType: null, mentionRoleId: null };
       await client.saveSettings(settings);
 
       await interaction.editReply({
