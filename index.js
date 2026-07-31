@@ -20,33 +20,37 @@ const client = new Client({
 client.commands = new Collection();
 
 // -------------------------------------------------------------
-// 📁 data.json 管理システム（なければ自動生成）
+// 📁 data.json 管理システム（絶対パス＆強制保存・デバッグログ付き）
 // -------------------------------------------------------------
-const DATA_FILE = path.join(__dirname, 'data.json');
+const DATA_FILE = path.resolve(__dirname, 'data.json');
 let localSettingsCache = {};
 
-// data.json が存在するか確認し、なければ空のJSONファイルを作成する
-if (!fs.existsSync(DATA_FILE)) {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify({}, null, 2), 'utf8');
-    console.log('📁 data.json が見つからなかったため、新しく作成しました。');
-  } catch (e) {
-    console.error('data.json の作成に失敗しました:', e);
-  }
-}
-
-// ファイルから読み込み
+// 起動時にファイルがなければ作成、あれば読み込み
 try {
+  if (!fs.existsSync(DATA_FILE)) {
+    fs.writeFileSync(DATA_FILE, JSON.stringify({}, null, 2), 'utf8');
+    console.log(`[Data Init] data.json が存在しなかったため新規作成しました: ${DATA_FILE}`);
+  }
+  
   const fileContent = fs.readFileSync(DATA_FILE, 'utf8');
   localSettingsCache = JSON.parse(fileContent);
+  console.log('[Data Load] データを正常に読み込みました:', localSettingsCache);
 } catch (e) {
+  console.error('[Data Error] 読み込み/初期化エラー:', e);
   localSettingsCache = {};
 }
 
 client.getSettings = () => localSettingsCache;
+
 client.saveSettings = async (data) => {
   localSettingsCache = data;
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+  try {
+    // 同期的に書き込み、確実にストレージへ反映させる
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`[Data Saved] data.json への書き込みに成功しました (${DATA_FILE})`, data);
+  } catch (e) {
+    console.error('[Data Save Error] data.json への書き込みに失敗しました:', e);
+  }
 };
 
 // -------------------------------------------------------------
