@@ -20,7 +20,7 @@
     "restartNotify": {
       "enabled": true,
       "channelId": "1532769370726727702",
-      "mention": "@everyone"
+      "mention": "なし"
     }
   }
 }
