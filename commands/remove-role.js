@@ -55,8 +55,6 @@ module.exports = {
     }
 
     settings[guildId].allowedRoles.splice(index, 1);
-    
-    // 保存関数を呼び出して更新
     await client.saveSettings(settings);
 
     const embed = new EmbedBuilder()
