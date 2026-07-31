@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, ChannelType } = require('discord.js');
 
 const SPECIAL_USER_ID = '1266013271518089258';
 
@@ -17,6 +17,19 @@ module.exports = {
           { name: 'ON', value: 'on' },
           { name: 'OFF', value: 'off' }
         )
+    )
+    .addChannelOption(option =>
+      option.setName('log-channel')
+        .setDescription('ログを送信するチャンネル（ONの時のみ有効）')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option.setName('timeout-minutes')
+        .setDescription('タイムアウトする時間（分）※デフォルト: 10分')
+        .setMinValue(1)
+        .setMaxValue(1440) // 最大24時間
+        .setRequired(false)
     ),
 
   async execute(interaction, client) {
@@ -38,8 +51,9 @@ module.exports = {
     }
 
     const status = interaction.options.getString('status');
+    const logChannel = interaction.options.getChannel('log-channel') || interaction.channel;
+    const timeoutMinutes = interaction.options.getInteger('timeout-minutes') || 10; // デフォルト10分
     const guildId = interaction.guildId;
-    const channelId = interaction.channelId;
 
     const settings = client.getSettings();
     if (!settings[guildId]) {
@@ -49,7 +63,8 @@ module.exports = {
     if (status === 'on') {
       settings[guildId].antiInvite = {
         enabled: true,
-        logChannelId: channelId // 実行したチャンネルをログ出力先にする
+        logChannelId: logChannel.id,
+        timeoutMinutes: timeoutMinutes
       };
       await client.saveSettings(settings);
 
@@ -58,13 +73,14 @@ module.exports = {
           new EmbedBuilder()
             .setColor(0x00FF00)
             .setTitle('🛡️ 招待リンク荒らし対策: ON')
-            .setDescription(`このチャンネル（<#${channelId}>）をログ出力先として、荒らし対策を有効化しました。\n\n**【設定内容】**\n・適用範囲: 全チャンネル\n・条件: 3秒以内に3回同じ招待リンク\n・処置: メッセージ削除 ＆ 10分タイムアウト\n・Botの場合: 全体メンション（@everyone）でお知らせ\n・ログ: このチャンネルに送信（10秒で自動消滅）`)
+            .setDescription(`荒らし対策を有効化しました。\n\n**【設定内容】**\n・適用範囲: 全チャンネル\n・条件: 3秒以内に3回同じ招待リンク\n・処置: メッセージ削除 ＆ **${timeoutMinutes}分**タイムアウト\n・Botの場合: 全体メンション（@everyone）でお知らせ\n・ログ送信先: <#${logChannel.id}> （10秒で自動消滅）`)
         ]
       });
     } else {
       settings[guildId].antiInvite = {
         enabled: false,
-        logChannelId: null
+        logChannelId: null,
+        timeoutMinutes: 10
       };
       await client.saveSettings(settings);
 
@@ -80,7 +96,7 @@ module.exports = {
   },
 
   // -------------------------------------------------------------
-  // 🔍 メッセージ検知・自動処置ロジック（index.js等から呼び出す用）
+  // 🔍 メッセージ検知・自動処置ロジック
   // -------------------------------------------------------------
   async handleMessage(message, client) {
     if (!message.guild || message.author.bot) return;
@@ -91,18 +107,16 @@ module.exports = {
 
     if (!antiConfig || !antiConfig.enabled) return;
 
-    // 招待リンクの正規表現（discord.gg/ または discord.com/invite/ 等）
+    // 招待リンクの正規表現
     const inviteRegex = /(https?:\/\/)?(www\.)?(discord\.(gg|io|me|li)|discordapp\.com\/invite|discord\.com\/invites)\/[a-zA-Z0-9]+/g;
     const matches = message.content.match(inviteRegex);
 
     if (!matches) return;
 
-    // 検出されたリンク（正規化して比較用に保持）
     const inviteLink = matches[0];
     const userId = message.author.id;
     const now = Date.now();
 
-    // キャッシュキー（サーバーID + ユーザーID + リンク）
     const cacheKey = `${guildId}-${userId}-${inviteLink}`;
 
     if (!messageCache.has(cacheKey)) {
@@ -110,14 +124,13 @@ module.exports = {
     }
 
     const timestamps = messageCache.get(cacheKey);
-    // 3秒以内の履歴だけを残す
     const recentTimestamps = timestamps.filter(t => now - t < 3000);
     recentTimestamps.push(now);
     messageCache.set(cacheKey, recentTimestamps);
 
     // 3秒以内に3回同じリンクが投稿された場合
     if (recentTimestamps.length >= 3) {
-      messageCache.delete(cacheKey); // キャッシュクリア
+      messageCache.delete(cacheKey);
 
       try {
         // 1. メッセージの削除
@@ -125,11 +138,13 @@ module.exports = {
           await message.delete().catch(() => {});
         }
 
-        // 2. タイムアウトの付与 (10分間)
+        // 2. タイムアウトの付与（指定された分数をミリ秒に変換）
+        const timeoutDuration = (antiConfig.timeoutMinutes || 10) * 60 * 1000;
         const member = await message.guild.members.fetch(userId).catch(() => null);
         let timeoutSuccess = false;
+        
         if (member && member.moderatable) {
-          await member.timeout(10 * 60 * 1000, '3秒以内に同じ招待リンクを3回連投したため（荒らし対策）');
+          await member.timeout(timeoutDuration, `3秒以内に同じ招待リンクを3回連投したため（荒らし対策）`);
           timeoutSuccess = true;
         }
 
@@ -138,9 +153,8 @@ module.exports = {
         const logChannel = message.guild.channels.cache.get(logChannelId);
 
         if (logChannel) {
-          // Botの場合は全体メンションを含める
           const mentionText = message.author.bot ? '@everyone\n' : '';
-          const timeoutText = timeoutSuccess ? '10分間のタイムアウトを適用しました。' : '⚠️ 権限不足またはロール階層の影響でタイムアウトを付与できませんでした。';
+          const timeoutText = timeoutSuccess ? `${antiConfig.timeoutMinutes}分間のタイムアウトを適用しました。` : '⚠️ 権限不足またはロール階層の影響でタイムアウトを付与できませんでした。';
 
           const logEmbed = new EmbedBuilder()
             .setColor(0xFF0000)
@@ -150,7 +164,7 @@ module.exports = {
 
           const sentMsg = await logChannel.send({ embeds: [logEmbed] }).catch(() => null);
 
-          // 10秒後にログを自動消去する
+          // 10秒後にログを自動消去
           if (sentMsg) {
             setTimeout(async () => {
               await sentMsg.delete().catch(() => {});
