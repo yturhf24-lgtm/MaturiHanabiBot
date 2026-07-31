@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -20,17 +20,27 @@ const client = new Client({
 client.commands = new Collection();
 
 // -------------------------------------------------------------
-// 📁 data.json 管理システム（メモリキャッシュ ＆ ファイル同期）
+// 📁 data.json 管理システム（なければ自動生成）
 // -------------------------------------------------------------
 const DATA_FILE = path.join(__dirname, 'data.json');
 let localSettingsCache = {};
 
-if (fs.existsSync(DATA_FILE)) {
+// data.json が存在するか確認し、なければ空のJSONファイルを作成する
+if (!fs.existsSync(DATA_FILE)) {
   try {
-    localSettingsCache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    fs.writeFileSync(DATA_FILE, JSON.stringify({}, null, 2), 'utf8');
+    console.log('📁 data.json が見つからなかったため、新しく作成しました。');
   } catch (e) {
-    localSettingsCache = {};
+    console.error('data.json の作成に失敗しました:', e);
   }
+}
+
+// ファイルから読み込み
+try {
+  const fileContent = fs.readFileSync(DATA_FILE, 'utf8');
+  localSettingsCache = JSON.parse(fileContent);
+} catch (e) {
+  localSettingsCache = {};
 }
 
 client.getSettings = () => localSettingsCache;
