@@ -11,22 +11,22 @@ module.exports = {
     ),
 
   async execute(interaction, client) {
+    // まず最優先で応答の猶予を稼ぐ（3秒制限対策）
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
+
     const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
     const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
 
     if (!isAdmin && !isSpecialUser) {
-      return interaction.reply({
+      return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('❌ 権限エラー')
             .setDescription('このコマンドは管理者または指定プレイヤーのみ実行可能です。')
-        ],
-        flags: [MessageFlags.Ephemeral]
+        ]
       });
     }
-
-    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     const role = interaction.options.getRole('role');
     const guildId = interaction.guildId;
