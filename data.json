@@ -3,7 +3,12 @@
     "allowedRoles": []
   },
   "1521768113106849912": {
-    "allowedRoles": []
+    "allowedRoles": [],
+    "restartNotify": {
+      "enabled": true,
+      "channelId": "1521770308871389235",
+      "mention": "@everyone"
+    }
   },
   "1420273296833773684": {
     "antiInvite": {
