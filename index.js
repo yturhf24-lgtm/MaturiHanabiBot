@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -20,12 +20,11 @@ const client = new Client({
 client.commands = new Collection();
 
 // -------------------------------------------------------------
-// 📁 data.json 管理システム（メモリキャッシュ ＆ 自動保存）
+// 📁 data.json 管理システム（メモリキャッシュ ＆ ファイル同期）
 // -------------------------------------------------------------
 const DATA_FILE = path.join(__dirname, 'data.json');
 let localSettingsCache = {};
 
-// 起動時にファイルを読み込む
 if (fs.existsSync(DATA_FILE)) {
   try {
     localSettingsCache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -34,7 +33,6 @@ if (fs.existsSync(DATA_FILE)) {
   }
 }
 
-// コマンド側から呼び出せるようにクライアントに紐付け
 client.getSettings = () => localSettingsCache;
 client.saveSettings = async (data) => {
   localSettingsCache = data;
@@ -60,7 +58,6 @@ client.once('clientReady', (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 });
 
-// インタラクション処理（コマンド実行時に client を渡す）
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
