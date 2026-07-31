@@ -6,6 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('anti-default-avatar')
     .setDescription('【特別ユーザー・サーバーオーナー専用】初期アイコンの参加者を自動でKickします')
+    // 必須オプションを先に配置
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -18,29 +19,30 @@ module.exports = {
         .addChannelTypes(ChannelType.GuildText)
         .setRequired(true)
     )
-    .addRoleOption(option =>
-      option.setName('mention-role')
-        .setDescription('通知時にメンションするロール（任意）')
-        .setRequired(false)
-    )
     .addStringOption(option =>
       option.setName('kick-action')
         .setDescription('Kickを実行するかどうか')
         .setRequired(true)
         .addChoices({ name: 'Kickする', value: 'yes' }, { name: 'Kickしない（ログのみ）', value: 'no' })
+    )
+    // 任意オプションを後ろに配置
+    .addRoleOption(option =>
+      option.setName('mention-role')
+        .setDescription('通知時にメンションするロール（任意）')
+        .setRequired(false)
     ),
 
   async execute(interaction, client) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
     if (interaction.user.id !== SPECIAL_USER_ID && interaction.guild?.ownerId !== interaction.user.id) {
-      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xFF0000).setTitle('❌ 権限エラー').setDescription('このコマンドは実行できません。')] });
+      return interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xFF0000).setTitle('❌ 権限エラー').setDescription('権限がありません。')] });
     }
 
     const status = interaction.options.getString('status');
     const logChannel = interaction.options.getChannel('log-channel');
-    const mentionRole = interaction.options.getRole('mention-role');
     const kickAction = interaction.options.getString('kick-action') === 'yes';
+    const mentionRole = interaction.options.getRole('mention-role');
     const guildId = interaction.guildId;
 
     const settings = client.getSettings();
@@ -59,7 +61,7 @@ module.exports = {
         new EmbedBuilder()
           .setColor(status === 'on' ? 0x00FF00 : 0xFF0000)
           .setTitle(`🐣 初期アイコン対策: ${status.toUpperCase()}`)
-          .setDescription(`設定を保存しました。\n・ログチャンネル: <#${logChannel.id}>\n・メンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}\n・Kick実行: ${kickAction ? '有効' : '無効'}`)
+          .setDescription(`ログチャンネル: <#${logChannel.id}>\nKick実行: ${kickAction ? '有効' : '無効'}\nメンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
       ]
     });
   },
@@ -69,11 +71,10 @@ module.exports = {
     const config = settings[member.guild.id]?.antiDefaultAvatar;
     if (!config || !config.enabled) return;
 
-    // 初期アイコンかどうかの判定 (Discordはアバターハッシュがない場合デフォルトアイコン)
     if (!member.user.avatar) {
       try {
         if (config.kick && member.kickable) {
-          await member.kick('初期アイコンによる自動Kick（荒らし対策）');
+          await member.kick('初期アイコン自動Kick');
         }
 
         const logChannel = member.guild.channels.cache.get(config.logChannelId);
@@ -82,12 +83,12 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('🐣 初期アイコンユーザー検知')
-            .setDescription(`${mentionText}ユーザー: <@${member.id}> (${member.user.tag})\n処置: ${config.kick ? 'Kickしました' : '検知のみ（Kick無効）'}`)
+            .setDescription(`${mentionText}ユーザー: <@${member.id}>\n処置: ${config.kick ? 'Kickしました' : '検知のみ'}`)
             .setTimestamp();
           await logChannel.send({ embeds: [embed] }).catch(() => {});
         }
       } catch (err) {
-        console.error('初期アイコン対策エラー:', err);
+        console.error('エラー:', err);
       }
     }
   }
