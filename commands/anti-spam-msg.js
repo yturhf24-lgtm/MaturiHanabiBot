@@ -7,6 +7,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('anti-spam-message')
     .setDescription('【特別ユーザー・サーバーオーナー専用】メッセージの連投スパム対策を設定します')
+    // 必須オプションを先にする
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -21,12 +22,12 @@ module.exports = {
     )
     .addIntegerOption(option =>
       option.setName('seconds')
-        .setDescription('何秒以内か（例: 3）')
+        .setDescription('何秒以内か')
         .setRequired(true)
     )
     .addIntegerOption(option =>
       option.setName('count')
-        .setDescription('何回投稿したら（例: 5）')
+        .setDescription('何回投稿したら')
         .setRequired(true)
     )
     .addStringOption(option =>
@@ -40,6 +41,7 @@ module.exports = {
           { name: '削除 ＋ BAN', value: 'ban' }
         )
     )
+    // 任意オプションを後ろにする
     .addRoleOption(option =>
       option.setName('mention-role')
         .setDescription('通知時にメンションするロール（任意）')
@@ -79,7 +81,7 @@ module.exports = {
         new EmbedBuilder()
           .setColor(status === 'on' ? 0x00FF00 : 0xFF0000)
           .setTitle(`💬 スパム対策: ${status.toUpperCase()}`)
-          .setDescription(`設定しました。\n・条件: ${seconds}秒以内に${count}回投稿\n・処置: ${action}\n・ログ: <#${logChannel.id}>`)
+          .setDescription(`条件: ${seconds}秒以内に${count}回\n処置: ${action}\nログ: <#${logChannel.id}>`)
       ]
     });
   },
@@ -105,7 +107,6 @@ module.exports = {
       spamCache.delete(key);
 
       try {
-        // メッセージ一括削除または該当メッセージ削除
         if (message.channel.permissionsFor(message.guild.members.me).has('ManageMessages')) {
           const fetched = await message.channel.messages.fetch({ limit: config.count }).catch(() => null);
           if (fetched) {
@@ -119,13 +120,13 @@ module.exports = {
 
         if (member) {
           if (config.action === 'timeout' && member.moderatable) {
-            await member.timeout(10 * 60 * 1000, 'スパムメッセージ連投のため');
+            await member.timeout(10 * 60 * 1000, 'スパムメッセージ連投');
             actionText = 'メッセージ削除 ＆ 10分タイムアウト';
           } else if (config.action === 'kick' && member.kickable) {
-            await member.kick('スパムメッセージ連投のため');
+            await member.kick('スパムメッセージ連投');
             actionText = 'メッセージ削除 ＆ Kick';
           } else if (config.action === 'ban' && member.bannable) {
-            await member.ban({ reason: 'スパムメッセージ連投のため' });
+            await member.ban({ reason: 'スパムメッセージ連投' });
             actionText = 'メッセージ削除 ＆ BAN';
           }
         }
@@ -136,12 +137,12 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('🚨 スパムメッセージ検知')
-            .setDescription(`${mentionText}ユーザー: <@${userId}>\n条件: ${config.seconds}秒以内に${config.count}回投稿\n処置: ${actionText}`)
+            .setDescription(`${mentionText}ユーザー: <@${userId}>\n処置: ${actionText}`)
             .setTimestamp();
           await logChannel.send({ embeds: [embed] }).catch(() => {});
         }
       } catch (err) {
-        console.error('スパムメッセージ検知エラー:', err);
+        console.error('エラー:', err);
       }
     }
   }
