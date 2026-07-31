@@ -6,6 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('anti-new-account')
     .setDescription('【特別ユーザー・サーバーオーナー専用】指定日数未満のアカウントの参加を制限します')
+    // 必須オプションを先にする
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -20,14 +21,15 @@ module.exports = {
     )
     .addIntegerOption(option =>
       option.setName('min-days')
-        .setDescription('この日数以上（例: 0日以上）')
+        .setDescription('この日数以上')
         .setRequired(true)
     )
     .addIntegerOption(option =>
       option.setName('max-days')
-        .setDescription('この日数未満（例: 7日未満なら対象）')
+        .setDescription('この日数未満')
         .setRequired(true)
     )
+    // 任意オプションを後ろにする
     .addRoleOption(option =>
       option.setName('mention-role')
         .setDescription('通知時にメンションするロール（任意）')
@@ -65,7 +67,7 @@ module.exports = {
         new EmbedBuilder()
           .setColor(status === 'on' ? 0x00FF00 : 0xFF0000)
           .setTitle(`📅 新規アカウント対策: ${status.toUpperCase()}`)
-          .setDescription(`設定しました。\n・対象: アカウント作成から ${minDays}日以上 〜 ${maxDays}日未満\n・ログ: <#${logChannel.id}>\n・メンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
+          .setDescription(`対象: ${minDays}日以上 〜 ${maxDays}日未満\nログ: <#${logChannel.id}>\nメンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
       ]
     });
   },
@@ -80,7 +82,7 @@ module.exports = {
     if (accountAgeDays >= config.minDays && accountAgeDays < config.maxDays) {
       try {
         if (member.kickable) {
-          await member.kick(`アカウント作成から ${Math.floor(accountAgeDays)}日経過のため（新規垢対策）`);
+          await member.kick('新規アカウント自動Kick');
         }
 
         const logChannel = member.guild.channels.cache.get(config.logChannelId);
@@ -89,12 +91,12 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('📅 新規アカウント自動Kick')
-            .setDescription(`${mentionText}ユーザー: <@${member.id}> (${member.user.tag})\nアカウント作成からの日数: ${Math.floor(accountAgeDays)}日\n処置: Kickしました`)
+            .setDescription(`${mentionText}ユーザー: <@${member.id}>\n経過日数: ${Math.floor(accountAgeDays)}日`)
             .setTimestamp();
           await logChannel.send({ embeds: [embed] }).catch(() => {});
         }
       } catch (err) {
-        console.error('新規アカウント対策エラー:', err);
+        console.error('エラー:', err);
       }
     }
   }
