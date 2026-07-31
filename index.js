@@ -86,7 +86,6 @@ client.saveSettings = async (data) => {
   }
 
   try {
-    // 1. まず現在のファイルの SHA ハッシュを取得（GitHub APIの仕様上必要）
     const getRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json?ref=${BRANCH}`, {
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
@@ -101,7 +100,6 @@ client.saveSettings = async (data) => {
       sha = fileInfo.sha;
     }
 
-    // 2. GitHubへファイルを更新（コミット）する
     const putRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
       method: 'PUT',
       headers: {
@@ -164,6 +162,16 @@ client.on('interactionCreate', async (interaction) => {
     } else {
       await interaction.reply(errorMessage).catch(() => null);
     }
+  }
+});
+
+// -------------------------------------------------------------
+// メッセージ監視（招待リンク荒らし対策の検知用）
+// -------------------------------------------------------------
+client.on('messageCreate', async (message) => {
+  const antiCommand = client.commands.get('anti-invite');
+  if (antiCommand && antiCommand.handleMessage) {
+    await antiCommand.handleMessage(message, client);
   }
 });
 
