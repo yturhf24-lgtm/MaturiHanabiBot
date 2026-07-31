@@ -27,7 +27,7 @@ const DATA_FILE = path.resolve(__dirname, 'data.json');
 let localSettingsCache = {};
 
 // -------------------------------------------------------------
-// 📁 GitHub連携型 data.json 管理システム
+// 📁 GitHub連携型 data.json 管理システム（個別サーバー対応）
 // -------------------------------------------------------------
 async function loadDataFromGitHub() {
   try {
@@ -143,12 +143,11 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// Bot起動時の処理 ＆ 再起動通知の送信
+// Bot起動時の処理 ＆ 埋め込み式再起動通知の送信
 // -------------------------------------------------------------
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
-  // 各サーバーの再起動通知設定を確認して送信
   const settings = client.getSettings();
   
   for (const [guildId, guildSettings] of Object.entries(settings)) {
@@ -169,7 +168,7 @@ client.once('clientReady', async (c) => {
       const embed = new EmbedBuilder()
         .setColor(0x0099FF)
         .setTitle('🔄 システム再起動・アップデート完了')
-        .setDescription('Botのアップデートやシステムメンテナンスに伴う再起動が完了しました。正常に稼働を再開しています。')
+        .setDescription('Botのアップデートやシステムメンテナンスに伴う再起動・アップデートが行われました。正常に稼働を再開しています。')
         .setTimestamp();
 
       await channel.send({
@@ -183,7 +182,7 @@ client.once('clientReady', async (c) => {
   }
 });
 
-// スラッシュコマンドの実行処理
+// スラッシュコマンドの実行処理（埋め込みエラー対応）
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -194,20 +193,43 @@ client.on('interactionCreate', async (interaction) => {
     await command.execute(interaction, client);
   } catch (error) {
     console.error(`コマンド実行エラー [/${interaction.commandName}]:`, error);
-    const errorMessage = { content: '⚠️ コマンドの実行中にエラーが発生しました。', flags: [MessageFlags.Ephemeral] };
+    const errorEmbed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('❌ 実行エラー')
+      .setDescription('コマンドの実行中にエラーが発生しました。');
+
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errorMessage).catch(() => null);
+      await interaction.followUp({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
-      await interaction.reply(errorMessage).catch(() => null);
+      await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
     }
   }
 });
 
-// メッセージ監視（招待リンク荒らし対策の検知用）
+// -------------------------------------------------------------
+// イベント監視（荒らし対策各種）
+// -------------------------------------------------------------
+client.on('guildMemberAdd', async (member) => {
+  const avatarCommand = client.commands.get('anti-default-avatar');
+  if (avatarCommand && avatarCommand.handleMemberAdd) {
+    await avatarCommand.handleMemberAdd(member, client);
+  }
+
+  const newAccCommand = client.commands.get('anti-new-account');
+  if (newAccCommand && newAccCommand.handleMemberAdd) {
+    await newAccCommand.handleMemberAdd(member, client);
+  }
+});
+
 client.on('messageCreate', async (message) => {
-  const antiCommand = client.commands.get('anti-invite');
-  if (antiCommand && antiCommand.handleMessage) {
-    await antiCommand.handleMessage(message, client);
+  const antiInviteCmd = client.commands.get('anti-invite');
+  if (antiInviteCmd && antiInviteCmd.handleMessage) {
+    await antiInviteCmd.handleMessage(message, client);
+  }
+
+  const antiSpamCmd = client.commands.get('anti-spam-message');
+  if (antiSpamCmd && antiSpamCmd.handleMessage) {
+    await antiSpamCmd.handleMessage(message, client);
   }
 });
 
@@ -223,7 +245,7 @@ app.listen(PORT, () => {
   console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`);
 });
 
-// 起動時にGitHubからデータをロードしてからログイン
+// 起動時にデータをロードしてからログイン
 loadDataFromGitHub().then(() => {
   client.login(TOKEN);
 });
