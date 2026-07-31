@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -142,10 +142,48 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
+// -------------------------------------------------------------
+// Bot起動時の処理 ＆ 再起動通知の送信
+// -------------------------------------------------------------
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
+
+  // 各サーバーの再起動通知設定を確認して送信
+  const settings = client.getSettings();
+  
+  for (const [guildId, guildSettings] of Object.entries(settings)) {
+    const notifyConfig = guildSettings?.restartNotify;
+    if (!notifyConfig || !notifyConfig.enabled || !notifyConfig.channelId) continue;
+
+    try {
+      const guild = await client.guilds.fetch(guildId).catch(() => null);
+      if (!guild) continue;
+
+      const channel = await guild.channels.fetch(notifyConfig.channelId).catch(() => null);
+      if (!channel) continue;
+
+      let mentionText = '';
+      if (notifyConfig.mention === '@everyone') mentionText = '@everyone';
+      if (notifyConfig.mention === '@here') mentionText = '@here';
+
+      const embed = new EmbedBuilder()
+        .setColor(0x0099FF)
+        .setTitle('🔄 システム再起動・アップデート完了')
+        .setDescription('Botのアップデートやシステムメンテナンスに伴う再起動が完了しました。正常に稼働を再開しています。')
+        .setTimestamp();
+
+      await channel.send({
+        content: mentionText ? mentionText : null,
+        embeds: [embed]
+      }).catch(() => {});
+
+    } catch (err) {
+      console.error(`サーバー ${guildId} への再起動通知送信エラー:`, err);
+    }
+  }
 });
 
+// スラッシュコマンドの実行処理
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -165,9 +203,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// -------------------------------------------------------------
 // メッセージ監視（招待リンク荒らし対策の検知用）
-// -------------------------------------------------------------
 client.on('messageCreate', async (message) => {
   const antiCommand = client.commands.get('anti-invite');
   if (antiCommand && antiCommand.handleMessage) {
