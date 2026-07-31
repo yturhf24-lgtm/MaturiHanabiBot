@@ -26,6 +26,9 @@
       "enabled": true,
       "channelId": "1532769370726727702",
       "mention": "なし"
-    }
+    },
+    "allowedRoles": [
+      "1532769369703190800"
+    ]
   }
 }
