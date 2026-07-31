@@ -31,7 +31,6 @@ module.exports = {
     const role = interaction.options.getRole('role');
     const guildId = interaction.guildId;
 
-    // メモリから設定を取得
     const settings = client.getSettings();
 
     if (!settings[guildId]) {
@@ -52,8 +51,6 @@ module.exports = {
     }
 
     settings[guildId].allowedRoles.push(role.id);
-    
-    // 保存関数を呼び出してメモリ＆ファイルに即時反映
     await client.saveSettings(settings);
 
     const embed = new EmbedBuilder()
