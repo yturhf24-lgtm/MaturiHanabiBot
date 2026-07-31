@@ -16,6 +16,11 @@
       "enabled": true,
       "logChannelId": "1532769370726727702",
       "timeoutMinutes": 10
+    },
+    "restartNotify": {
+      "enabled": true,
+      "channelId": "1532769370726727702",
+      "mention": "@everyone"
     }
   }
 }
