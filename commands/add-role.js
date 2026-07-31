@@ -13,7 +13,6 @@ module.exports = {
   async execute(interaction, client) {
     await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-    // 判定：指定プレイヤー または サーバーの所有者(オーナー)か
     const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
     const isGuildOwner = interaction.guild?.ownerId === interaction.user.id;
 
@@ -30,7 +29,6 @@ module.exports = {
 
     const role = interaction.options.getRole('role');
     const guildId = interaction.guildId;
-
     const settings = client.getSettings();
 
     if (!settings[guildId]) {
@@ -51,7 +49,7 @@ module.exports = {
     }
 
     settings[guildId].allowedRoles.push(role.id);
-    await client.saveSettings(settings); // これが自動でGitHubにも同期されます！
+    await client.saveSettings(settings);
 
     const embed = new EmbedBuilder()
       .setColor(0x00FF00)
