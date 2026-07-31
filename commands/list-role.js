@@ -1,52 +1,52 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 
 const SPECIAL_USER_ID = '1266013271518089258';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('list-role')
-    .setDescription('現在登録されている操作許可ロールの一覧を表示します'),
+    .setDescription('【特別ユーザー・サーバーオーナー専用】現在許可されているロールの一覧を表示します'),
 
   async execute(interaction, client) {
-    const isAdmin = interaction.member?.permissions.has(PermissionFlagsBits.Administrator);
-    const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-    if (!isAdmin && !isSpecialUser) {
-      return interaction.reply({
+    const isSpecialUser = interaction.user.id === SPECIAL_USER_ID;
+    const isGuildOwner = interaction.guild?.ownerId === interaction.user.id;
+
+    if (!isSpecialUser && !isGuildOwner) {
+      return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('❌ 権限エラー')
-            .setDescription('このコマンドは管理者または指定プレイヤーのみ実行可能です。')
-        ],
-        flags: [MessageFlags.Ephemeral]
+            .setDescription('このコマンドはサーバーの所有者または指定されたプレイヤーのみ実行可能です。')
+        ]
       });
     }
 
-    const settings = client.getSettings();
     const guildId = interaction.guildId;
+    const settings = client.getSettings();
     const allowedRoles = settings[guildId]?.allowedRoles || [];
 
     if (allowedRoles.length === 0) {
-      return interaction.reply({
+      return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xFFFF00)
             .setTitle('📋 許可ロール一覧')
-            .setDescription('現在、このサーバーに登録されている許可ロールはありません。')
-        ],
-        flags: [MessageFlags.Ephemeral]
+            .setDescription('現在登録されている許可ロールはありません。')
+        ]
       });
     }
 
-    const roleListText = allowedRoles.map(roleId => `<@&${roleId}>`).join('\n');
+    const roleList = allowedRoles.map(roleId => `<@&${roleId}>`).join('\n');
 
     const embed = new EmbedBuilder()
       .setColor(0x0099FF)
-      .setTitle('📋 操作許可ロール一覧')
-      .setDescription(roleListText)
+      .setTitle('📋 許可ロール一覧')
+      .setDescription(roleList)
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], flags: [MessageFlags.Ephemeral] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
