@@ -29,22 +29,22 @@ module.exports = {
       .addFields(
         {
           name: '1. 招待リンク連投対策 (`/anti-invite`)',
-          value: `状態: **${invite.enabled ? '🟢 ON' : '🔴 OFF'}**\nログチャンネル: ${invite.logChannelId ? `<#${invite.logChannelId}>` : '未設定'}\nタイムアウト: ${invite.timeoutMinutes || 10}分`,
+          value: `状態: **${invite.enabled ? '🟢 ON' : '🔴 OFF'}**\nログ: ${invite.logChannelId ? `<#${invite.logChannelId}>` : '未設定'}\nタイムアウト: ${invite.timeoutMinutes || 10}分`,
           inline: false
         },
         {
           name: '2. 初期アイコン対策 (`/anti-default-avatar`)',
-          value: `状態: **${avatar.enabled ? '🟢 ON' : '🔴 OFF'}**\nログチャンネル: ${avatar.logChannelId ? `<#${avatar.logChannelId}>` : '未設定'}\nKick実行: ${avatar.kick ? '有効' : '無効'}`,
+          value: `状態: **${avatar.enabled ? '🟢 ON' : '🔴 OFF'}**\nログ: ${avatar.logChannelId ? `<#${avatar.logChannelId}>` : '未設定'}\nKick: ${avatar.kick ? '有効' : '無効'}`,
           inline: false
         },
         {
           name: '3. 新規アカウント対策 (`/anti-new-account`)',
-          value: `状態: **${newAccount.enabled ? '🟢 ON' : '🔴 OFF'}**\n対象日数: ${newAccount.minDays || 0}日以上 〜 ${newAccount.maxDays || 0}日未満\nログチャンネル: ${newAccount.logChannelId ? `<#${newAccount.logChannelId}>` : '未設定'}`,
+          value: `状態: **${newAccount.enabled ? '🟢 ON' : '🔴 OFF'}**\n対象: ${newAccount.minDays || 0}日以上 〜 ${newAccount.maxDays || 0}日未満\nログ: ${newAccount.logChannelId ? `<#${newAccount.logChannelId}>` : '未設定'}`,
           inline: false
         },
         {
           name: '4. メッセージスパム対策 (`/anti-spam-message`)',
-          value: `状態: **${spamMsg.enabled ? '🟢 ON' : '🔴 OFF'}**\n条件: ${spamMsg.seconds || 0}秒以内に${spamMsg.count || 0}回\n処置: ${spamMsg.action || 'なし'}\nログチャンネル: ${spamMsg.logChannelId ? `<#${spamMsg.logChannelId}>` : '未設定'}`,
+          value: `状態: **${spamMsg.enabled ? '🟢 ON' : '🔴 OFF'}**\n条件: ${spamMsg.seconds || 0}秒以内に${spamMsg.count || 0}回\n処置: ${spamMsg.action || 'なし'}\nログ: ${spamMsg.logChannelId ? `<#${spamMsg.logChannelId}>` : '未設定'}`,
           inline: false
         }
       )
