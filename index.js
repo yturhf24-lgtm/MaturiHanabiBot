@@ -44,7 +44,7 @@ async function loadDataFromGitHub() {
         const content = Buffer.from(fileData.content, 'base64').toString('utf8');
         localSettingsCache = JSON.parse(content);
         fs.writeFileSync(DATA_FILE, content, 'utf8');
-        console.log('[Data Load] GitHubから最新の data.json を読み込みました:', localSettingsCache);
+        console.log('[Data Load] GitHubから最新の data.json を読み込みました');
         return;
       }
     }
@@ -52,14 +52,13 @@ async function loadDataFromGitHub() {
     console.error('[Data Load Warning] GitHubからの読み込みに失敗しました。ローカルファイルを使用します:', e);
   }
 
-  // フォールバック：ローカルファイルまたは新規作成
   try {
     if (!fs.existsSync(DATA_FILE)) {
       fs.writeFileSync(DATA_FILE, JSON.stringify({}, null, 2), 'utf8');
     }
     const fileContent = fs.readFileSync(DATA_FILE, 'utf8');
     localSettingsCache = JSON.parse(fileContent);
-    console.log('[Data Load] ローカルから data.json を読み込みました:', localSettingsCache);
+    console.log('[Data Load] ローカルから data.json を読み込みました');
   } catch (e) {
     console.error('[Data Error] 初期化エラー:', e);
     localSettingsCache = {};
@@ -72,18 +71,13 @@ client.saveSettings = async (data) => {
   localSettingsCache = data;
   const jsonString = JSON.stringify(data, null, 2);
   
-  // ローカルに保存
   try {
     fs.writeFileSync(DATA_FILE, jsonString, 'utf8');
   } catch (e) {
     console.error('[Local Save Error]:', e);
   }
 
-  // GitHubへ自動コミット＆プッシュ
-  if (!GITHUB_TOKEN) {
-    console.warn('[GitHub Sync] GITHUB_TOKEN が設定されていないため、GitHubへの同期をスキップしました。');
-    return;
-  }
+  if (!GITHUB_TOKEN) return;
 
   try {
     const getRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json?ref=${BRANCH}`, {
@@ -100,7 +94,7 @@ client.saveSettings = async (data) => {
       sha = fileInfo.sha;
     }
 
-    const putRes = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
+    await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json`, {
       method: 'PUT',
       headers: {
         'Authorization': `token ${GITHUB_TOKEN}`,
@@ -115,13 +109,6 @@ client.saveSettings = async (data) => {
         branch: BRANCH
       })
     });
-
-    if (putRes.ok) {
-      console.log('[GitHub Sync] data.json をGitHubへ正常に同期（コミット）しました！');
-    } else {
-      const errText = await putRes.text();
-      console.error('[GitHub Sync Error]:', errText);
-    }
   } catch (e) {
     console.error('[GitHub Sync Exception]:', e);
   }
@@ -143,13 +130,24 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// Bot起動時の処理 ＆ 埋め込み式再起動通知の送信
+// Bot起動時の処理 ＆ ステータス定期更新・再起動通知
 // -------------------------------------------------------------
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
+  // サーバー数とPingを「プレイ中」ステータスに定期反映（10秒ごと）
+  setInterval(() => {
+    const guildCount = client.guilds.cache.size;
+    const ping = client.ws.ping;
+    
+    client.user.setActivity({
+      name: `導入サーバー: ${guildCount} | Ping: ${ping}ms`,
+      type: 0 // Playing (プレイ中)
+    });
+  }, 10000);
+
+  // 再起動通知の送信
   const settings = client.getSettings();
-  
   for (const [guildId, guildSettings] of Object.entries(settings)) {
     const notifyConfig = guildSettings?.restartNotify;
     if (!notifyConfig || !notifyConfig.enabled || !notifyConfig.channelId) continue;
@@ -162,8 +160,6 @@ client.once('clientReady', async (c) => {
       if (!channel) continue;
 
       let mentionText = '';
-      if (notifyConfig.mentionType === '@everyone') mentionText = '@everyone';
-      if (notifyConfig.mentionType === '@here') mentionText = '@here';
       if (notifyConfig.mentionRoleId) mentionText = `<@&${notifyConfig.mentionRoleId}>`;
 
       const embed = new EmbedBuilder()
@@ -183,7 +179,7 @@ client.once('clientReady', async (c) => {
   }
 });
 
-// スラッシュコマンドの実行処理（埋め込みエラー対応）
+// スラッシュコマンドの実行処理
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
