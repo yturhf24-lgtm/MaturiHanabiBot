@@ -21,6 +21,11 @@
       "minDays": 10000000000,
       "maxDays": 100000000000,
       "mentionRoleId": "1523250399174459402"
+    },
+    "antiInvite": {
+      "enabled": true,
+      "logChannelId": "1521770308871389235",
+      "timeoutMinutes": 10
     }
   },
   "1420273296833773684": {
