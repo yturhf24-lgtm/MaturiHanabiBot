@@ -6,7 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('anti-new-account')
     .setDescription('【特別ユーザー・サーバーオーナー専用】指定日数未満のアカウントの参加を制限します')
-    // 必須オプションを先にする
+    // 必須オプション
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -20,16 +20,11 @@ module.exports = {
         .setRequired(true)
     )
     .addIntegerOption(option =>
-      option.setName('min-days')
-        .setDescription('この日数以上')
-        .setRequired(true)
-    )
-    .addIntegerOption(option =>
       option.setName('max-days')
-        .setDescription('この日数未満')
+        .setDescription('この日数未満のアカウントを対象にする')
         .setRequired(true)
     )
-    // 任意オプションを後ろにする
+    // 任意オプション
     .addRoleOption(option =>
       option.setName('mention-role')
         .setDescription('通知時にメンションするロール（任意）')
@@ -45,7 +40,6 @@ module.exports = {
 
     const status = interaction.options.getString('status');
     const logChannel = interaction.options.getChannel('log-channel');
-    const minDays = interaction.options.getInteger('min-days');
     const maxDays = interaction.options.getInteger('max-days');
     const mentionRole = interaction.options.getRole('mention-role');
     const guildId = interaction.guildId;
@@ -56,7 +50,6 @@ module.exports = {
     settings[guildId].antiNewAccount = {
       enabled: status === 'on',
       logChannelId: logChannel.id,
-      minDays,
       maxDays,
       mentionRoleId: mentionRole ? mentionRole.id : null
     };
@@ -67,7 +60,7 @@ module.exports = {
         new EmbedBuilder()
           .setColor(status === 'on' ? 0x00FF00 : 0xFF0000)
           .setTitle(`📅 新規アカウント対策: ${status.toUpperCase()}`)
-          .setDescription(`対象: ${minDays}日以上 〜 ${maxDays}日未満\nログ: <#${logChannel.id}>\nメンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
+          .setDescription(`対象: ${maxDays}日未満のアカウント\nログ: <#${logChannel.id}>\nメンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
       ]
     });
   },
@@ -79,7 +72,7 @@ module.exports = {
 
     const accountAgeDays = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60 * 24);
 
-    if (accountAgeDays >= config.minDays && accountAgeDays < config.maxDays) {
+    if (accountAgeDays < config.maxDays) {
       try {
         if (member.kickable) {
           await member.kick('新規アカウント自動Kick');
@@ -91,7 +84,7 @@ module.exports = {
           const embed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('📅 新規アカウント自動Kick')
-            .setDescription(`${mentionText}ユーザー: <@${member.id}>\n経過日数: ${Math.floor(accountAgeDays)}日`)
+            .setDescription(`${mentionText}ユーザー: <@${member.id}>\n作成経過日数: ${Math.floor(accountAgeDays)}日`)
             .setTimestamp();
           await logChannel.send({ embeds: [embed] }).catch(() => {});
         }
