@@ -33,6 +33,13 @@
       "count": 1,
       "action": "ban",
       "mentionRoleId": "1521768432129806338"
+    },
+    "earthquakeInfo": {
+      "enabled": true,
+      "channelId": "1521770308871389235",
+      "minScale": "1",
+      "sendImage": true,
+      "mentionRoleId": "1521768113106849912"
     }
   },
   "1420273296833773684": {
