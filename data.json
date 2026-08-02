@@ -15,6 +15,13 @@
       "logChannelId": "1521768242828546049",
       "mentionRoleId": null,
       "kick": false
+    },
+    "antiNewAccount": {
+      "enabled": true,
+      "logChannelId": "1521770308871389235",
+      "minDays": 10000000000,
+      "maxDays": 100000000000,
+      "mentionRoleId": "1523250399174459402"
     }
   },
   "1420273296833773684": {
