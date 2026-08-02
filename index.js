@@ -279,7 +279,7 @@ client.once('clientReady', async (c) => {
       const embed = new EmbedBuilder()
         .setColor(0x0099FF)
         .setTitle('🔄 システム再起動・アップデート完了')
-        .setDescription('Botが正常に再起動しました。')
+        .setDescription('Botのアップデートやシステムメンテナンスに伴う再起動・アップデートが行われました。正常に稼働を再開しています。')
         .setTimestamp();
       await channel.send({ content: notifyConfig.mentionRoleId ? `<@&${notifyConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
     } catch (err) {}
