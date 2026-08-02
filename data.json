@@ -31,8 +31,8 @@
       "logChannelId": "1521770308871389235",
       "seconds": 1,
       "count": 1,
-      "action": "ban",
-      "mentionRoleId": "1521768432129806338"
+      "action": "kick",
+      "mentionRoleId": "1521768113106849912"
     },
     "earthquakeInfo": {
       "enabled": true,
