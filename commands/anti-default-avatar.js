@@ -6,7 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('anti-default-avatar')
     .setDescription('【特別ユーザー・サーバーオーナー専用】初期アイコンの参加者を自動でKickします')
-    // 必須オプションを先に配置
+    // 必須オプション
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -25,7 +25,7 @@ module.exports = {
         .setRequired(true)
         .addChoices({ name: 'Kickする', value: 'yes' }, { name: 'Kickしない（ログのみ）', value: 'no' })
     )
-    // 任意オプションを後ろに配置
+    // 任意オプション
     .addRoleOption(option =>
       option.setName('mention-role')
         .setDescription('通知時にメンションするロール（任意）')
