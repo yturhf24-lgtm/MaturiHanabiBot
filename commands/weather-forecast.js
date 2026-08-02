@@ -6,6 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('weather-forecast')
     .setDescription('【特別ユーザー・サーバーオーナー専用】全国の天気予報通知を設定します')
+    // 必須オプション
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -23,6 +24,13 @@ module.exports = {
         .setDescription('対象の地域（例: 東京、大阪、全国など）')
         .setRequired(true)
     )
+    .addStringOption(option =>
+      option.setName('send-image')
+        .setDescription('天気図などの画像を添付するかどうか')
+        .setRequired(true)
+        .addChoices({ name: '画像を添付する', value: 'yes' }, { name: '添付しない', value: 'no' })
+    )
+    // 任意オプション
     .addRoleOption(option =>
       option.setName('mention-role')
         .setDescription('通知時にメンションするロール（任意）')
@@ -39,6 +47,7 @@ module.exports = {
     const status = interaction.options.getString('status');
     const channel = interaction.options.getChannel('channel');
     const region = interaction.options.getString('region');
+    const sendImage = interaction.options.getString('send-image') === 'yes';
     const mentionRole = interaction.options.getRole('mention-role');
     const guildId = interaction.guildId;
 
@@ -49,6 +58,7 @@ module.exports = {
       enabled: status === 'on',
       channelId: channel.id,
       region,
+      sendImage,
       mentionRoleId: mentionRole ? mentionRole.id : null
     };
     await client.saveSettings(settings);
@@ -58,7 +68,7 @@ module.exports = {
         new EmbedBuilder()
           .setColor(status === 'on' ? 0x00FF00 : 0xFF0000)
           .setTitle(`☀️ 天気予報通知: ${status.toUpperCase()}`)
-          .setDescription(`チャンネル: <#${channel.id}>\n対象地域: ${region}\nメンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
+          .setDescription(`チャンネル: <#${channel.id}>\n対象地域: ${region}\n画像添付: ${sendImage ? '有効' : '無効'}\nメンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
       ]
     });
   }
