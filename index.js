@@ -134,11 +134,11 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得と配信
+// 🌍 地震・津波情報の定期取得と配信（リアルタイム厳密チェック版）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
-    const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&limit=1', {
+    const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&limit=5', {
       headers: { 'User-Agent': 'MaturiHanabiBot/1.0' }
     });
     if (!res.ok) return;
@@ -146,81 +146,86 @@ async function checkEarthquakeAndTsunami() {
     const data = await res.json();
     if (!data || data.length === 0) return;
 
-    const quake = data[0];
-    const quakeId = quake.id || quake.time;
+    data.reverse();
 
-    if (notifiedQuakes.has(quakeId)) return;
-    
-    const quakeTime = new Date(quake.time || quake.earthquake?.time).getTime();
-    if (Date.now() - quakeTime > 5 * 60 * 1000) {
-      notifiedQuakes.add(quakeId);
-      return;
-    }
+    for (const quake of data) {
+      const quakeId = quake.id || quake.time;
 
-    notifiedQuakes.add(quakeId);
-    if (notifiedQuakes.size > 100) {
-      const firstKey = notifiedQuakes.keys().next().value;
-      notifiedQuakes.delete(firstKey);
-    }
-
-    const hypocenter = quake.earthquake?.hypocenter?.name || '不明';
-    const magnitude = quake.earthquake?.hypocenter?.magnitude ?? '不明';
-    const maxScale = quake.earthquake?.maxScale ?? 0;
-    const domesticTsunami = quake.earthquake?.domesticTsunami || '不明';
-
-    const scaleReadableMap = {
-      10: '震度1', 20: '震度2', 30: '震度3', 40: '震度4',
-      45: '震度5弱', 50: '震度5強', 55: '震度6弱', 60: '震度6強', 70: '震度7'
-    };
-    const scaleText = scaleReadableMap[maxScale] || '不明';
-    const scaleValues = { '1': 10, '2': 20, '3': 30, '4': 40, '5lower': 45, '5upper': 50 };
-
-    const settings = client.getSettings();
-    for (const [guildId, guildSettings] of Object.entries(settings)) {
-      // 1. 通常地震情報
-      const eqConfig = guildSettings?.earthquakeInfo;
-      if (eqConfig && eqConfig.enabled && eqConfig.channelId) {
-        if (maxScale >= (scaleValues[eqConfig.minScale] || 0)) {
-          try {
-            const guild = await client.guilds.fetch(guildId).catch(() => null);
-            if (guild) {
-              const channel = await guild.channels.fetch(eqConfig.channelId).catch(() => null);
-              if (channel) {
-                const embed = new EmbedBuilder()
-                  .setColor(0xFF4500)
-                  .setTitle('🌍 地震情報')
-                  .addFields(
-                    { name: '発生時刻', value: quake.time || '不明', inline: true },
-                    { name: '震源地', value: hypocenter, inline: true },
-                    { name: '最大震度', value: scaleText, inline: true },
-                    { name: 'マグニチュード (M)', value: String(magnitude), inline: true }
-                  )
-                  .setTimestamp();
-                await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
-              }
-            }
-          } catch (e) {}
-        }
+      if (notifiedQuakes.has(quakeId)) continue;
+      
+      const quakeTime = new Date(quake.time || quake.earthquake?.time).getTime();
+      
+      // 発生から10分以内の新しい地震のみを処理
+      if (Date.now() - quakeTime > 10 * 60 * 1000) {
+        notifiedQuakes.add(quakeId);
+        continue;
       }
 
-      // 2. 津波警報・注意報
-      const tsunamiConfig = guildSettings?.tsunamiWarning;
-      if (tsunamiConfig && tsunamiConfig.enabled && tsunamiConfig.channelId) {
-        if (domesticTsunami === 'Warning' || domesticTsunami === 'Checking') {
-          try {
-            const guild = await client.guilds.fetch(guildId).catch(() => null);
-            if (guild) {
-              const channel = await guild.channels.fetch(tsunamiConfig.channelId).catch(() => null);
-              if (channel) {
-                const embed = new EmbedBuilder()
-                  .setColor(0xFF0000)
-                  .setTitle('🌊 津波警報・注意報発令')
-                  .setDescription(domesticTsunami === 'Warning' ? '津波警報等が発表されています。沿岸部の方は直ちに高台へ避難してください！' : '津波の有無を確認中です。海岸付近には近づかないでください。')
-                  .setTimestamp();
-                await channel.send({ content: tsunamiConfig.mentionRoleId ? `<@&${tsunamiConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+      notifiedQuakes.add(quakeId);
+      if (notifiedQuakes.size > 100) {
+        const firstKey = notifiedQuakes.keys().next().value;
+        notifiedQuakes.delete(firstKey);
+      }
+
+      const hypocenter = quake.earthquake?.hypocenter?.name || '不明';
+      const magnitude = quake.earthquake?.hypocenter?.magnitude ?? '不明';
+      const maxScale = quake.earthquake?.maxScale ?? 0;
+      const domesticTsunami = quake.earthquake?.domesticTsunami || '不明';
+
+      const scaleReadableMap = {
+        10: '震度1', 20: '震度2', 30: '震度3', 40: '震度4',
+        45: '震度5弱', 50: '震度5強', 55: '震度6弱', 60: '震度6強', 70: '震度7'
+      };
+      const scaleText = scaleReadableMap[maxScale] || '不明';
+      const scaleValues = { '1': 10, '2': 20, '3': 30, '4': 40, '5lower': 45, '5upper': 50 };
+
+      const settings = client.getSettings();
+      for (const [guildId, guildSettings] of Object.entries(settings)) {
+        // 1. 通常地震情報
+        const eqConfig = guildSettings?.earthquakeInfo;
+        if (eqConfig && eqConfig.enabled && eqConfig.channelId) {
+          if (maxScale >= (scaleValues[eqConfig.minScale] || 0)) {
+            try {
+              const guild = await client.guilds.fetch(guildId).catch(() => null);
+              if (guild) {
+                const channel = await guild.channels.fetch(eqConfig.channelId).catch(() => null);
+                if (channel) {
+                  const embed = new EmbedBuilder()
+                    .setColor(0xFF4500)
+                    .setTitle('🌍 地震情報')
+                    .addFields(
+                      { name: '発生時刻', value: quake.time || '不明', inline: true },
+                      { name: '震源地', value: hypocenter, inline: true },
+                      { name: '最大震度', value: scaleText, inline: true },
+                      { name: 'マグニチュード (M)', value: String(magnitude), inline: true }
+                    )
+                    .setTimestamp();
+                  await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+                }
               }
-            }
-          } catch (e) {}
+            } catch (e) {}
+          }
+        }
+
+        // 2. 津波警報・注意報
+        const tsunamiConfig = guildSettings?.tsunamiWarning;
+        if (tsunamiConfig && tsunamiConfig.enabled && tsunamiConfig.channelId) {
+          if (domesticTsunami === 'Warning' || domesticTsunami === 'Checking') {
+            try {
+              const guild = await client.guilds.fetch(guildId).catch(() => null);
+              if (guild) {
+                const channel = await guild.channels.fetch(tsunamiConfig.channelId).catch(() => null);
+                if (channel) {
+                  const embed = new EmbedBuilder()
+                    .setColor(0xFF0000)
+                    .setTitle('🌊 津波警報・注意報発令')
+                    .setDescription(domesticTsunami === 'Warning' ? '津波警報等が発表されています。沿岸部の方は直ちに高台へ避難してください！' : '津波の有無を確認中です。海岸付近には近づかないでください。')
+                    .setTimestamp();
+                  await channel.send({ content: tsunamiConfig.mentionRoleId ? `<@&${tsunamiConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+                }
+              }
+            } catch (e) {}
+          }
         }
       }
     }
@@ -255,7 +260,7 @@ client.once('clientReady', async (c) => {
     });
   }, 10000);
 
-  // 地震チェック間隔を10秒に短縮してリアルタイム性を向上
+  // 地震チェック (10秒ごと)
   setInterval(checkEarthquakeAndTsunami, 10000);
   setInterval(checkNewsAndEvacuations, 60000);
 
