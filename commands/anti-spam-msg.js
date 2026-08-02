@@ -7,7 +7,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('anti-spam-message')
     .setDescription('【特別ユーザー・サーバーオーナー専用】メッセージの連投スパム対策を設定します')
-    // 必須オプションを先にする
+    // 必須オプション
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF')
@@ -36,12 +36,12 @@ module.exports = {
         .setRequired(true)
         .addChoices(
           { name: 'メッセージ削除のみ', value: 'delete' },
-          { name: '削除 ＋ 10分タイムアウト', value: 'timeout' },
+          { name: '削除 ＋ タイムアウト', value: 'timeout' },
           { name: '削除 ＋ Kick', value: 'kick' },
           { name: '削除 ＋ BAN', value: 'ban' }
         )
     )
-    // 任意オプションを後ろにする
+    // 任意オプション
     .addRoleOption(option =>
       option.setName('mention-role')
         .setDescription('通知時にメンションするロール（任意）')
@@ -76,12 +76,17 @@ module.exports = {
     };
     await client.saveSettings(settings);
 
+    let actionName = 'メッセージ削除のみ';
+    if (action === 'timeout') actionName = '削除 ＋ タイムアウト';
+    if (action === 'kick') actionName = '削除 ＋ Kick';
+    if (action === 'ban') actionName = '削除 ＋ BAN';
+
     await interaction.editReply({
       embeds: [
         new EmbedBuilder()
           .setColor(status === 'on' ? 0x00FF00 : 0xFF0000)
           .setTitle(`💬 スパム対策: ${status.toUpperCase()}`)
-          .setDescription(`条件: ${seconds}秒以内に${count}回\n処置: ${action}\nログ: <#${logChannel.id}>`)
+          .setDescription(`条件: ${seconds}秒以内に${count}回\n処置: ${actionName}\nログ: <#${logChannel.id}>`)
       ]
     });
   },
@@ -121,7 +126,7 @@ module.exports = {
         if (member) {
           if (config.action === 'timeout' && member.moderatable) {
             await member.timeout(10 * 60 * 1000, 'スパムメッセージ連投');
-            actionText = 'メッセージ削除 ＆ 10分タイムアウト';
+            actionText = 'メッセージ削除 ＆ タイムアウト';
           } else if (config.action === 'kick' && member.kickable) {
             await member.kick('スパムメッセージ連投');
             actionText = 'メッセージ削除 ＆ Kick';
