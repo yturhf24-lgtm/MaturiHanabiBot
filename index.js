@@ -135,14 +135,14 @@ if (fs.existsSync(commandsPath)) {
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
-  // サーバー数とPingを「プレイ中」ステータスに定期反映（10秒ごと）
+  // 「視聴中」ステータスにサーバー数とPingを定期反映（10秒ごと）
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
     const ping = client.ws.ping;
     
     client.user.setActivity({
-      name: `導入サーバー: ${guildCount} | Ping: ${ping}ms`,
-      type: 0 // Playing (プレイ中)
+      name: `Ping ${ping}ms | ${guildCount} Servers`,
+      type: 3 // 3 = Watching (視聴中)
     });
   }, 10000);
 
@@ -219,11 +219,6 @@ client.on('guildMemberAdd', async (member) => {
 });
 
 client.on('messageCreate', async (message) => {
-  const antiInviteCmd = client.commands.get('anti-invite');
-  if (antiInviteCmd && antiInviteCmd.handleMessage) {
-    await antiInviteCmd.handleMessage(message, client);
-  }
-
   const antiSpamCmd = client.commands.get('anti-spam-message');
   if (antiSpamCmd && antiSpamCmd.handleMessage) {
     await antiSpamCmd.handleMessage(message, client);
