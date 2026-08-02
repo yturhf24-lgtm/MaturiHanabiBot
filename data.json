@@ -53,6 +53,13 @@
       "channelId": "1521770308871389235",
       "sendImage": true,
       "mentionRoleId": "1521768113106849912"
+    },
+    "weatherForecast": {
+      "enabled": true,
+      "channelId": "1521770308871389235",
+      "region": "東京",
+      "sendImage": true,
+      "mentionRoleId": "1521768113106849912"
     }
   },
   "1420273296833773684": {
