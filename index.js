@@ -1,5 +1,5 @@
 const fs = require('fs');
-const path = path = require('path');
+const path = require('path');
 const express = require('express');
 const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
 require('dotenv').config();
@@ -26,7 +26,6 @@ client.commands = new Collection();
 const DATA_FILE = path.resolve(__dirname, 'data.json');
 let localSettingsCache = {};
 
-// 重複通知防止用のキャッシュ
 const notifiedQuakes = new Set();
 const notifiedNews = new Set();
 const notifiedEvacuations = new Set();
@@ -235,21 +234,17 @@ async function checkEarthquakeAndTsunami() {
 // -------------------------------------------------------------
 async function checkNewsAndEvacuations() {
   const settings = client.getSettings();
-  
-  // ニュース速報（例: Yahoo!ニュース等のRSSを模したパブリックAPIまたはサンプル）
   try {
     const res = await fetch('https://news.yahoo.co.jp/rss/topics/top-picks.xml');
     if (res.ok) {
-      // 簡易的に最新トピックス等を取得・配信するロジックのベース
+      // トピックス等取得用プレースホルダー
     }
   } catch (e) {}
 
-  // 避難情報・天気予報のステータス確認ループ
   for (const [guildId, guildSettings] of Object.entries(settings)) {
-    // 天気予報（毎日朝などに自動配信する例など）や避難情報のチェック
     const evacConfig = guildSettings?.evacuationInfo;
     if (evacConfig && evacConfig.enabled && evacConfig.channelId) {
-      // 自治体からの避難勧告データをAPI等からポーリングする処理をここに組み込めます
+      // 避難情報等チェック用プレースホルダー
     }
   }
 }
@@ -269,12 +264,9 @@ client.once('clientReady', async (c) => {
     });
   }, 10000);
 
-  // 地震・津波監視（30秒ごと）
   setInterval(checkEarthquakeAndTsunami, 30000);
-  // ニュース・避難情報監視（60秒ごと）
   setInterval(checkNewsAndEvacuations, 60000);
 
-  // 再起動通知
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
     const notifyConfig = guildSettings?.restartNotify;
