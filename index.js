@@ -236,17 +236,8 @@ async function checkNewsAndEvacuations() {
   const settings = client.getSettings();
   try {
     const res = await fetch('https://news.yahoo.co.jp/rss/topics/top-picks.xml');
-    if (res.ok) {
-      // トピックス等取得用プレースホルダー
-    }
+    if (res.ok) {}
   } catch (e) {}
-
-  for (const [guildId, guildSettings] of Object.entries(settings)) {
-    const evacConfig = guildSettings?.evacuationInfo;
-    if (evacConfig && evacConfig.enabled && evacConfig.channelId) {
-      // 避難情報等チェック用プレースホルダー
-    }
-  }
 }
 
 // -------------------------------------------------------------
@@ -264,7 +255,8 @@ client.once('clientReady', async (c) => {
     });
   }, 10000);
 
-  setInterval(checkEarthquakeAndTsunami, 30000);
+  // 地震チェック間隔を10秒に短縮してリアルタイム性を向上
+  setInterval(checkEarthquakeAndTsunami, 10000);
   setInterval(checkNewsAndEvacuations, 60000);
 
   const settings = client.getSettings();
@@ -279,7 +271,7 @@ client.once('clientReady', async (c) => {
       const embed = new EmbedBuilder()
         .setColor(0x0099FF)
         .setTitle('🔄 システム再起動・アップデート完了')
-        .setDescription('Botのアップデートやシステムメンテナンスに伴う再起動・アップデートが行われました。正常に稼働を再開しています。')
+        .setDescription('Botが正常に再起動しました。')
         .setTimestamp();
       await channel.send({ content: notifyConfig.mentionRoleId ? `<@&${notifyConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
     } catch (err) {}
