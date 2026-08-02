@@ -1,14 +1,14 @@
 const fs = require('fs');
-const path = require('path');
+const path = path = require('path');
 const express = require('express');
 const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN; // GitHubのアクセストークン
-const REPO_OWNER = 'yturhf24-lgtm'; // あなたのGitHubユーザー名
-const REPO_NAME = 'MaturiHanabiBot'; // リポジトリ名
-const BRANCH = 'main'; // ブランチ名
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const REPO_OWNER = 'yturhf24-lgtm';
+const REPO_NAME = 'MaturiHanabiBot';
+const BRANCH = 'main';
 
 const client = new Client({
   intents: [
@@ -26,11 +26,13 @@ client.commands = new Collection();
 const DATA_FILE = path.resolve(__dirname, 'data.json');
 let localSettingsCache = {};
 
-// 重複通知防止用のキャッシュ（地震ID等を保存）
+// 重複通知防止用のキャッシュ
 const notifiedQuakes = new Set();
+const notifiedNews = new Set();
+const notifiedEvacuations = new Set();
 
 // -------------------------------------------------------------
-// 📁 GitHub連携型 data.json 管理システム（個別サーバー対応）
+// 📁 GitHub連携型 data.json 管理システム
 // -------------------------------------------------------------
 async function loadDataFromGitHub() {
   try {
@@ -52,7 +54,7 @@ async function loadDataFromGitHub() {
       }
     }
   } catch (e) {
-    console.error('[Data Load Warning] GitHubからの読み込みに失敗しました。ローカルファイルを使用します:', e);
+    console.error('[Data Load Warning] GitHubからの読み込みに失敗しました:', e);
   }
 
   try {
@@ -133,11 +135,10 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得と配信チェック機能
+// 🌍 地震・津波情報の定期取得と配信
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
-    // P2P地震情報 API (コード 551: 地震情報)
     const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&limit=1', {
       headers: { 'User-Agent': 'MaturiHanabiBot/1.0' }
     });
@@ -149,10 +150,8 @@ async function checkEarthquakeAndTsunami() {
     const quake = data[0];
     const quakeId = quake.id || quake.time;
 
-    // 既に通知済みの地震であればスキップ
     if (notifiedQuakes.has(quakeId)) return;
     
-    // 初回起動時の大量過去通知を防ぐため、古いもの（5分以上前）は登録してスルー
     const quakeTime = new Date(quake.time || quake.earthquake?.time).getTime();
     if (Date.now() - quakeTime > 5 * 60 * 1000) {
       notifiedQuakes.add(quakeId);
@@ -165,140 +164,139 @@ async function checkEarthquakeAndTsunami() {
       notifiedQuakes.delete(firstKey);
     }
 
-    // 地震データの詳細解析
     const hypocenter = quake.earthquake?.hypocenter?.name || '不明';
     const magnitude = quake.earthquake?.hypocenter?.magnitude ?? '不明';
-    const maxScale = quake.earthquake?.maxScale ?? 0; // 例: 10=震度1, 30=震度3, 40=震度4, 50=震度5弱...
+    const maxScale = quake.earthquake?.maxScale ?? 0;
     const domesticTsunami = quake.earthquake?.domesticTsunami || '不明';
 
-    // 震度数値の変換マップ
-    const scaleMap = {
-      10: '1', 20: '2', 30: '3', 40: '4',
-      45: '5lower', 50: '5upper', 55: '6lower', 60: '6upper', 70: '7'
-    };
     const scaleReadableMap = {
       10: '震度1', 20: '震度2', 30: '震度3', 40: '震度4',
       45: '震度5弱', 50: '震度5強', 55: '震度6弱', 60: '震度6強', 70: '震度7'
     };
-    const currentScaleStr = scaleMap[maxScale] || '0';
     const scaleText = scaleReadableMap[maxScale] || '不明';
+    const scaleValues = { '1': 10, '2': 20, '3': 30, '4': 40, '5lower': 45, '5upper': 50 };
 
-    // 各サーバーの設定を確認して配信
     const settings = client.getSettings();
     for (const [guildId, guildSettings] of Object.entries(settings)) {
+      // 1. 通常地震情報
       const eqConfig = guildSettings?.earthquakeInfo;
-      if (!eqConfig || !eqConfig.enabled || !eqConfig.channelId) continue;
+      if (eqConfig && eqConfig.enabled && eqConfig.channelId) {
+        if (maxScale >= (scaleValues[eqConfig.minScale] || 0)) {
+          try {
+            const guild = await client.guilds.fetch(guildId).catch(() => null);
+            if (guild) {
+              const channel = await guild.channels.fetch(eqConfig.channelId).catch(() => null);
+              if (channel) {
+                const embed = new EmbedBuilder()
+                  .setColor(0xFF4500)
+                  .setTitle('🌍 地震情報')
+                  .addFields(
+                    { name: '発生時刻', value: quake.time || '不明', inline: true },
+                    { name: '震源地', value: hypocenter, inline: true },
+                    { name: '最大震度', value: scaleText, inline: true },
+                    { name: 'マグニチュード (M)', value: String(magnitude), inline: true }
+                  )
+                  .setTimestamp();
+                await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+              }
+            }
+          } catch (e) {}
+        }
+      }
 
-      // 最低震度の判定処理
-      const minScaleSetting = eqConfig.minScale; // '1', '2', '3', '4', '5lower', '5upper' など
-      const scaleValues = { '1': 10, '2': 20, '3': 30, '4': 40, '5lower': 45, '5upper': 50 };
-      if (maxScale < (scaleValues[minScaleSetting] || 0)) continue;
-
-      try {
-        const guild = await client.guilds.fetch(guildId).catch(() => null);
-        if (!guild) continue;
-        const channel = await guild.channels.fetch(eqConfig.channelId).catch(() => null);
-        if (!channel) continue;
-
-        let mentionText = eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : '';
-
-        const embed = new EmbedBuilder()
-          .setColor(0xFF4500)
-          .setTitle('🌍 地震情報')
-          .addFields(
-            { name: '発生時刻', value: quake.time || '不明', inline: true },
-            { name: '震源地', value: hypocenter, inline: true },
-            { name: '最大震度', value: scaleText, inline: true },
-            { name: 'マグニチュード (M)', value: String(magnitude), inline: true },
-            { name: '津波情報', value: getTsunamiText(domesticTsunami), inline: false }
-          )
-          .setTimestamp();
-
-        // 画像送信が有効な場合、イメージ（例としてダミーあるいはAPIのマップ画像構造）を添付対応
-        let files = [];
-        // P2P地震情報等は詳細情報に画像が含まれない場合があるため、Embed主体で構成しつつ必要に応じ対応
-
-        await channel.send({
-          content: mentionText || null,
-          embeds: [embed]
-        }).catch(() => {});
-
-      } catch (err) {
-        console.error(`サーバー ${guildId} への地震情報送信エラー:`, err);
+      // 2. 津波警報・注意報
+      const tsunamiConfig = guildSettings?.tsunamiWarning;
+      if (tsunamiConfig && tsunamiConfig.enabled && tsunamiConfig.channelId) {
+        if (domesticTsunami === 'Warning' || domesticTsunami === 'Checking') {
+          try {
+            const guild = await client.guilds.fetch(guildId).catch(() => null);
+            if (guild) {
+              const channel = await guild.channels.fetch(tsunamiConfig.channelId).catch(() => null);
+              if (channel) {
+                const embed = new EmbedBuilder()
+                  .setColor(0xFF0000)
+                  .setTitle('🌊 津波警報・注意報発令')
+                  .setDescription(domesticTsunami === 'Warning' ? '津波警報等が発表されています。沿岸部の方は直ちに高台へ避難してください！' : '津波の有無を確認中です。海岸付近には近づかないでください。')
+                  .setTimestamp();
+                await channel.send({ content: tsunamiConfig.mentionRoleId ? `<@&${tsunamiConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+              }
+            }
+          } catch (e) {}
+        }
       }
     }
-
   } catch (err) {
-    console.error('地震情報API取得エラー:', err);
-  }
-}
-
-function getTsunamiText(code) {
-  switch (code) {
-    case 'None': return 'この地震による津波の心配はありません。';
-    case 'Checking': return '津波有無を確認中です。';
-    case 'Warning': return '津波警報等が発表されています！';
-    default: return '津波情報なし';
+    console.error('地震情報取得エラー:', err);
   }
 }
 
 // -------------------------------------------------------------
-// Bot起動時の処理 ＆ ステータス定期更新・再起動通知・地震監視開始
+// 📰 ニュース速報・避難情報の定期取得と配信
+// -------------------------------------------------------------
+async function checkNewsAndEvacuations() {
+  const settings = client.getSettings();
+  
+  // ニュース速報（例: Yahoo!ニュース等のRSSを模したパブリックAPIまたはサンプル）
+  try {
+    const res = await fetch('https://news.yahoo.co.jp/rss/topics/top-picks.xml');
+    if (res.ok) {
+      // 簡易的に最新トピックス等を取得・配信するロジックのベース
+    }
+  } catch (e) {}
+
+  // 避難情報・天気予報のステータス確認ループ
+  for (const [guildId, guildSettings] of Object.entries(settings)) {
+    // 天気予報（毎日朝などに自動配信する例など）や避難情報のチェック
+    const evacConfig = guildSettings?.evacuationInfo;
+    if (evacConfig && evacConfig.enabled && evacConfig.channelId) {
+      // 自治体からの避難勧告データをAPI等からポーリングする処理をここに組み込めます
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// Bot起動時の処理
 // -------------------------------------------------------------
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
-  // 「視聴中」ステータスにサーバー数とPingを定期反映（10秒ごと）
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
     const ping = client.ws.ping;
-    
     client.user.setActivity({
       name: `Ping ${ping}ms | ${guildCount} Servers`,
-      type: 3 // 3 = Watching (視聴中)
+      type: 3
     });
   }, 10000);
 
-  // 地震情報の定期ポーリング（30秒ごと）
+  // 地震・津波監視（30秒ごと）
   setInterval(checkEarthquakeAndTsunami, 30000);
+  // ニュース・避難情報監視（60秒ごと）
+  setInterval(checkNewsAndEvacuations, 60000);
 
-  // 再起動通知の送信
+  // 再起動通知
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
     const notifyConfig = guildSettings?.restartNotify;
     if (!notifyConfig || !notifyConfig.enabled || !notifyConfig.channelId) continue;
-
     try {
       const guild = await client.guilds.fetch(guildId).catch(() => null);
       if (!guild) continue;
-
       const channel = await guild.channels.fetch(notifyConfig.channelId).catch(() => null);
       if (!channel) continue;
-
-      let mentionText = '';
-      if (notifyConfig.mentionRoleId) mentionText = `<@&${notifyConfig.mentionRoleId}>`;
-
       const embed = new EmbedBuilder()
         .setColor(0x0099FF)
         .setTitle('🔄 システム再起動・アップデート完了')
-        .setDescription('Botのアップデートやシステムメンテナンスに伴う再起動・アップデートが行われました。正常に稼働を再開しています。')
+        .setDescription('Botが正常に再起動しました。')
         .setTimestamp();
-
-      await channel.send({
-        content: mentionText ? mentionText : null,
-        embeds: [embed]
-      }).catch(() => {});
-
-    } catch (err) {
-      console.error(`サーバー ${guildId} への再起動通知送信エラー:`, err);
-    }
+      await channel.send({ content: notifyConfig.mentionRoleId ? `<@&${notifyConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+    } catch (err) {}
   }
 });
 
-// スラッシュコマンドの実行処理
+// コマンド実行
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
@@ -306,11 +304,7 @@ client.on('interactionCreate', async (interaction) => {
     await command.execute(interaction, client);
   } catch (error) {
     console.error(`コマンド実行エラー [/${interaction.commandName}]:`, error);
-    const errorEmbed = new EmbedBuilder()
-      .setColor(0xFF0000)
-      .setTitle('❌ 実行エラー')
-      .setDescription('コマンドの実行中にエラーが発生しました。');
-
+    const errorEmbed = new EmbedBuilder().setColor(0xFF0000).setTitle('❌ 実行エラー').setDescription('エラーが発生しました。');
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
@@ -319,41 +313,24 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// -------------------------------------------------------------
-// イベント監視（各種対策）
-// -------------------------------------------------------------
+// 各種イベント監視
 client.on('guildMemberAdd', async (member) => {
   const avatarCommand = client.commands.get('anti-default-avatar');
-  if (avatarCommand && avatarCommand.handleMemberAdd) {
-    await avatarCommand.handleMemberAdd(member, client);
-  }
-
+  if (avatarCommand && avatarCommand.handleMemberAdd) await avatarCommand.handleMemberAdd(member, client);
   const newAccCommand = client.commands.get('anti-new-account');
-  if (newAccCommand && newAccCommand.handleMemberAdd) {
-    await newAccCommand.handleMemberAdd(member, client);
-  }
+  if (newAccCommand && newAccCommand.handleMemberAdd) await newAccCommand.handleMemberAdd(member, client);
 });
 
 client.on('messageCreate', async (message) => {
   const antiSpamCmd = client.commands.get('anti-spam-message');
-  if (antiSpamCmd && antiSpamCmd.handleMessage) {
-    await antiSpamCmd.handleMessage(message, client);
-  }
+  if (antiSpamCmd && antiSpamCmd.handleMessage) await antiSpamCmd.handleMessage(message, client);
 });
 
-// Render Web Service用サーバー
 const app = express();
 const PORT = process.env.PORT || 10000;
+app.get('/', (req, res) => res.send('Discord Bot is Online!'));
+app.listen(PORT, () => console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`));
 
-app.get('/', (req, res) => {
-  res.send('Discord Bot is Online!');
-});
-
-app.listen(PORT, () => {
-  console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`);
-});
-
-// 起動時にデータをロードしてからログイン
 loadDataFromGitHub().then(() => {
   client.login(TOKEN);
 });
