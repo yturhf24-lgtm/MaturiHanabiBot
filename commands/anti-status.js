@@ -18,7 +18,6 @@ module.exports = {
     const settings = client.getSettings();
     const guildSettings = settings[guildId] || {};
 
-    const invite = guildSettings.antiInvite || { enabled: false };
     const avatar = guildSettings.antiDefaultAvatar || { enabled: false };
     const newAccount = guildSettings.antiNewAccount || { enabled: false };
     const spamMsg = guildSettings.antiSpamMsg || { enabled: false };
@@ -28,22 +27,17 @@ module.exports = {
       .setTitle('🛡️ 現在の荒らし対策 設定一覧')
       .addFields(
         {
-          name: '1. 招待リンク連投対策 (`/anti-invite`)',
-          value: `状態: **${invite.enabled ? '🟢 ON' : '🔴 OFF'}**\nログ: ${invite.logChannelId ? `<#${invite.logChannelId}>` : '未設定'}\nタイムアウト: ${invite.timeoutMinutes || 10}分`,
-          inline: false
-        },
-        {
-          name: '2. 初期アイコン対策 (`/anti-default-avatar`)',
+          name: '1. 初期アイコン対策 (`/anti-default-avatar`)',
           value: `状態: **${avatar.enabled ? '🟢 ON' : '🔴 OFF'}**\nログ: ${avatar.logChannelId ? `<#${avatar.logChannelId}>` : '未設定'}\nKick: ${avatar.kick ? '有効' : '無効'}`,
           inline: false
         },
         {
-          name: '3. 新規アカウント対策 (`/anti-new-account`)',
-          value: `状態: **${newAccount.enabled ? '🟢 ON' : '🔴 OFF'}**\n対象: ${newAccount.minDays || 0}日以上 〜 ${newAccount.maxDays || 0}日未満\nログ: ${newAccount.logChannelId ? `<#${newAccount.logChannelId}>` : '未設定'}`,
+          name: '2. 新規アカウント対策 (`/anti-new-account`)',
+          value: `状態: **${newAccount.enabled ? '🟢 ON' : '🔴 OFF'}**\n対象: ${newAccount.maxDays || 0}日未満\nログ: ${newAccount.logChannelId ? `<#${newAccount.logChannelId}>` : '未設定'}`,
           inline: false
         },
         {
-          name: '4. メッセージスパム対策 (`/anti-spam-message`)',
+          name: '3. メッセージスパム対策 (`/anti-spam-message`)',
           value: `状態: **${spamMsg.enabled ? '🟢 ON' : '🔴 OFF'}**\n条件: ${spamMsg.seconds || 0}秒以内に${spamMsg.count || 0}回\n処置: ${spamMsg.action || 'なし'}\nログ: ${spamMsg.logChannelId ? `<#${spamMsg.logChannelId}>` : '未設定'}`,
           inline: false
         }
