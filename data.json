@@ -25,6 +25,14 @@
       "enabled": true,
       "logChannelId": "1521770308871389235",
       "timeoutMinutes": 10
+    },
+    "antiSpamMsg": {
+      "enabled": true,
+      "logChannelId": "1521770308871389235",
+      "seconds": 1,
+      "count": 1,
+      "action": "ban",
+      "mentionRoleId": "1521768432129806338"
     }
   },
   "1420273296833773684": {
