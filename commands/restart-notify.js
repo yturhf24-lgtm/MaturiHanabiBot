@@ -6,29 +6,20 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('restart-notify')
     .setDescription('【特別ユーザー・サーバーオーナー専用】Botの起動・再起動通知を設定します')
-    // 必須オプションを先にする
+    // 必須オプション
     .addStringOption(option =>
       option.setName('status')
         .setDescription('ON または OFF を選択')
         .setRequired(true)
         .addChoices({ name: 'ON', value: 'on' }, { name: 'OFF', value: 'off' })
     )
-    // 任意オプションを後ろにする
     .addChannelOption(option =>
       option.setName('channel')
         .setDescription('通知を送信するチャンネル（ONの時のみ必須）')
         .addChannelTypes(ChannelType.GuildText)
-        .setRequired(false)
+        .setRequired(false) // 条件分岐のため任意扱い（コード内でチェック）
     )
-    .addStringOption(option =>
-      option.setName('mention-type')
-        .setDescription('特殊メンション（@everyone / @here）を使う場合')
-        .setRequired(false)
-        .addChoices(
-          { name: '@everyone', value: '@everyone' },
-          { name: '@here', value: '@here' }
-        )
-    )
+    // 任意オプション
     .addRoleOption(option =>
       option.setName('mention-role')
         .setDescription('通知時にメンションするサーバー内のロール（任意）')
@@ -44,7 +35,6 @@ module.exports = {
 
     const status = interaction.options.getString('status');
     const channel = interaction.options.getChannel('channel');
-    const mentionType = interaction.options.getString('mention-type');
     const mentionRole = interaction.options.getRole('mention-role');
     const guildId = interaction.guildId;
 
@@ -61,25 +51,20 @@ module.exports = {
       settings[guildId].restartNotify = {
         enabled: true,
         channelId: channel.id,
-        mentionType: mentionType || null,
         mentionRoleId: mentionRole ? mentionRole.id : null
       };
       await client.saveSettings(settings);
-
-      let mentionDesc = 'なし';
-      if (mentionType) mentionDesc = mentionType;
-      if (mentionRole) mentionDesc = `<@&${mentionRole.id}>`;
 
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0x00FF00)
             .setTitle('🔔 再起動通知設定: ON')
-            .setDescription(`送信先: <#${channel.id}>\nメンション: ${mentionDesc}`)
+            .setDescription(`送信先: <#${channel.id}>\nメンション: ${mentionRole ? `<@&${mentionRole.id}>` : 'なし'}`)
         ]
       });
     } else {
-      settings[guildId].restartNotify = { enabled: false, channelId: null, mentionType: null, mentionRoleId: null };
+      settings[guildId].restartNotify = { enabled: false, channelId: null, mentionRoleId: null };
       await client.saveSettings(settings);
 
       await interaction.editReply({
