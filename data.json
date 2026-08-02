@@ -11,9 +11,9 @@
     },
     "antiDefaultAvatar": {
       "enabled": true,
-      "logChannelId": "1521768242828546049",
-      "mentionRoleId": null,
-      "kick": false
+      "logChannelId": "1521770308871389235",
+      "mentionRoleId": "1521768432129806338",
+      "kick": true
     },
     "antiNewAccount": {
       "enabled": true,
