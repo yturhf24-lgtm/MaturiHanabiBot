@@ -36,10 +36,10 @@
     },
     "earthquakeInfo": {
       "enabled": true,
-      "channelId": "1521770308871389235",
+      "channelId": "1521768242828546049",
       "minScale": "1",
       "sendImage": true,
-      "mentionRoleId": "1521768113106849912"
+      "mentionRoleId": null
     },
     "emergencyEarthquake": {
       "enabled": true,
