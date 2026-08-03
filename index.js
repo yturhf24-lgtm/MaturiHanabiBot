@@ -135,8 +135,18 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
+// メンション文字列を安全に生成するヘルパー関数
+function getMentionString(roleId, guildId) {
+  if (!roleId) return null;
+  // everyoneメンション対策
+  if (roleId === 'everyone' || roleId === '@everyone' || roleId === guildId) {
+    return '@everyone';
+  }
+  return `<@&${roleId}>`;
+}
+
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得（順次配信・メンション・画像修正）
+// 🌍 地震・津波情報の定期取得（メンション・画像修正版）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -256,14 +266,11 @@ async function checkEarthquakeAndTsunami() {
                     embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
                   }
 
-                  // 💡 画像が表示されない問題を避けるため、テキスト情報のみで確実に送信または添付扱いにする
+                  // 💡 画像を表示するため、安定した静的マップURLを再設定
+                  embed.setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
                   embed.setTimestamp();
 
-                  // 💡 ロールIDが正しく存在する場合のみ、確実な形式（<@&ID>）でメンション文字列を生成
-                  let mentionContent = null;
-                  if (eqConfig.mentionRoleId) {
-                    mentionContent = `<@&${eqConfig.mentionRoleId}>`;
-                  }
+                  const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
 
                   await channel.send({ 
                     content: mentionContent, 
@@ -310,12 +317,10 @@ async function checkWeatherForecasts() {
             .setColor(0x0099FF)
             .setTitle(`☀️ ${region}の天気予報`)
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
+            .setImage('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg')
             .setTimestamp();
 
-          let mentionContent = null;
-          if (weatherConfig.mentionRoleId) {
-            mentionContent = `<@&${weatherConfig.mentionRoleId}>`;
-          }
+          const mentionContent = getMentionString(weatherConfig.mentionRoleId, guildId);
 
           await channel.send({ 
             content: mentionContent, 
@@ -404,10 +409,7 @@ client.once('clientReady', async (c) => {
         .setDescription('Botが正常に再起動しました。')
         .setTimestamp();
 
-      let mentionContent = null;
-      if (notifyConfig.mentionRoleId) {
-        mentionContent = `<@&${notifyConfig.mentionRoleId}>`;
-      }
+      const mentionContent = getMentionString(notifyConfig.mentionRoleId, guildId);
 
       await channel.send({ content: mentionContent, embeds: [embed] }).catch(() => {});
     } catch (err) {}
