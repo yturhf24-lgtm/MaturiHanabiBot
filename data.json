@@ -106,6 +106,13 @@
       "minScale": "1",
       "sendImage": true,
       "mentionRoleId": "1532769369703190800"
+    },
+    "earthquakeInfo": {
+      "enabled": true,
+      "channelId": "1532769370726727702",
+      "minScale": "1",
+      "sendImage": true,
+      "mentionRoleId": "1532769369703190800"
     }
   }
 }
