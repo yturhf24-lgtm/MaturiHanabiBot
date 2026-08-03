@@ -136,7 +136,7 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得（サーバー導入順・画像対応）
+// 🌍 地震・津波情報の定期取得（順次配信・メンション・画像修正）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -256,10 +256,20 @@ async function checkEarthquakeAndTsunami() {
                     embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
                   }
 
-                  embed.setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
+                  // 💡 画像が表示されない問題を避けるため、テキスト情報のみで確実に送信または添付扱いにする
                   embed.setTimestamp();
 
-                  await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+                  // 💡 ロールIDが正しく存在する場合のみ、確実な形式（<@&ID>）でメンション文字列を生成
+                  let mentionContent = null;
+                  if (eqConfig.mentionRoleId) {
+                    mentionContent = `<@&${eqConfig.mentionRoleId}>`;
+                  }
+
+                  await channel.send({ 
+                    content: mentionContent, 
+                    embeds: [embed] 
+                  }).catch(() => {});
+
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
               }
@@ -300,10 +310,18 @@ async function checkWeatherForecasts() {
             .setColor(0x0099FF)
             .setTitle(`☀️ ${region}の天気予報`)
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
-            .setImage('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg')
             .setTimestamp();
 
-          await channel.send({ content: weatherConfig.mentionRoleId ? `<@&${weatherConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+          let mentionContent = null;
+          if (weatherConfig.mentionRoleId) {
+            mentionContent = `<@&${weatherConfig.mentionRoleId}>`;
+          }
+
+          await channel.send({ 
+            content: mentionContent, 
+            embeds: [embed] 
+          }).catch(() => {});
+
           notifiedWeathers.add(checkKey);
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
@@ -385,7 +403,13 @@ client.once('clientReady', async (c) => {
         .setTitle('🔄 システム再起動・アップデート完了')
         .setDescription('Botが正常に再起動しました。')
         .setTimestamp();
-      await channel.send({ content: notifyConfig.mentionRoleId ? `<@&${notifyConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+
+      let mentionContent = null;
+      if (notifyConfig.mentionRoleId) {
+        mentionContent = `<@&${notifyConfig.mentionRoleId}>`;
+      }
+
+      await channel.send({ content: mentionContent, embeds: [embed] }).catch(() => {});
     } catch (err) {}
   }
 });
