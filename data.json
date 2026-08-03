@@ -113,6 +113,13 @@
       "minScale": "1",
       "sendImage": true,
       "mentionRoleId": "1532769369703190800"
+    },
+    "weatherForecast": {
+      "enabled": true,
+      "channelId": "1532769370726727702",
+      "region": "全国",
+      "sendImage": true,
+      "mentionRoleId": null
     }
   }
 }
