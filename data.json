@@ -16,10 +16,10 @@
       "kick": true
     },
     "antiNewAccount": {
-      "enabled": true,
+      "enabled": false,
       "logChannelId": "1521770308871389235",
-      "maxDays": 10000,
-      "mentionRoleId": "1521768432129806338"
+      "maxDays": 10,
+      "mentionRoleId": "1521768113106849912"
     },
     "antiInvite": {
       "enabled": true,
