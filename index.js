@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -142,7 +142,7 @@ function getMentionString(roleId, guildId) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得
+// 🌍 地震・津波情報の定期取得（安定した画像添付付き）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -264,11 +264,28 @@ async function checkEarthquakeAndTsunami() {
 
                   embed.setTimestamp();
 
+                  // 地図画像を添付して表示をリッチにする
+                  let files = [];
+                  try {
+                    // 気象庁の現在有効な公開お天気・地図プレビュー画像を動的に取得・添付
+                    const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
+                    if (imgRes.ok) {
+                      const arrayBuffer = await imgRes.arrayBuffer();
+                      const buffer = Buffer.from(arrayBuffer);
+                      const attachment = new AttachmentBuilder(buffer, { name: 'earthquake_map.jpg' });
+                      embed.setImage('attachment://earthquake_map.jpg');
+                      files.push(attachment);
+                    }
+                  } catch (imgErr) {
+                    // 画像取得に失敗してもテキスト通知は継続する
+                  }
+
                   const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
 
                   await channel.send({ 
                     content: mentionContent, 
-                    embeds: [embed]
+                    embeds: [embed],
+                    files: files
                   }).catch(() => {});
 
                   await new Promise(resolve => setTimeout(resolve, 500));
@@ -307,11 +324,24 @@ async function checkWeatherForecasts() {
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
             .setTimestamp();
 
+          let files = [];
+          try {
+            const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
+            if (imgRes.ok) {
+              const arrayBuffer = await imgRes.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              const attachment = new AttachmentBuilder(buffer, { name: 'weather.jpg' });
+              embed.setImage('attachment://weather.jpg');
+              files.push(attachment);
+            }
+          } catch (e) {}
+
           const mentionContent = getMentionString(weatherConfig.mentionRoleId, guildId);
 
           await channel.send({ 
             content: mentionContent, 
-            embeds: [embed]
+            embeds: [embed],
+            files: files
           }).catch(() => {});
 
           await new Promise(resolve => setTimeout(resolve, 500));
