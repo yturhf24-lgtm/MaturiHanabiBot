@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -135,10 +135,9 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
-// メンション文字列を安全に生成するヘルパー関数
+// メンション文字列を安全に生成するヘルパー関数（@@everyoneバグ対策済み）
 function getMentionString(roleId, guildId) {
   if (!roleId) return null;
-  // everyoneメンション対策
   if (roleId === 'everyone' || roleId === '@everyone' || roleId === guildId) {
     return '@everyone';
   }
@@ -146,7 +145,7 @@ function getMentionString(roleId, guildId) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得（メンション・画像修正版）
+// 🌍 地震・津波情報の定期取得
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -266,15 +265,27 @@ async function checkEarthquakeAndTsunami() {
                     embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
                   }
 
-                  // 💡 画像を表示するため、安定した静的マップURLを再設定
-                  embed.setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
                   embed.setTimestamp();
+
+                  // 画像を添付ファイルとして確実に表示
+                  let files = [];
+                  try {
+                    const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
+                    if (imgRes.ok) {
+                      const arrayBuffer = await imgRes.arrayBuffer();
+                      const buffer = Buffer.from(arrayBuffer);
+                      const attachment = new AttachmentBuilder(buffer, { name: 'map.png' });
+                      embed.setImage('attachment://map.png');
+                      files.push(attachment);
+                    }
+                  } catch (err) {}
 
                   const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
 
                   await channel.send({ 
                     content: mentionContent, 
-                    embeds: [embed] 
+                    embeds: [embed],
+                    files: files
                   }).catch(() => {});
 
                   await new Promise(resolve => setTimeout(resolve, 500));
@@ -302,10 +313,6 @@ async function checkWeatherForecasts() {
     for (const [guildId, guildSettings] of sortedEntries) {
       const weatherConfig = guildSettings?.weatherForecast;
       if (weatherConfig && weatherConfig.enabled && weatherConfig.channelId) {
-        const todayStr = new Date().toDateString();
-        const checkKey = `${guildId}-${todayStr}`;
-        if (notifiedWeathers.has(checkKey)) continue;
-
         try {
           const guild = await client.guilds.fetch(guildId).catch(() => null);
           if (!guild) continue;
@@ -317,17 +324,28 @@ async function checkWeatherForecasts() {
             .setColor(0x0099FF)
             .setTitle(`☀️ ${region}の天気予報`)
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
-            .setImage('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg')
             .setTimestamp();
+
+          let files = [];
+          try {
+            const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
+            if (imgRes.ok) {
+              const arrayBuffer = await imgRes.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              const attachment = new AttachmentBuilder(buffer, { name: 'weather.jpg' });
+              embed.setImage('attachment://weather.jpg');
+              files.push(attachment);
+            }
+          } catch (err) {}
 
           const mentionContent = getMentionString(weatherConfig.mentionRoleId, guildId);
 
           await channel.send({ 
             content: mentionContent, 
-            embeds: [embed] 
+            embeds: [embed],
+            files: files
           }).catch(() => {});
 
-          notifiedWeathers.add(checkKey);
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
       }
@@ -342,11 +360,7 @@ async function checkWeatherForecasts() {
 // -------------------------------------------------------------
 async function checkEvacuations() {
   if (!isBotStarted) return;
-  try {
-    // 避難情報の取得処理
-  } catch (err) {
-    console.error('避難情報取得エラー:', err);
-  }
+  try {} catch (err) {}
 }
 
 // -------------------------------------------------------------
@@ -354,11 +368,7 @@ async function checkEvacuations() {
 // -------------------------------------------------------------
 async function checkNews() {
   if (!isBotStarted) return;
-  try {
-    // ニュース情報の取得処理
-  } catch (err) {
-    console.error('ニュース取得エラー:', err);
-  }
+  try {} catch (err) {}
 }
 
 // -------------------------------------------------------------
@@ -367,7 +377,6 @@ async function checkNews() {
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
-  // 💡 ステータスを10秒ごとにローテーション（1つ目：サーバー数、2つ目：導入プレイヤー数）
   let statusToggle = false;
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
@@ -435,7 +444,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// 各種イベント監視
 client.on('guildMemberAdd', async (member) => {
   const avatarCommand = client.commands.get('anti-default-avatar');
   if (avatarCommand && avatarCommand.handleMemberAdd) await avatarCommand.handleMemberAdd(member, client);
