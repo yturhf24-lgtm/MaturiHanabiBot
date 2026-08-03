@@ -134,7 +134,7 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得と配信（詳細テキスト＆画像付き）
+// 🌍 地震・津波情報の定期取得と配信
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -150,14 +150,16 @@ async function checkEarthquakeAndTsunami() {
 
     for (const quake of data) {
       const quakeId = quake.id || quake.time;
-      if (notifiedQuakes.has(quakeId)) continue;
       
       const quakeTime = new Date(quake.time || quake.earthquake?.time).getTime();
       
+      // 💡 起動直後は過去データをすべて「通知済み」としてマークし、一切送信しない
       if (!isBotStarted) {
         notifiedQuakes.add(quakeId);
         continue;
       }
+
+      if (notifiedQuakes.has(quakeId)) continue;
 
       if (Date.now() - quakeTime > 10 * 60 * 1000) {
         notifiedQuakes.add(quakeId);
@@ -176,6 +178,7 @@ async function checkEarthquakeAndTsunami() {
       const depth = eqData.hypocenter?.depth ?? '不明';
       const maxScale = eqData.maxScale ?? 0;
       const domesticTsunami = eqData.domesticTsunami || '不明';
+      const rawTimeString = quake.time || eqData.time || '';
 
       const scaleReadableMap = {
         10: '震度1', 20: '震度2', 30: '震度3', 40: '震度4',
@@ -184,12 +187,25 @@ async function checkEarthquakeAndTsunami() {
       const scaleText = scaleReadableMap[maxScale] || '不明';
       const scaleValues = { '1': 10, '2': 20, '3': 30, '4': 40, '5lower': 45, '5upper': 50 };
 
+      let formattedTime = '日時不明';
+      if (rawTimeString) {
+        const d = new Date(rawTimeString);
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear();
+          const month = d.getMonth() + 1;
+          const day = d.getDate();
+          const hours = String(d.getHours()).padStart(2, '0');
+          const minutes = String(d.getMinutes()).padStart(2, '0');
+          formattedTime = `${year}年${month}月${day}日 ${hours}:${minutes}頃`;
+        }
+      }
+
       let tsunamiText = 'この地震による津波の心配はありません。';
       if (domesticTsunami === 'Warning') tsunamiText = '⚠️ この地震により津波警報等が発表されています！';
       else if (domesticTsunami === 'Checking') tsunamiText = '🔍 この地震による津波の有無を確認中です。';
       else if (domesticTsunami === 'NotAvailable') tsunamiText = '津波に関する情報は不明です。';
 
-      let areasDescription = '';
+      let areaDetailsText = '';
       if (eqData.points && Array.isArray(eqData.points)) {
         const scaleGroups = {};
         for (const pt of eqData.points) {
@@ -199,26 +215,18 @@ async function checkEarthquakeAndTsunami() {
         }
 
         const sortedScales = Object.keys(scaleGroups).sort((a, b) => b - a);
-        const descParts = [];
-
+        const lines = [];
         for (const s of sortedScales) {
           const sText = scaleReadableMap[s] || `震度?`;
           const addrs = scaleGroups[s];
-          let addrStr = '';
-          if (addrs.length <= 15) {
-            addrStr = addrs.join('、');
-          } else {
-            addrStr = addrs.slice(0, 15).join('、') + `、ほか${addrs.length - 15}地域`;
+          let addrStr = addrs.slice(0, 10).join('、');
+          if (addrs.length > 10) {
+            addrStr += ` ほか${addrs.length - 10}市区町村`;
           }
-          descParts.push(`また、${sText}を\n${addrStr}\nで観測しています。`);
+          lines.push(`**${sText}**: ${addrStr}`);
         }
-        areasDescription = descParts.join('\n\n');
+        areaDetailsText = lines.join('\n');
       }
-
-      const mainDescription = `さきほど、**最大${scaleText}**を観測する地震がありました。\n` +
-        `${tsunamiText}\n` +
-        `震源地は**${hypocenter}**、震源の深さは**${depth}km**、地震の規模を示すマグニチュードは**${magnitude}**と推定されています。\n\n` +
-        (areasDescription ? `この地震で${scaleText}を\n` + (eqData.points ? eqData.points.filter(p => p.scale === maxScale).map(p => p.addr).join('、') : '') + `\nで観測しました。\n\n${areasDescription}` : '');
 
       const settings = client.getSettings();
       for (const [guildId, guildSettings] of Object.entries(settings)) {
@@ -231,11 +239,23 @@ async function checkEarthquakeAndTsunami() {
                 const channel = await guild.channels.fetch(eqConfig.channelId).catch(() => null);
                 if (channel) {
                   const embed = new EmbedBuilder()
-                    .setColor(maxScale >= 40 ? 0xFF0000 : 0xFF8C00)
+                    .setColor(maxScale >= 40 ? 0xFF0000 : (maxScale >= 30 ? 0xFF8C00 : 0x0099FF))
                     .setTitle('地震情報')
-                    .setDescription(mainDescription)
-                    .setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png')
-                    .setTimestamp();
+                    .setDescription(`${formattedTime}、地震がありました。`)
+                    .addFields(
+                      { name: '震央', value: hypocenter, inline: true },
+                      { name: '深さ', value: depth === '不明' ? '不明' : `${depth}km`, inline: true },
+                      { name: 'マグニチュード', value: String(magnitude), inline: true },
+                      { name: '最大震度', value: scaleText, inline: false },
+                      { name: '津波情報', value: tsunamiText, inline: false }
+                    );
+
+                  if (areaDetailsText) {
+                    embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
+                  }
+
+                  embed.setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
+                  embed.setTimestamp();
 
                   await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
                 }
@@ -254,7 +274,6 @@ async function checkEarthquakeAndTsunami() {
 // ☀️ 天気予報の定期チェックと配信
 // -------------------------------------------------------------
 async function checkWeatherForecasts() {
-  if (!isBotStarted) return;
   try {
     const settings = client.getSettings();
     for (const [guildId, guildSettings] of Object.entries(settings)) {
@@ -262,6 +281,13 @@ async function checkWeatherForecasts() {
       if (weatherConfig && weatherConfig.enabled && weatherConfig.channelId) {
         const todayStr = new Date().toDateString();
         const checkKey = `${guildId}-${todayStr}`;
+        
+        // 💡 起動直後の誤爆を防ぐチェック
+        if (!isBotStarted) {
+          notifiedWeathers.add(checkKey);
+          continue;
+        }
+
         if (notifiedWeathers.has(checkKey)) continue;
 
         try {
@@ -318,10 +344,11 @@ client.once('clientReady', async (c) => {
     });
   }, 10000);
 
+  // 💡 起動直後の数秒間は「過去データ破棄用」として待機し、その後リアルタイム監視を有効化
   setTimeout(() => {
     isBotStarted = true;
-    console.log('[Bot Monitor] 起動シーケンス完了。リアルタイム監視を開始します。');
-  }, 5000);
+    console.log('[Bot Monitor] 起動シーケンス完了。これ以降のリアルタイム情報のみ通知します。');
+  }, 6000);
 
   setInterval(checkEarthquakeAndTsunami, 10000); // 地震: 10秒ごと
   setInterval(checkWeatherForecasts, 60 * 60 * 1000); // 天気: 1時間ごと
