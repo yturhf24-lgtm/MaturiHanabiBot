@@ -27,11 +27,11 @@
       "timeoutMinutes": 10
     },
     "antiSpamMsg": {
-      "enabled": true,
+      "enabled": false,
       "logChannelId": "1521770308871389235",
-      "seconds": 1,
-      "count": 1,
-      "action": "kick",
+      "seconds": 5,
+      "count": 4,
+      "action": "timeout",
       "mentionRoleId": "1521768113106849912"
     },
     "earthquakeInfo": {
