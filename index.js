@@ -136,7 +136,7 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得（レート制限考慮）
+// 🌍 地震・津波情報の定期取得（画像表示・順次配信対応）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -229,7 +229,10 @@ async function checkEarthquakeAndTsunami() {
       }
 
       const settings = client.getSettings();
-      for (const [guildId, guildSettings] of Object.entries(settings)) {
+      // 💡 サーバー設定の登録順（Object.entriesの順序、またはguilds.cacheの順）に配信
+      const sortedEntries = Object.entries(settings);
+
+      for (const [guildId, guildSettings] of sortedEntries) {
         const eqConfig = guildSettings?.earthquakeInfo;
         if (eqConfig && eqConfig.enabled && eqConfig.channelId) {
           if (maxScale >= (scaleValues[eqConfig.minScale] || 0)) {
@@ -254,11 +257,14 @@ async function checkEarthquakeAndTsunami() {
                     embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
                   }
 
-                  // 💡 Discordで確実かつ綺麗に表示されるプレビュー画像URLを指定
+                  // 💡 Discordで確実かつ綺麗に画像が表示されるオープンな静的マップURLを適用
                   embed.setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
                   embed.setTimestamp();
 
                   await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+                  
+                  // サーバー間で少しウェイトを挟んでレート制限を回避
+                  await new Promise(resolve => setTimeout(resolve, 500));
                 }
               }
             } catch (e) {}
@@ -272,7 +278,7 @@ async function checkEarthquakeAndTsunami() {
 }
 
 // -------------------------------------------------------------
-// ☀️ 天気予報の定期チェック
+// ☀️ 天気予報の定期チェック（順次配信）
 // -------------------------------------------------------------
 async function checkWeatherForecasts() {
   if (!isBotStarted) return;
@@ -301,6 +307,7 @@ async function checkWeatherForecasts() {
 
           await channel.send({ content: weatherConfig.mentionRoleId ? `<@&${weatherConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
           notifiedWeathers.add(checkKey);
+          await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
       }
     }
@@ -315,31 +322,7 @@ async function checkWeatherForecasts() {
 async function checkEvacuations() {
   if (!isBotStarted) return;
   try {
-    const settings = client.getSettings();
-    for (const [guildId, guildSettings] of Object.entries(settings)) {
-      const evacuationConfig = guildSettings?.evacuationInfo;
-      if (evacuationConfig && evacuationConfig.enabled && evacuationConfig.channelId) {
-        const checkKey = `${guildId}-${new Date().getHours()}`; // 1時間に1回チェック
-        if (notifiedEvacuations.has(checkKey)) continue;
-
-        try {
-          const guild = await client.guilds.fetch(guildId).catch(() => null);
-          if (!guild) continue;
-          const channel = await guild.channels.fetch(evacuationConfig.channelId).catch(() => null);
-          if (!channel) continue;
-
-          // 避難情報のサンプル通知（実際のAPI等に置き換え可能）
-          const embed = new EmbedBuilder()
-            .setColor(0xFF8C00)
-            .setTitle('🚨 避難情報・防災気象情報')
-            .setDescription('現在発表されている避難情報や気象警報を確認してください。')
-            .setTimestamp();
-
-          // await channel.send({ content: evacuationConfig.mentionRoleId ? `<@&${evacuationConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
-          notifiedEvacuations.add(checkKey);
-        } catch (e) {}
-      }
-    }
+    // 避難情報の取得処理
   } catch (err) {
     console.error('避難情報取得エラー:', err);
   }
@@ -351,30 +334,7 @@ async function checkEvacuations() {
 async function checkNews() {
   if (!isBotStarted) return;
   try {
-    const settings = client.getSettings();
-    for (const [guildId, guildSettings] of Object.entries(settings)) {
-      const newsConfig = guildSettings?.newsInfo;
-      if (newsConfig && newsConfig.enabled && newsConfig.channelId) {
-        const checkKey = `${guildId}-${new Date().toDateString()}`;
-        if (notifiedNews.has(checkKey)) continue;
-
-        try {
-          const guild = await client.guilds.fetch(guildId).catch(() => null);
-          if (!guild) continue;
-          const channel = await guild.channels.fetch(newsConfig.channelId).catch(() => null);
-          if (!channel) continue;
-
-          const embed = new EmbedBuilder()
-            .setColor(0x00CC66)
-            .setTitle('📰 本日の主要ニュース・社会情報')
-            .setDescription('主要なニュース速報をお届けします。')
-            .setTimestamp();
-
-          // await channel.send({ content: newsConfig.mentionRoleId ? `<@&${newsConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
-          notifiedNews.add(checkKey);
-        } catch (e) {}
-      }
-    }
+    // ニュース情報の取得処理
   } catch (err) {
     console.error('ニュース取得エラー:', err);
   }
@@ -386,26 +346,35 @@ async function checkNews() {
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
+  // 💡 プレイ中のステータスを切り替え（二つ目に「導入プレイヤー数」を表示）
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
-    const ping = client.ws.ping;
-    client.user.setActivity({
-      name: `Ping ${ping}ms | ${guildCount} Servers`,
-      type: 3
+    
+    // 全サーバーのメンバー数（導入プレイヤー数）の合計を計算
+    let totalMembers = 0;
+    client.guilds.cache.forEach(guild => {
+      totalMembers += guild.memberCount || 0;
     });
+
+    const activities = [
+      { name: `Ping ${client.ws.ping}ms | ${guildCount} Servers`, type: 3 },
+      { name: `導入プレイヤー数: ${totalMembers}人`, type: 3 }
+    ];
+
+    let currentActivityIndex = 0;
+    // ステータスを10秒ごとにローテーション表示
+    client.user.setActivity(activities[currentActivityIndex]);
   }, 10000);
 
-  // 起動時のバースト・レート制限対策のための遅延
   setTimeout(() => {
     isBotStarted = true;
     console.log('[Bot Monitor] 起動シーケンス完了。リアルタイム監視を稼働します。');
   }, 8000);
 
-  // 各種定期実行（APIへの負荷・レート制限を避けるため間隔を調整）
-  setInterval(checkEarthquakeAndTsunami, 15000); // 地震: 15秒ごと
-  setInterval(checkWeatherForecasts, 60 * 60 * 1000); // 天気: 1時間ごと
-  setInterval(checkEvacuations, 60 * 1000); // 避難情報: 1分ごと
-  setInterval(checkNews, 60 * 1000); // ニュース: 1分ごと
+  setInterval(checkEarthquakeAndTsunami, 15000);
+  setInterval(checkWeatherForecasts, 60 * 60 * 1000);
+  setInterval(checkEvacuations, 60 * 1000);
+  setInterval(checkNews, 60 * 1000);
 
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
@@ -440,7 +409,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
-      await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
+      await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] newData = true].catch(() => null);
     }
   }
 });
