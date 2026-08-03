@@ -136,7 +136,7 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得（画像表示・順次配信対応）
+// 🌍 地震・津波情報の定期取得（サーバー導入順・画像対応）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -229,7 +229,6 @@ async function checkEarthquakeAndTsunami() {
       }
 
       const settings = client.getSettings();
-      // 💡 サーバー設定の登録順（Object.entriesの順序、またはguilds.cacheの順）に配信
       const sortedEntries = Object.entries(settings);
 
       for (const [guildId, guildSettings] of sortedEntries) {
@@ -257,13 +256,10 @@ async function checkEarthquakeAndTsunami() {
                     embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
                   }
 
-                  // 💡 Discordで確実かつ綺麗に画像が表示されるオープンな静的マップURLを適用
                   embed.setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
                   embed.setTimestamp();
 
                   await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
-                  
-                  // サーバー間で少しウェイトを挟んでレート制限を回避
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
               }
@@ -278,13 +274,15 @@ async function checkEarthquakeAndTsunami() {
 }
 
 // -------------------------------------------------------------
-// ☀️ 天気予報の定期チェック（順次配信）
+// ☀️ 天気予報の定期チェック
 // -------------------------------------------------------------
 async function checkWeatherForecasts() {
   if (!isBotStarted) return;
   try {
     const settings = client.getSettings();
-    for (const [guildId, guildSettings] of Object.entries(settings)) {
+    const sortedEntries = Object.entries(settings);
+
+    for (const [guildId, guildSettings] of sortedEntries) {
       const weatherConfig = guildSettings?.weatherForecast;
       if (weatherConfig && weatherConfig.enabled && weatherConfig.channelId) {
         const todayStr = new Date().toDateString();
@@ -346,24 +344,21 @@ async function checkNews() {
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
-  // 💡 プレイ中のステータスを切り替え（二つ目に「導入プレイヤー数」を表示）
+  // 💡 ステータスを10秒ごとにローテーション（1つ目：サーバー数、2つ目：導入プレイヤー数）
+  let statusToggle = false;
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
-    
-    // 全サーバーのメンバー数（導入プレイヤー数）の合計を計算
     let totalMembers = 0;
     client.guilds.cache.forEach(guild => {
       totalMembers += guild.memberCount || 0;
     });
 
-    const activities = [
-      { name: `Ping ${client.ws.ping}ms | ${guildCount} Servers`, type: 3 },
-      { name: `導入プレイヤー数: ${totalMembers}人`, type: 3 }
-    ];
-
-    let currentActivityIndex = 0;
-    // ステータスを10秒ごとにローテーション表示
-    client.user.setActivity(activities[currentActivityIndex]);
+    if (statusToggle) {
+      client.user.setActivity({ name: `導入プレイヤー数: ${totalMembers}人`, type: 3 });
+    } else {
+      client.user.setActivity({ name: `Ping ${client.ws.ping}ms | ${guildCount} Servers`, type: 3 });
+    }
+    statusToggle = !statusToggle;
   }, 10000);
 
   setTimeout(() => {
@@ -409,7 +404,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
     } else {
-      await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] newData = true].catch(() => null);
+      await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
     }
   }
 });
