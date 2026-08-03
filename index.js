@@ -28,7 +28,9 @@ let localSettingsCache = {};
 
 const notifiedQuakes = new Set();
 const notifiedWeathers = new Set();
-let isBotStarted = false; // 起動直後の過去データ一斉送信を防ぐフラグ
+const notifiedEvacuations = new Set();
+const notifiedNews = new Set();
+let isBotStarted = false;
 
 // -------------------------------------------------------------
 // 📁 GitHub連携型 data.json 管理システム
@@ -134,7 +136,7 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得と配信
+// 🌍 地震・津波情報の定期取得（レート制限考慮）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -150,10 +152,8 @@ async function checkEarthquakeAndTsunami() {
 
     for (const quake of data) {
       const quakeId = quake.id || quake.time;
-      
       const quakeTime = new Date(quake.time || quake.earthquake?.time).getTime();
       
-      // 💡 起動直後は過去データをすべて「通知済み」としてマークし、一切送信しない
       if (!isBotStarted) {
         notifiedQuakes.add(quakeId);
         continue;
@@ -254,6 +254,7 @@ async function checkEarthquakeAndTsunami() {
                     embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
                   }
 
+                  // 💡 Discordで確実かつ綺麗に表示されるプレビュー画像URLを指定
                   embed.setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
                   embed.setTimestamp();
 
@@ -271,9 +272,10 @@ async function checkEarthquakeAndTsunami() {
 }
 
 // -------------------------------------------------------------
-// ☀️ 天気予報の定期チェックと配信
+// ☀️ 天気予報の定期チェック
 // -------------------------------------------------------------
 async function checkWeatherForecasts() {
+  if (!isBotStarted) return;
   try {
     const settings = client.getSettings();
     for (const [guildId, guildSettings] of Object.entries(settings)) {
@@ -281,13 +283,6 @@ async function checkWeatherForecasts() {
       if (weatherConfig && weatherConfig.enabled && weatherConfig.channelId) {
         const todayStr = new Date().toDateString();
         const checkKey = `${guildId}-${todayStr}`;
-        
-        // 💡 起動直後の誤爆を防ぐチェック
-        if (!isBotStarted) {
-          notifiedWeathers.add(checkKey);
-          continue;
-        }
-
         if (notifiedWeathers.has(checkKey)) continue;
 
         try {
@@ -301,11 +296,8 @@ async function checkWeatherForecasts() {
             .setColor(0x0099FF)
             .setTitle(`☀️ ${region}の天気予報`)
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
+            .setImage('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg')
             .setTimestamp();
-
-          if (weatherConfig.sendImage) {
-            embed.setImage('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
-          }
 
           await channel.send({ content: weatherConfig.mentionRoleId ? `<@&${weatherConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
           notifiedWeathers.add(checkKey);
@@ -318,14 +310,73 @@ async function checkWeatherForecasts() {
 }
 
 // -------------------------------------------------------------
-// 🚨 避難情報の定期チェックと配信
+// 🚨 避難情報の定期チェック
 // -------------------------------------------------------------
 async function checkEvacuations() {
   if (!isBotStarted) return;
   try {
-    // 避難情報の取得処理枠
+    const settings = client.getSettings();
+    for (const [guildId, guildSettings] of Object.entries(settings)) {
+      const evacuationConfig = guildSettings?.evacuationInfo;
+      if (evacuationConfig && evacuationConfig.enabled && evacuationConfig.channelId) {
+        const checkKey = `${guildId}-${new Date().getHours()}`; // 1時間に1回チェック
+        if (notifiedEvacuations.has(checkKey)) continue;
+
+        try {
+          const guild = await client.guilds.fetch(guildId).catch(() => null);
+          if (!guild) continue;
+          const channel = await guild.channels.fetch(evacuationConfig.channelId).catch(() => null);
+          if (!channel) continue;
+
+          // 避難情報のサンプル通知（実際のAPI等に置き換え可能）
+          const embed = new EmbedBuilder()
+            .setColor(0xFF8C00)
+            .setTitle('🚨 避難情報・防災気象情報')
+            .setDescription('現在発表されている避難情報や気象警報を確認してください。')
+            .setTimestamp();
+
+          // await channel.send({ content: evacuationConfig.mentionRoleId ? `<@&${evacuationConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+          notifiedEvacuations.add(checkKey);
+        } catch (e) {}
+      }
+    }
   } catch (err) {
     console.error('避難情報取得エラー:', err);
+  }
+}
+
+// -------------------------------------------------------------
+// 📰 ニュースの定期チェック
+// -------------------------------------------------------------
+async function checkNews() {
+  if (!isBotStarted) return;
+  try {
+    const settings = client.getSettings();
+    for (const [guildId, guildSettings] of Object.entries(settings)) {
+      const newsConfig = guildSettings?.newsInfo;
+      if (newsConfig && newsConfig.enabled && newsConfig.channelId) {
+        const checkKey = `${guildId}-${new Date().toDateString()}`;
+        if (notifiedNews.has(checkKey)) continue;
+
+        try {
+          const guild = await client.guilds.fetch(guildId).catch(() => null);
+          if (!guild) continue;
+          const channel = await guild.channels.fetch(newsConfig.channelId).catch(() => null);
+          if (!channel) continue;
+
+          const embed = new EmbedBuilder()
+            .setColor(0x00CC66)
+            .setTitle('📰 本日の主要ニュース・社会情報')
+            .setDescription('主要なニュース速報をお届けします。')
+            .setTimestamp();
+
+          // await channel.send({ content: newsConfig.mentionRoleId ? `<@&${newsConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
+          notifiedNews.add(checkKey);
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.error('ニュース取得エラー:', err);
   }
 }
 
@@ -344,15 +395,17 @@ client.once('clientReady', async (c) => {
     });
   }, 10000);
 
-  // 💡 起動直後の数秒間は「過去データ破棄用」として待機し、その後リアルタイム監視を有効化
+  // 起動時のバースト・レート制限対策のための遅延
   setTimeout(() => {
     isBotStarted = true;
-    console.log('[Bot Monitor] 起動シーケンス完了。これ以降のリアルタイム情報のみ通知します。');
-  }, 6000);
+    console.log('[Bot Monitor] 起動シーケンス完了。リアルタイム監視を稼働します。');
+  }, 8000);
 
-  setInterval(checkEarthquakeAndTsunami, 10000); // 地震: 10秒ごと
+  // 各種定期実行（APIへの負荷・レート制限を避けるため間隔を調整）
+  setInterval(checkEarthquakeAndTsunami, 15000); // 地震: 15秒ごと
   setInterval(checkWeatherForecasts, 60 * 60 * 1000); // 天気: 1時間ごと
-  setInterval(checkEvacuations, 30000); // 避難情報: 30秒ごと
+  setInterval(checkEvacuations, 60 * 1000); // 避難情報: 1分ごと
+  setInterval(checkNews, 60 * 1000); // ニュース: 1分ごと
 
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
