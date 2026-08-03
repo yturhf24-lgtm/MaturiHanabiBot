@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -27,9 +27,6 @@ const DATA_FILE = path.resolve(__dirname, 'data.json');
 let localSettingsCache = {};
 
 const notifiedQuakes = new Set();
-const notifiedWeathers = new Set();
-const notifiedEvacuations = new Set();
-const notifiedNews = new Set();
 let isBotStarted = false;
 
 // -------------------------------------------------------------
@@ -251,41 +248,27 @@ async function checkEarthquakeAndTsunami() {
                 if (channel) {
                   const embed = new EmbedBuilder()
                     .setColor(maxScale >= 40 ? 0xFF0000 : (maxScale >= 30 ? 0xFF8C00 : 0x0099FF))
-                    .setTitle('地震情報')
-                    .setDescription(`${formattedTime}、地震がありました。`)
+                    .setTitle('🚨 地震情報')
+                    .setDescription(`${formattedTime}頃、地震が発生しました。`)
                     .addFields(
-                      { name: '震央', value: hypocenter, inline: true },
-                      { name: '深さ', value: depth === '不明' ? '不明' : `${depth}km`, inline: true },
+                      { name: '📍 震央', value: hypocenter, inline: true },
+                      { name: '📏 深さ', value: depth === '不明' ? '不明' : `${depth}km`, inline: true },
                       { name: 'マグニチュード', value: String(magnitude), inline: true },
-                      { name: '最大震度', value: scaleText, inline: false },
-                      { name: '津波情報', value: tsunamiText, inline: false }
+                      { name: '🔴 最大震度', value: scaleText, inline: false },
+                      { name: '🌊 津波情報', value: tsunamiText, inline: false }
                     );
 
                   if (areaDetailsText) {
-                    embed.addFields({ name: '📍 各地の震度', value: areaDetailsText, inline: false });
+                    embed.addFields({ name: '📊 各地の震度詳細', value: areaDetailsText, inline: false });
                   }
 
                   embed.setTimestamp();
-
-                  // 画像を添付ファイルとして確実に表示
-                  let files = [];
-                  try {
-                    const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png');
-                    if (imgRes.ok) {
-                      const arrayBuffer = await imgRes.arrayBuffer();
-                      const buffer = Buffer.from(arrayBuffer);
-                      const attachment = new AttachmentBuilder(buffer, { name: 'map.png' });
-                      embed.setImage('attachment://map.png');
-                      files.push(attachment);
-                    }
-                  } catch (err) {}
 
                   const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
 
                   await channel.send({ 
                     content: mentionContent, 
-                    embeds: [embed],
-                    files: files
+                    embeds: [embed]
                   }).catch(() => {});
 
                   await new Promise(resolve => setTimeout(resolve, 500));
@@ -308,9 +291,7 @@ async function checkWeatherForecasts() {
   if (!isBotStarted) return;
   try {
     const settings = client.getSettings();
-    const sortedEntries = Object.entries(settings);
-
-    for (const [guildId, guildSettings] of sortedEntries) {
+    for (const [guildId, guildSettings] of Object.entries(settings)) {
       const weatherConfig = guildSettings?.weatherForecast;
       if (weatherConfig && weatherConfig.enabled && weatherConfig.channelId) {
         try {
@@ -326,24 +307,11 @@ async function checkWeatherForecasts() {
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
             .setTimestamp();
 
-          let files = [];
-          try {
-            const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
-            if (imgRes.ok) {
-              const arrayBuffer = await imgRes.arrayBuffer();
-              const buffer = Buffer.from(arrayBuffer);
-              const attachment = new AttachmentBuilder(buffer, { name: 'weather.jpg' });
-              embed.setImage('attachment://weather.jpg');
-              files.push(attachment);
-            }
-          } catch (err) {}
-
           const mentionContent = getMentionString(weatherConfig.mentionRoleId, guildId);
 
           await channel.send({ 
             content: mentionContent, 
-            embeds: [embed],
-            files: files
+            embeds: [embed]
           }).catch(() => {});
 
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -355,20 +323,12 @@ async function checkWeatherForecasts() {
   }
 }
 
-// -------------------------------------------------------------
-// 🚨 避難情報の定期チェック
-// -------------------------------------------------------------
 async function checkEvacuations() {
   if (!isBotStarted) return;
-  try {} catch (err) {}
 }
 
-// -------------------------------------------------------------
-// 📰 ニュースの定期チェック
-// -------------------------------------------------------------
 async function checkNews() {
   if (!isBotStarted) return;
-  try {} catch (err) {}
 }
 
 // -------------------------------------------------------------
