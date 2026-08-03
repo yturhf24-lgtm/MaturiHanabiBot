@@ -28,7 +28,7 @@ let localSettingsCache = {};
 
 const notifiedQuakes = new Set();
 const notifiedWeathers = new Set();
-let isBotStarted = false; // 起動直後の過去データ爆撃を防ぐフラグ
+let isBotStarted = false; // 起動直後の過去データ一斉送信を防ぐフラグ
 
 // -------------------------------------------------------------
 // 📁 GitHub連携型 data.json 管理システム
@@ -134,7 +134,7 @@ if (fs.existsSync(commandsPath)) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得と配信（画像付き・詳細テキスト版）
+// 🌍 地震・津波情報の定期取得と配信（詳細テキスト＆画像付き）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -154,7 +154,6 @@ async function checkEarthquakeAndTsunami() {
       
       const quakeTime = new Date(quake.time || quake.earthquake?.time).getTime();
       
-      // 起動直後の過去データ一斉送信を防ぐ
       if (!isBotStarted) {
         notifiedQuakes.add(quakeId);
         continue;
@@ -185,13 +184,11 @@ async function checkEarthquakeAndTsunami() {
       const scaleText = scaleReadableMap[maxScale] || '不明';
       const scaleValues = { '1': 10, '2': 20, '3': 30, '4': 40, '5lower': 45, '5upper': 50 };
 
-      // 津波情報のテキスト化
       let tsunamiText = 'この地震による津波の心配はありません。';
       if (domesticTsunami === 'Warning') tsunamiText = '⚠️ この地震により津波警報等が発表されています！';
       else if (domesticTsunami === 'Checking') tsunamiText = '🔍 この地震による津波の有無を確認中です。';
       else if (domesticTsunami === 'NotAvailable') tsunamiText = '津波に関する情報は不明です。';
 
-      // 各地で観測された震度の詳細を組み立て
       let areasDescription = '';
       if (eqData.points && Array.isArray(eqData.points)) {
         const scaleGroups = {};
@@ -237,7 +234,7 @@ async function checkEarthquakeAndTsunami() {
                     .setColor(maxScale >= 40 ? 0xFF0000 : 0xFF8C00)
                     .setTitle('地震情報')
                     .setDescription(mainDescription)
-                    .setImage('https://www.jma.go.jp/bosai/map.png')
+                    .setImage('https://www.jma.go.jp/bosai/forecast/img/kaikyo.png')
                     .setTimestamp();
 
                   await channel.send({ content: eqConfig.mentionRoleId ? `<@&${eqConfig.mentionRoleId}>` : null, embeds: [embed] }).catch(() => {});
@@ -321,7 +318,6 @@ client.once('clientReady', async (c) => {
     });
   }, 10000);
 
-  // 起動時のバーストを防ぐ遅延
   setTimeout(() => {
     isBotStarted = true;
     console.log('[Bot Monitor] 起動シーケンス完了。リアルタイム監視を開始します。');
