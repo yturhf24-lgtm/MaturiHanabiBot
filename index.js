@@ -139,9 +139,9 @@ function getMentionString(roleId, guildId) {
 }
 
 // -------------------------------------------------------------
-// 🔍 画像の事前送信テスト・確認ヘルパー（送信後10秒で削除）
+// 🔍 画像存在チェック・送信処理（画像なし時は10秒間エラーEmbed送信後に自動削除）
 // -------------------------------------------------------------
-async function sendAndVerifyWithImage(channel, embed, imageUrl, mentionContent) {
+async function sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent) {
   let hasImage = false;
   try {
     const imgCheck = await fetch(imageUrl, { method: 'HEAD' });
@@ -151,7 +151,7 @@ async function sendAndVerifyWithImage(channel, embed, imageUrl, mentionContent) 
   }
 
   if (!hasImage) {
-    // 画像が取得できない場合：設定チャンネルのみでエラーEmbedを送信し、10秒後に削除
+    // 画像がない場合：設定チャンネルのみでエラーEmbedを送信し、10秒後に自動削除
     const errorEmbed = new EmbedBuilder()
       .setColor(0xFF0000)
       .setTitle('❌ 画像取得エラー')
@@ -170,20 +170,12 @@ async function sendAndVerifyWithImage(channel, embed, imageUrl, mentionContent) 
     }
     return false;
   } else {
-    // 画像がある場合：まずテスト送信としてプレビュー（または本送信）を送り、10秒後に削除してから本番送信する仕様、
-    // あるいは「最初に送れるか確認するため、前のやつ送って10秒後に削除」の指示に対応
-    const testEmbed = EmbedBuilder.from(embed).setImage(imageUrl);
-    
-    const testMsg = await channel.send({
+    // 画像がある場合：通常の通知Embedに画像を設定して送信
+    embed.setImage(imageUrl);
+    await channel.send({
       content: mentionContent,
-      embeds: [testEmbed]
-    }).catch(() => null);
-
-    if (testMsg) {
-      setTimeout(async () => {
-        await testMsg.delete().catch(() => {});
-      }, 10000);
-    }
+      embeds: [embed]
+    }).catch(() => {});
     return true;
   }
 }
@@ -311,7 +303,7 @@ async function checkEarthquakeAndTsunami() {
                   }
 
                   embed.setTimestamp();
-                  await sendAndVerifyWithImage(channel, embed, imageUrl, mentionContent);
+                  await sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent);
 
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
@@ -352,7 +344,7 @@ async function checkWeatherForecasts() {
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
             .setTimestamp();
 
-          await sendAndVerifyWithImage(channel, embed, imageUrl, mentionContent);
+          await sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent);
 
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
@@ -388,7 +380,7 @@ async function checkDisasterWarnings() {
             .setDescription('気象庁より気象警報・注意報または災害関連情報が発表されています。十分にご注意ください。')
             .setTimestamp();
 
-          await sendAndVerifyWithImage(channel, embed, imageUrl, mentionContent);
+          await sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent);
 
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
@@ -413,7 +405,7 @@ client.once('clientReady', async (c) => {
   // 🚀 起動完了ログ（再起動ログ）の送信処理
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
-    const targetChannelId = guildSettings?.earthquakeInfo?.channelId || guildSettings?.weatherForecast?.channelId || guildSettings?.disasterWarning?.channelId;
+    const targetChannelId = guildSettings?.earthquakeInfo?.channelId || guildSettings?.weatherForecast?.channelId || guildSettings?.disasterWarning?.channelId || guildSettings?.evacuationInfo?.channelId;
     if (targetChannelId) {
       try {
         const guild = await client.guilds.fetch(guildId).catch(() => null);
