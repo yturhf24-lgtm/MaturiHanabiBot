@@ -241,30 +241,60 @@ async function checkEarthquakeAndTsunami() {
               if (guild) {
                 const channel = await guild.channels.fetch(eqConfig.channelId).catch(() => null);
                 if (channel) {
-                  const embed = new EmbedBuilder()
-                    .setColor(maxScale >= 40 ? 0xFF0000 : (maxScale >= 30 ? 0xFF8C00 : 0x0099FF))
-                    .setTitle('🚨 地震情報')
-                    .setDescription(`${formattedTime}頃、地震が発生しました。`)
-                    .addFields(
-                      { name: '📍 震央', value: hypocenter, inline: true },
-                      { name: '📏 深さ', value: depth === '不明' ? '不明' : `${depth}km`, inline: true },
-                      { name: 'マグニチュード', value: String(magnitude), inline: true },
-                      { name: '🔴 最大震度', value: scaleText, inline: false },
-                      { name: '🌊 津波情報', value: tsunamiText, inline: false }
-                    );
-
-                  if (areaDetailsText) {
-                    embed.addFields({ name: '📊 各地の震度詳細', value: areaDetailsText, inline: false });
+                  const imageUrl = 'https://www.jma.go.jp/bosai/forecast/img/kaikyo.png';
+                  
+                  let hasImage = false;
+                  try {
+                    const imgCheck = await fetch(imageUrl, { method: 'HEAD' });
+                    if (imgCheck.ok) hasImage = true;
+                  } catch (e) {
+                    hasImage = false;
                   }
-
-                  embed.setTimestamp();
 
                   const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
 
-                  await channel.send({ 
-                    content: mentionContent, 
-                    embeds: [embed]
-                  }).catch(() => {});
+                  if (!hasImage) {
+                    const errorEmbed = new EmbedBuilder()
+                      .setColor(0xFF0000)
+                      .setTitle('❌ 画像取得エラー')
+                      .setDescription('地震情報の画像を正常に取得できませんでした。\nこのメッセージは10秒後に自動削除されます。')
+                      .setTimestamp();
+
+                    const errSentMsg = await channel.send({
+                      content: mentionContent,
+                      embeds: [errorEmbed]
+                    }).catch(() => null);
+
+                    if (errSentMsg) {
+                      setTimeout(async () => {
+                        await errSentMsg.delete().catch(() => {});
+                      }, 10000);
+                    }
+                  } else {
+                    const embed = new EmbedBuilder()
+                      .setColor(maxScale >= 40 ? 0xFF0000 : (maxScale >= 30 ? 0xFF8C00 : 0x0099FF))
+                      .setTitle('🚨 地震情報')
+                      .setDescription(`${formattedTime}頃、地震が発生しました。`)
+                      .addFields(
+                        { name: '📍 震央', value: hypocenter, inline: true },
+                        { name: '📏 深さ', value: depth === '不明' ? '不明' : `${depth}km`, inline: true },
+                        { name: 'マグニチュード', value: String(magnitude), inline: true },
+                        { name: '🔴 最大震度', value: scaleText, inline: false },
+                        { name: '🌊 津波情報', value: tsunamiText, inline: false }
+                      );
+
+                    if (areaDetailsText) {
+                      embed.addFields({ name: '📊 各地の震度詳細', value: areaDetailsText, inline: false });
+                    }
+
+                    embed.setImage(imageUrl);
+                    embed.setTimestamp();
+
+                    await channel.send({ 
+                      content: mentionContent, 
+                      embeds: [embed]
+                    }).catch(() => {});
+                  }
 
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
@@ -296,18 +326,48 @@ async function checkWeatherForecasts() {
           if (!channel) continue;
 
           const region = weatherConfig.region || '全国';
-          const embed = new EmbedBuilder()
-            .setColor(0x0099FF)
-            .setTitle(`☀️ ${region}の天気予報`)
-            .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
-            .setTimestamp();
+          const imageUrl = 'https://www.jma.go.jp/bosai/forecast/img/kaikyo.png';
+
+          let hasImage = false;
+          try {
+            const imgCheck = await fetch(imageUrl, { method: 'HEAD' });
+            if (imgCheck.ok) hasImage = true;
+          } catch (e) {
+            hasImage = false;
+          }
 
           const mentionContent = getMentionString(weatherConfig.mentionRoleId, guildId);
 
-          await channel.send({ 
-            content: mentionContent, 
-            embeds: [embed]
-          }).catch(() => {});
+          if (!hasImage) {
+            const errorEmbed = new EmbedBuilder()
+              .setColor(0xFF0000)
+              .setTitle('❌ 天気画像取得エラー')
+              .setDescription('天気予報の画像を正常に取得できませんでした。\nこのメッセージは10秒後に自動削除されます。')
+              .setTimestamp();
+
+            const errSentMsg = await channel.send({
+              content: mentionContent,
+              embeds: [errorEmbed]
+            }).catch(() => null);
+
+            if (errSentMsg) {
+              setTimeout(async () => {
+                await errSentMsg.delete().catch(() => {});
+              }, 10000);
+            }
+          } else {
+            const embed = new EmbedBuilder()
+              .setColor(0x0099FF)
+              .setTitle(`☀️ ${region}の天気予報`)
+              .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
+              .setImage(imageUrl)
+              .setTimestamp();
+
+            await channel.send({ 
+              content: mentionContent, 
+              embeds: [embed]
+            }).catch(() => {});
+          }
 
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
@@ -323,6 +383,34 @@ async function checkNews() { if (!isBotStarted) return; }
 
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
+
+  // -------------------------------------------------------------
+  // 🚀 起動完了ログ（再起動ログ）の送信処理
+  // -------------------------------------------------------------
+  const settings = client.getSettings();
+  for (const [guildId, guildSettings] of Object.entries(settings)) {
+    // 地震情報または天気予報が設定されているチャンネルを起動ログの通知先候補にする
+    const targetChannelId = guildSettings?.earthquakeInfo?.channelId || guildSettings?.weatherForecast?.channelId;
+    if (targetChannelId) {
+      try {
+        const guild = await client.guilds.fetch(guildId).catch(() => null);
+        if (guild) {
+          const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
+          if (channel) {
+            const bootEmbed = new EmbedBuilder()
+              .setColor(0x00FF00)
+              .setTitle('🟢 Botが再起動しました')
+              .setDescription('Botのシステムが正常に起動・再接続されました。')
+              .setTimestamp();
+
+            await channel.send({ embeds: [bootEmbed] }).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.error(`[Boot Log Error] サーバーID ${guildId}:`, e);
+      }
+    }
+  }
 
   let statusToggle = false;
   setInterval(() => {
