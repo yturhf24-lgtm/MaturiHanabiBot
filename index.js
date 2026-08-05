@@ -139,48 +139,6 @@ function getMentionString(roleId, guildId) {
 }
 
 // -------------------------------------------------------------
-// 🔍 画像存在チェック・送信処理（画像なし時は10秒間エラーEmbed送信後に自動削除）
-// -------------------------------------------------------------
-async function sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent) {
-  let hasImage = false;
-  try {
-    const imgCheck = await fetch(imageUrl, { method: 'HEAD' });
-    if (imgCheck.ok) hasImage = true;
-  } catch (e) {
-    hasImage = false;
-  }
-
-  if (!hasImage) {
-    // 画像がない場合：設定チャンネルのみでエラーEmbedを送信し、10秒後に自動削除
-    const errorEmbed = new EmbedBuilder()
-      .setColor(0xFF0000)
-      .setTitle('❌ 画像取得エラー')
-      .setDescription('設定された通知の画像を正常に取得できませんでした。\nこのメッセージは10秒後に自動削除されます。')
-      .setTimestamp();
-
-    const errSentMsg = await channel.send({
-      content: mentionContent,
-      embeds: [errorEmbed]
-    }).catch(() => null);
-
-    if (errSentMsg) {
-      setTimeout(async () => {
-        await errSentMsg.delete().catch(() => {});
-      }, 10000);
-    }
-    return false;
-  } else {
-    // 画像がある場合：通常の通知Embedに画像を設定して送信
-    embed.setImage(imageUrl);
-    await channel.send({
-      content: mentionContent,
-      embeds: [embed]
-    }).catch(() => {});
-    return true;
-  }
-}
-
-// -------------------------------------------------------------
 // 🌍 地震・津波情報の定期取得
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
@@ -302,8 +260,13 @@ async function checkEarthquakeAndTsunami() {
                     embed.addFields({ name: '📊 各地の震度詳細', value: areaDetailsText, inline: false });
                   }
 
+                  embed.setImage(imageUrl);
                   embed.setTimestamp();
-                  await sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent);
+
+                  await channel.send({ 
+                    content: mentionContent, 
+                    embeds: [embed]
+                  }).catch(() => {});
 
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
@@ -342,9 +305,13 @@ async function checkWeatherForecasts() {
             .setColor(0x0099FF)
             .setTitle(`☀️ ${region}の天気予報`)
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
+            .setImage(imageUrl)
             .setTimestamp();
 
-          await sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent);
+          await channel.send({ 
+            content: mentionContent, 
+            embeds: [embed]
+          }).catch(() => {});
 
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
@@ -378,9 +345,13 @@ async function checkDisasterWarnings() {
             .setColor(0xFF8C00)
             .setTitle('⚠️ 気象・災害警報情報')
             .setDescription('気象庁より気象警報・注意報または災害関連情報が発表されています。十分にご注意ください。')
+            .setImage(imageUrl)
             .setTimestamp();
 
-          await sendNotificationWithImageCheck(channel, embed, imageUrl, mentionContent);
+          await channel.send({ 
+            content: mentionContent, 
+            embeds: [embed]
+          }).catch(() => {});
 
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (e) {}
@@ -418,7 +389,13 @@ client.once('clientReady', async (c) => {
               .setDescription('Botのシステムが正常に起動・再接続されました。')
               .setTimestamp();
 
-            await channel.send({ embeds: [bootEmbed] }).catch(() => {});
+            // 💡 常に「前に送って10秒後に削除」するように修正
+            const sentBootMsg = await channel.send({ embeds: [bootEmbed] }).catch(() => null);
+            if (sentBootMsg) {
+              setTimeout(async () => {
+                await sentBootMsg.delete().catch(() => {});
+              }, 10000);
+            }
           }
         }
       } catch (e) {
