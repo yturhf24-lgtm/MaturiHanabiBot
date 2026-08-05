@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -117,9 +117,7 @@ client.saveSettings = async (data) => {
   }
 };
 
-// -------------------------------------------------------------
 // コマンドファイルの自動読み込み
-// -------------------------------------------------------------
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
   const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -132,7 +130,6 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
-// メンション文字列を安全に生成するヘルパー関数
 function getMentionString(roleId, guildId) {
   if (!roleId) return null;
   if (roleId === 'everyone' || roleId === '@everyone' || roleId === guildId) {
@@ -142,7 +139,7 @@ function getMentionString(roleId, guildId) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得（画像添付付き）
+// 🌍 地震・津波情報の定期取得
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -235,9 +232,7 @@ async function checkEarthquakeAndTsunami() {
       }
 
       const settings = client.getSettings();
-      const sortedEntries = Object.entries(settings);
-
-      for (const [guildId, guildSettings] of sortedEntries) {
+      for (const [guildId, guildSettings] of Object.entries(settings)) {
         const eqConfig = guildSettings?.earthquakeInfo;
         if (eqConfig && eqConfig.enabled && eqConfig.channelId) {
           if (maxScale >= (scaleValues[eqConfig.minScale] || 0)) {
@@ -264,26 +259,11 @@ async function checkEarthquakeAndTsunami() {
 
                   embed.setTimestamp();
 
-                  // 画像の添付処理
-                  let files = [];
-                  try {
-                    const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
-                    if (imgRes.ok) {
-                      const buffer = Buffer.from(await imgRes.arrayBuffer());
-                      const attachment = new AttachmentBuilder(buffer, { name: 'earthquake_map.jpg' });
-                      embed.setImage('attachment://earthquake_map.jpg');
-                      files.push(attachment);
-                    }
-                  } catch (e) {
-                    // 画像取得失敗時は画像なしで続行
-                  }
-
                   const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
 
                   await channel.send({ 
                     content: mentionContent, 
-                    embeds: [embed],
-                    files: files
+                    embeds: [embed]
                   }).catch(() => {});
 
                   await new Promise(resolve => setTimeout(resolve, 500));
@@ -300,7 +280,7 @@ async function checkEarthquakeAndTsunami() {
 }
 
 // -------------------------------------------------------------
-// ☀️ 天気予報の定期チェック（画像添付付き）
+// ☀️ 天気予報の定期チェック
 // -------------------------------------------------------------
 async function checkWeatherForecasts() {
   if (!isBotStarted) return;
@@ -322,23 +302,11 @@ async function checkWeatherForecasts() {
             .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
             .setTimestamp();
 
-          let files = [];
-          try {
-            const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
-            if (imgRes.ok) {
-              const buffer = Buffer.from(await imgRes.arrayBuffer());
-              const attachment = new AttachmentBuilder(buffer, { name: 'weather.jpg' });
-              embed.setImage('attachment://weather.jpg');
-              files.push(attachment);
-            }
-          } catch (e) {}
-
           const mentionContent = getMentionString(weatherConfig.mentionRoleId, guildId);
 
           await channel.send({ 
             content: mentionContent, 
-            embeds: [embed],
-            files: files
+            embeds: [embed]
           }).catch(() => {});
 
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -350,17 +318,9 @@ async function checkWeatherForecasts() {
   }
 }
 
-async function checkEvacuations() {
-  if (!isBotStarted) return;
-}
+async function checkEvacuations() { if (!isBotStarted) return; }
+async function checkNews() { if (!isBotStarted) return; }
 
-async function checkNews() {
-  if (!isBotStarted) return;
-}
-
-// -------------------------------------------------------------
-// Bot起動時の処理
-// -------------------------------------------------------------
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
@@ -368,9 +328,7 @@ client.once('clientReady', async (c) => {
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
     let totalMembers = 0;
-    client.guilds.cache.forEach(guild => {
-      totalMembers += guild.memberCount || 0;
-    });
+    client.guilds.cache.forEach(guild => { totalMembers += guild.memberCount || 0; });
 
     if (statusToggle) {
       client.user.setActivity({ name: `導入プレイヤー数: ${totalMembers}人`, type: 3 });
@@ -389,30 +347,8 @@ client.once('clientReady', async (c) => {
   setInterval(checkWeatherForecasts, 60 * 60 * 1000);
   setInterval(checkEvacuations, 60 * 1000);
   setInterval(checkNews, 60 * 1000);
-
-  const settings = client.getSettings();
-  for (const [guildId, guildSettings] of Object.entries(settings)) {
-    const notifyConfig = guildSettings?.restartNotify;
-    if (!notifyConfig || !notifyConfig.enabled || !notifyConfig.channelId) continue;
-    try {
-      const guild = await client.guilds.fetch(guildId).catch(() => null);
-      if (!guild) continue;
-      const channel = await guild.channels.fetch(notifyConfig.channelId).catch(() => null);
-      if (!channel) continue;
-      const embed = new EmbedBuilder()
-        .setColor(0x0099FF)
-        .setTitle('🔄 システム再起動・アップデート完了')
-        .setDescription('Botが正常に再起動しました。')
-        .setTimestamp();
-
-      const mentionContent = getMentionString(notifyConfig.mentionRoleId, guildId);
-
-      await channel.send({ content: mentionContent, embeds: [embed] }).catch(() => {});
-    } catch (err) {}
-  }
 });
 
-// コマンド実行
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   const command = client.commands.get(interaction.commandName);
@@ -422,25 +358,7 @@ client.on('interactionCreate', async (interaction) => {
     await command.execute(interaction, client);
   } catch (error) {
     console.error(`コマンド実行エラー [/${interaction.commandName}]:`, error);
-    const errorEmbed = new EmbedBuilder().setColor(0xFF0000).setTitle('❌ 実行エラー').setDescription('エラーが発生しました。');
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
-    } else {
-      await interaction.reply({ embeds: [errorEmbed], flags: [MessageFlags.Ephemeral] }).catch(() => null);
-    }
   }
-});
-
-client.on('guildMemberAdd', async (member) => {
-  const avatarCommand = client.commands.get('anti-default-avatar');
-  if (avatarCommand && avatarCommand.handleMemberAdd) await avatarCommand.handleMemberAdd(member, client);
-  const newAccCommand = client.commands.get('anti-new-account');
-  if (newAccCommand && newAccCommand.handleMemberAdd) await newAccCommand.handleMemberAdd(member, client);
-});
-
-client.on('messageCreate', async (message) => {
-  const antiSpamCmd = client.commands.get('anti-spam-message');
-  if (antiSpamCmd && antiSpamCmd.handleMessage) await antiSpamCmd.handleMessage(message, client);
 });
 
 const app = express();
