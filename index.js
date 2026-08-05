@@ -132,7 +132,7 @@ if (fs.existsSync(commandsPath)) {
   }
 }
 
-// メンション文字列を安全に生成するヘルパー関数（@@everyoneバグ対策済み）
+// メンション文字列を安全に生成するヘルパー関数
 function getMentionString(roleId, guildId) {
   if (!roleId) return null;
   if (roleId === 'everyone' || roleId === '@everyone' || roleId === guildId) {
@@ -142,7 +142,7 @@ function getMentionString(roleId, guildId) {
 }
 
 // -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得（安定した画像添付付き）
+// 🌍 地震・津波情報の定期取得（画像添付付き）
 // -------------------------------------------------------------
 async function checkEarthquakeAndTsunami() {
   try {
@@ -264,20 +264,18 @@ async function checkEarthquakeAndTsunami() {
 
                   embed.setTimestamp();
 
-                  // 地図画像を添付して表示をリッチにする
+                  // 画像の添付処理
                   let files = [];
                   try {
-                    // 気象庁の現在有効な公開お天気・地図プレビュー画像を動的に取得・添付
                     const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
                     if (imgRes.ok) {
-                      const arrayBuffer = await imgRes.arrayBuffer();
-                      const buffer = Buffer.from(arrayBuffer);
+                      const buffer = Buffer.from(await imgRes.arrayBuffer());
                       const attachment = new AttachmentBuilder(buffer, { name: 'earthquake_map.jpg' });
                       embed.setImage('attachment://earthquake_map.jpg');
                       files.push(attachment);
                     }
-                  } catch (imgErr) {
-                    // 画像取得に失敗してもテキスト通知は継続する
+                  } catch (e) {
+                    // 画像取得失敗時は画像なしで続行
                   }
 
                   const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
@@ -302,7 +300,7 @@ async function checkEarthquakeAndTsunami() {
 }
 
 // -------------------------------------------------------------
-// ☀️ 天気予報の定期チェック
+// ☀️ 天気予報の定期チェック（画像添付付き）
 // -------------------------------------------------------------
 async function checkWeatherForecasts() {
   if (!isBotStarted) return;
@@ -328,8 +326,7 @@ async function checkWeatherForecasts() {
           try {
             const imgRes = await fetch('https://www.jma.go.jp/bosai/forecast/img/aperiodic/f_himawari.jpg');
             if (imgRes.ok) {
-              const arrayBuffer = await imgRes.arrayBuffer();
-              const buffer = Buffer.from(arrayBuffer);
+              const buffer = Buffer.from(await imgRes.arrayBuffer());
               const attachment = new AttachmentBuilder(buffer, { name: 'weather.jpg' });
               embed.setImage('attachment://weather.jpg');
               files.push(attachment);
