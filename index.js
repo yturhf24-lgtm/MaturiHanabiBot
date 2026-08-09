@@ -10,7 +10,7 @@ const REPO_OWNER = 'yturhf24-lgtm';
 const REPO_NAME = 'MaturiHanabiBot';
 const BRANCH = 'main';
 
-// 🌐 Renderなどの環境でも確実にWebSocketを接続させるためのオプション設定
+// 🌐 WebSocket接続オプション設定
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -22,7 +22,6 @@ const client = new Client({
     GatewayIntentBits.GuildPresences,
   ],
   ws: {
-    // 接続のタイムアウトやネットワーク再試行の緩和
     large_threshold: 250,
   },
   rest: {
@@ -301,7 +300,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// 🌐 Webサーバーの起動
+// 🌐 Webサーバーの起動（ポートバインド用）
 const app = express();
 const PORT = process.env.PORT || 10000;
 app.get('/', (req, res) => res.send('Discord Bot is Online!'));
