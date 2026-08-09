@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder, Options } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -18,8 +18,15 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildWebhooks,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildPresences,
-  ]
+    GatewayIntentBits.GuildPresences, // 他Botのオンライン/オフライン検知に必須
+  ],
+  makeCache: Options.cacheEverything(),
+  sweepers: {
+    messages: {
+      interval: 3600,
+      lifetime: 1800,
+    },
+  },
 });
 
 client.commands = new Collection();
@@ -140,6 +147,7 @@ function getMentionString(roleId, guildId) {
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
+  // 🚀 自Botの再起動通知（オンライン復帰時）の送信処理
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
     const config = guildSettings?.restartNotify;
@@ -168,6 +176,7 @@ client.once('clientReady', async (c) => {
     }
   }
 
+  // 🔄 Botのステータス（アクティビティ）を定期切り替え
   let statusToggle = false;
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
@@ -188,6 +197,9 @@ client.once('clientReady', async (c) => {
   }, 8000);
 });
 
+// -------------------------------------------------------------
+// 🤖 他Botのオンライン/オフライン検知・通知（/bot-monitor 設定に基づく）
+// -------------------------------------------------------------
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
   if (!isBotStarted) return;
   if (!newPresence || !newPresence.user || !newPresence.user.bot) return;
@@ -240,6 +252,9 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // -------------------------------------------------------------
+  // ⚙️ /bot-monitor コマンドの処理
+  // -------------------------------------------------------------
   if (interaction.commandName === 'bot-monitor') {
     const status = interaction.options.getString('status');
     const channel = interaction.options.getChannel('channel');
@@ -295,7 +310,6 @@ const PORT = process.env.PORT || 10000;
 app.get('/', (req, res) => res.send('Discord Bot is Online!'));
 app.listen(PORT, () => console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`));
 
-// 🚀 起動の最後で確実にログイン処理を実行
 loadDataFromGitHub().then(async () => {
   if (!TOKEN) {
     console.error('[Error] DISCORD_TOKEN が設定されていません！');
