@@ -18,6 +18,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildWebhooks,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildPresences, // 他Botのオンライン/オフライン検知に必須
   ]
 });
 
@@ -26,7 +27,6 @@ client.commands = new Collection();
 const DATA_FILE = path.resolve(__dirname, 'data.json');
 let localSettingsCache = {};
 
-const notifiedQuakes = new Set();
 let isBotStarted = false;
 
 // -------------------------------------------------------------
@@ -138,264 +138,30 @@ function getMentionString(roleId, guildId) {
   return `<@&${roleId}>`;
 }
 
-// -------------------------------------------------------------
-// 🌍 地震・津波情報の定期取得
-// -------------------------------------------------------------
-async function checkEarthquakeAndTsunami() {
-  try {
-    const res = await fetch('https://api.p2pquake.net/v2/history?codes=551&limit=5', {
-      headers: { 'User-Agent': 'MaturiHanabiBot/1.0' }
-    });
-    if (!res.ok) return;
-
-    const data = await res.json();
-    if (!data || data.length === 0) return;
-
-    data.reverse();
-
-    for (const quake of data) {
-      const quakeId = quake.id || quake.time;
-      const quakeTime = new Date(quake.time || quake.earthquake?.time).getTime();
-      
-      if (!isBotStarted) {
-        notifiedQuakes.add(quakeId);
-        continue;
-      }
-
-      if (notifiedQuakes.has(quakeId)) continue;
-
-      if (Date.now() - quakeTime > 10 * 60 * 1000) {
-        notifiedQuakes.add(quakeId);
-        continue;
-      }
-
-      notifiedQuakes.add(quakeId);
-      if (notifiedQuakes.size > 100) {
-        const firstKey = notifiedQuakes.keys().next().value;
-        notifiedQuakes.delete(firstKey);
-      }
-
-      const eqData = quake.earthquake || {};
-      const hypocenter = eqData.hypocenter?.name || '不明';
-      const magnitude = eqData.hypocenter?.magnitude ?? '不明';
-      const depth = eqData.hypocenter?.depth ?? '不明';
-      const maxScale = eqData.maxScale ?? 0;
-      const domesticTsunami = eqData.domesticTsunami || '不明';
-      const rawTimeString = quake.time || eqData.time || '';
-
-      const scaleReadableMap = {
-        10: '震度1', 20: '震度2', 30: '震度3', 40: '震度4',
-        45: '震度5弱', 50: '震度5強', 55: '震度6弱', 60: '震度6強', 70: '震度7'
-      };
-      const scaleText = scaleReadableMap[maxScale] || '不明';
-      const scaleValues = { '1': 10, '2': 20, '3': 30, '4': 40, '5lower': 45, '5upper': 50 };
-
-      let formattedTime = '日時不明';
-      if (rawTimeString) {
-        const d = new Date(rawTimeString);
-        if (!isNaN(d.getTime())) {
-          const year = d.getFullYear();
-          const month = d.getMonth() + 1;
-          const day = d.getDate();
-          const hours = String(d.getHours()).padStart(2, '0');
-          const minutes = String(d.getMinutes()).padStart(2, '0');
-          formattedTime = `${year}年${month}月${day}日 ${hours}:${minutes}頃`;
-        }
-      }
-
-      let tsunamiText = 'この地震による津波の心配はありません。';
-      if (domesticTsunami === 'Warning') tsunamiText = '⚠️ この地震により津波警報等が発表されています！';
-      else if (domesticTsunami === 'Checking') tsunamiText = '🔍 この地震による津波の有無を確認中です。';
-      else if (domesticTsunami === 'NotAvailable') tsunamiText = '津波に関する情報は不明です。';
-
-      let areaDetailsText = '';
-      if (eqData.points && Array.isArray(eqData.points)) {
-        const scaleGroups = {};
-        for (const pt of eqData.points) {
-          const s = pt.scale;
-          if (!scaleGroups[s]) scaleGroups[s] = [];
-          scaleGroups[s].push(pt.addr);
-        }
-
-        const sortedScales = Object.keys(scaleGroups).sort((a, b) => b - a);
-        const lines = [];
-        for (const s of sortedScales) {
-          const sText = scaleReadableMap[s] || `震度?`;
-          const addrs = scaleGroups[s];
-          let addrStr = addrs.slice(0, 10).join('、');
-          if (addrs.length > 10) {
-            addrStr += ` ほか${addrs.length - 10}市区町村`;
-          }
-          lines.push(`**${sText}**: ${addrStr}`);
-        }
-        areaDetailsText = lines.join('\n');
-      }
-
-      const settings = client.getSettings();
-      for (const [guildId, guildSettings] of Object.entries(settings)) {
-        const eqConfig = guildSettings?.earthquakeInfo;
-        if (eqConfig && eqConfig.enabled && eqConfig.channelId) {
-          if (maxScale >= (scaleValues[eqConfig.minScale] || 0)) {
-            try {
-              const guild = await client.guilds.fetch(guildId).catch(() => null);
-              if (guild) {
-                const channel = await guild.channels.fetch(eqConfig.channelId).catch(() => null);
-                if (channel) {
-                  const imageUrl = 'https://www.jma.go.jp/bosai/forecast/img/kaikyo.png';
-                  const mentionContent = getMentionString(eqConfig.mentionRoleId, guildId);
-
-                  const embed = new EmbedBuilder()
-                    .setColor(maxScale >= 40 ? 0xFF0000 : (maxScale >= 30 ? 0xFF8C00 : 0x0099FF))
-                    .setTitle('🚨 地震情報')
-                    .setDescription(`${formattedTime}頃、地震が発生しました。`)
-                    .addFields(
-                      { name: '📍 震央', value: hypocenter, inline: true },
-                      { name: '📏 深さ', value: depth === '不明' ? '不明' : `${depth}km`, inline: true },
-                      { name: 'マグニチュード', value: String(magnitude), inline: true },
-                      { name: '🔴 最大震度', value: scaleText, inline: false },
-                      { name: '🌊 津波情報', value: tsunamiText, inline: false }
-                    );
-
-                  if (areaDetailsText) {
-                    embed.addFields({ name: '📊 各地の震度詳細', value: areaDetailsText, inline: false });
-                  }
-
-                  embed.setImage(imageUrl);
-                  embed.setTimestamp();
-
-                  await channel.send({ 
-                    content: mentionContent, 
-                    embeds: [embed]
-                  }).catch(() => {});
-
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              }
-            } catch (e) {}
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error('地震情報取得エラー:', err);
-  }
-}
-
-// -------------------------------------------------------------
-// ☀️ 天気予報の定期チェック
-// -------------------------------------------------------------
-async function checkWeatherForecasts() {
-  if (!isBotStarted) return;
-  try {
-    const settings = client.getSettings();
-    for (const [guildId, guildSettings] of Object.entries(settings)) {
-      const weatherConfig = guildSettings?.weatherForecast;
-      if (weatherConfig && weatherConfig.enabled && weatherConfig.channelId) {
-        try {
-          const guild = await client.guilds.fetch(guildId).catch(() => null);
-          if (!guild) continue;
-          const channel = await guild.channels.fetch(weatherConfig.channelId).catch(() => null);
-          if (!channel) continue;
-
-          const region = weatherConfig.region || '全国';
-          const imageUrl = 'https://www.jma.go.jp/bosai/forecast/img/kaikyo.png';
-          const mentionContent = getMentionString(weatherConfig.mentionRoleId, guildId);
-
-          const embed = new EmbedBuilder()
-            .setColor(0x0099FF)
-            .setTitle(`☀️ ${region}の天気予報`)
-            .setDescription(`設定されている対象地域（**${region}**）の最新の天気予報をお届けします。`)
-            .setImage(imageUrl)
-            .setTimestamp();
-
-          await channel.send({ 
-            content: mentionContent, 
-            embeds: [embed]
-          }).catch(() => {});
-
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (e) {}
-      }
-    }
-  } catch (err) {
-    console.error('天気予報取得エラー:', err);
-  }
-}
-
-// -------------------------------------------------------------
-// 🌊 災害情報（津波・警報など）の定期チェック
-// -------------------------------------------------------------
-async function checkDisasterWarnings() {
-  if (!isBotStarted) return;
-  try {
-    const settings = client.getSettings();
-    for (const [guildId, guildSettings] of Object.entries(settings)) {
-      const disasterConfig = guildSettings?.disasterWarning || guildSettings?.evacuationInfo;
-      if (disasterConfig && disasterConfig.enabled && disasterConfig.channelId) {
-        try {
-          const guild = await client.guilds.fetch(guildId).catch(() => null);
-          if (!guild) continue;
-          const channel = await guild.channels.fetch(disasterConfig.channelId).catch(() => null);
-          if (!channel) continue;
-
-          const imageUrl = 'https://www.jma.go.jp/bosai/forecast/img/kaikyo.png';
-          const mentionContent = getMentionString(disasterConfig.mentionRoleId, guildId);
-
-          const embed = new EmbedBuilder()
-            .setColor(0xFF8C00)
-            .setTitle('⚠️ 気象・災害警報情報')
-            .setDescription('気象庁より気象警報・注意報または災害関連情報が発表されています。十分にご注意ください。')
-            .setImage(imageUrl)
-            .setTimestamp();
-
-          await channel.send({ 
-            content: mentionContent, 
-            embeds: [embed]
-          }).catch(() => {});
-
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (e) {}
-      }
-    }
-  } catch (err) {
-    console.error('災害情報取得エラー:', err);
-  }
-}
-
-async function checkEvacuations() {
-  await checkDisasterWarnings();
-}
-
-async function checkNews() {
-  if (!isBotStarted) return;
-}
-
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
-  // 🚀 起動完了ログ（再起動ログ）の送信処理
+  // 🚀 自Botの再起動通知（オンライン復帰時）の送信処理
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
-    const targetChannelId = guildSettings?.earthquakeInfo?.channelId || guildSettings?.weatherForecast?.channelId || guildSettings?.disasterWarning?.channelId || guildSettings?.evacuationInfo?.channelId;
-    if (targetChannelId) {
+    const config = guildSettings?.restartNotify;
+    if (config && config.enabled && config.channelId) {
       try {
         const guild = await client.guilds.fetch(guildId).catch(() => null);
         if (guild) {
-          const channel = await guild.channels.fetch(targetChannelId).catch(() => null);
+          const channel = await guild.channels.fetch(config.channelId).catch(() => null);
           if (channel) {
+            const mentionContent = getMentionString(config.mentionRoleId, guildId);
             const bootEmbed = new EmbedBuilder()
               .setColor(0x00FF00)
-              .setTitle('🟢 Botが再起動しました')
+              .setTitle('🟢 Botがオンラインになりました')
               .setDescription('Botのシステムが正常に起動・再接続されました。')
               .setTimestamp();
 
-            // 💡 常に「前に送って10秒後に削除」するように修正
-            const sentBootMsg = await channel.send({ embeds: [bootEmbed] }).catch(() => null);
-            if (sentBootMsg) {
-              setTimeout(async () => {
-                await sentBootMsg.delete().catch(() => {});
-              }, 10000);
-            }
+            await channel.send({ 
+              content: mentionContent, 
+              embeds: [bootEmbed] 
+            }).catch(() => {});
           }
         }
       } catch (e) {
@@ -404,6 +170,7 @@ client.once('clientReady', async (c) => {
     }
   }
 
+  // 🔄 Botのステータス（アクティビティ）を定期切り替え
   let statusToggle = false;
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
@@ -420,17 +187,108 @@ client.once('clientReady', async (c) => {
 
   setTimeout(() => {
     isBotStarted = true;
-    console.log('[Bot Monitor] 起動シーケンス完了。リアルタイム監視を稼働します。');
+    console.log('[Bot Monitor] 起動シーケンス完了。');
   }, 8000);
+});
 
-  setInterval(checkEarthquakeAndTsunami, 15000);
-  setInterval(checkWeatherForecasts, 60 * 60 * 1000);
-  setInterval(checkEvacuations, 60 * 1000);
-  setInterval(checkNews, 60 * 1000);
+// -------------------------------------------------------------
+// 🤖 他Botのオンライン/オフライン検知・通知（/bot-monitor 設定に基づく）
+// -------------------------------------------------------------
+client.on('presenceUpdate', async (oldPresence, newPresence) => {
+  if (!isBotStarted) return;
+  if (!newPresence || !newPresence.user || !newPresence.user.bot) return; // 対象がBotでなければ無視
+
+  const guildId = newPresence.guild.id;
+  const settings = client.getSettings();
+  const config = settings[guildId]?.botMonitor;
+
+  if (!config || !config.enabled || !config.channelId) return;
+
+  const oldStatus = oldPresence ? oldPresence.status : 'offline';
+  const newStatus = newPresence.status;
+
+  if (oldStatus === newStatus) return;
+
+  try {
+    const channel = await newPresence.guild.channels.fetch(config.channelId).catch(() => null);
+    if (!channel) return;
+
+    const botUser = newPresence.user;
+    const mentionContent = getMentionString(config.mentionRoleId, guildId);
+
+    let embed = null;
+
+    if (oldStatus === 'offline' && newStatus !== 'offline') {
+      embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('🤖 他Botオンライン検知')
+        .setDescription(`**${botUser.tag}** がオンラインになりました。`)
+        .setTimestamp();
+    } else if (oldStatus !== 'offline' && newStatus === 'offline') {
+      embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('🤖 他Botオフライン検知')
+        .setDescription(`**${botUser.tag}** がオフラインになりました。`)
+        .setTimestamp();
+    }
+
+    if (embed) {
+      await channel.send({
+        content: mentionContent,
+        embeds: [embed]
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.error('Presence Update Error:', e);
+  }
 });
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+
+  // -------------------------------------------------------------
+  // ⚙️ /bot-monitor コマンドの処理
+  // -------------------------------------------------------------
+  if (interaction.commandName === 'bot-monitor') {
+    const status = interaction.options.getString('status');
+    const channel = interaction.options.getChannel('channel');
+    const role = interaction.options.getRole('role');
+
+    const settings = client.getSettings();
+    if (!settings[interaction.guildId]) settings[interaction.guildId] = {};
+
+    if (status === 'on') {
+      if (!channel) {
+        return interaction.reply({
+          content: '⚠️ ONにする場合は通知を送るチャンネルを指定してください。',
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      settings[interaction.guildId].botMonitor = {
+        enabled: true,
+        channelId: channel.id,
+        mentionRoleId: role ? role.id : null
+      };
+      await client.saveSettings(settings);
+
+      return interaction.reply({
+        content: `✅ 他Botのオンライン/オフライン監視通知を **ON** に設定しました。\n・送信先: ${channel}\n・メンション: ${role ? role : 'なし'}`,
+        flags: MessageFlags.Ephemeral
+      });
+    } else {
+      if (settings[interaction.guildId].botMonitor) {
+        settings[interaction.guildId].botMonitor.enabled = false;
+      }
+      await client.saveSettings(settings);
+
+      return interaction.reply({
+        content: `❌ 他Botのオンライン/オフライン監視通知を **OFF** に設定しました。`,
+        flags: MessageFlags.Ephemeral
+      });
+    }
+  }
+
   const command = client.commands.get(interaction.commandName);
   if (!command) return;
 
