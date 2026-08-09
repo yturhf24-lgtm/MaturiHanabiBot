@@ -10,6 +10,8 @@ const REPO_OWNER = 'yturhf24-lgtm';
 const REPO_NAME = 'MaturiHanabiBot';
 const BRANCH = 'main';
 
+console.log('[Init] スクリプトを読み込み中...');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -18,7 +20,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildWebhooks,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildPresences, // 他Botのオンライン/オフライン検知に必須
+    GatewayIntentBits.GuildPresences,
   ]
 });
 
@@ -33,6 +35,7 @@ let isBotStarted = false;
 // 📁 GitHub連携型 data.json 管理システム
 // -------------------------------------------------------------
 async function loadDataFromGitHub() {
+  console.log('[Data Load] データを読み込み中...');
   try {
     if (GITHUB_TOKEN) {
       const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/data.json?ref=${BRANCH}`, {
@@ -49,7 +52,11 @@ async function loadDataFromGitHub() {
         fs.writeFileSync(DATA_FILE, content, 'utf8');
         console.log('[Data Load] GitHubから最新の data.json を読み込みました');
         return;
+      } else {
+        console.log(`[Data Load Warning] GitHubからの取得に失敗しました (Status: ${res.status})`);
       }
+    } else {
+      console.log('[Data Load Info] GITHUB_TOKEN が設定されていません。ローカルを使用します。');
     }
   } catch (e) {
     console.error('[Data Load Warning] GitHubからの読み込みに失敗しました:', e);
@@ -142,7 +149,6 @@ client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
   console.log(`[DEBUG] 参加サーバー数: ${client.guilds.cache.size}`);
 
-  // 🚀 自Botの再起動通知（オンライン復帰時）の送信処理
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
     const config = guildSettings?.restartNotify;
@@ -171,7 +177,6 @@ client.once('clientReady', async (c) => {
     }
   }
 
-  // 🔄 Botのステータス（アクティビティ）を定期切り替え
   let statusToggle = false;
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
@@ -192,9 +197,6 @@ client.once('clientReady', async (c) => {
   }, 8000);
 });
 
-// -------------------------------------------------------------
-// 🤖 他Botのオンライン/オフライン検知・通知（/bot-monitor 設定に基づく）
-// -------------------------------------------------------------
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
   if (!isBotStarted) return;
   if (!newPresence || !newPresence.user || !newPresence.user.bot) return;
@@ -247,9 +249,6 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // -------------------------------------------------------------
-  // ⚙️ /bot-monitor コマンドの処理
-  // -------------------------------------------------------------
   if (interaction.commandName === 'bot-monitor') {
     const status = interaction.options.getString('status');
     const channel = interaction.options.getChannel('channel');
@@ -305,6 +304,13 @@ const PORT = process.env.PORT || 10000;
 app.get('/', (req, res) => res.send('Discord Bot is Online!'));
 app.listen(PORT, () => console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`));
 
+console.log('[Login] Discordへのログインを開始します...');
 loadDataFromGitHub().then(() => {
-  client.login(TOKEN);
+  if (!TOKEN) {
+    console.error('[Error] DISCORD_TOKEN が設定されていません！');
+    return;
+  }
+  client.login(TOKEN).catch(err => {
+    console.error('[Login Error] ログインに失敗しました:', err);
+  });
 });
