@@ -10,7 +10,6 @@ const REPO_OWNER = 'yturhf24-lgtm';
 const REPO_NAME = 'MaturiHanabiBot';
 const BRANCH = 'main';
 
-// 🌐 WebSocket接続オプション設定
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -35,9 +34,6 @@ const DATA_FILE = path.resolve(__dirname, 'data.json');
 let localSettingsCache = {};
 let isBotStarted = false;
 
-// -------------------------------------------------------------
-// 📁 GitHub連携型 data.json 管理システム
-// -------------------------------------------------------------
 async function loadDataFromGitHub() {
   try {
     if (GITHUB_TOKEN) {
@@ -123,7 +119,6 @@ client.saveSettings = async (data) => {
   }
 };
 
-// コマンドファイルの自動読み込み
 const commandsPath = path.join(__dirname, 'commands');
 if (fs.existsSync(commandsPath)) {
   const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
@@ -144,7 +139,6 @@ function getMentionString(roleId, guildId) {
   return `<@&${roleId}>`;
 }
 
-// 🟢 ログイン完了時のイベント
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
@@ -196,7 +190,6 @@ client.once('clientReady', async (c) => {
   }, 8000);
 });
 
-// 🤖 他Bot監視機能
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
   if (!isBotStarted) return;
   if (!newPresence || !newPresence.user || !newPresence.user.bot) return;
@@ -246,7 +239,6 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
   }
 });
 
-// ⚙️ インタラクション処理
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -300,20 +292,18 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// 🌐 Webサーバーの起動（ポートバインド用）
 const app = express();
 const PORT = process.env.PORT || 10000;
 app.get('/', (req, res) => res.send('Discord Bot is Online!'));
 app.listen(PORT, () => console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`));
 
-// 🚀 起動処理とログイン
 loadDataFromGitHub().then(async () => {
   if (!TOKEN) {
     console.error('[Error] DISCORD_TOKEN が設定されていません！');
     return;
   }
   try {
-    console.log('[Login] Discordへ接続を試行しています...');
+    console.log('[Login] Discordへログインします...');
     await client.login(TOKEN);
   } catch (err) {
     console.error('[Login Error] ログインに失敗しました:', err);
