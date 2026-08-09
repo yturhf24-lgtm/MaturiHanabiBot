@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
-const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder, Options } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, MessageFlags, EmbedBuilder } = require('discord.js');
 require('dotenv').config();
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -10,6 +10,7 @@ const REPO_OWNER = 'yturhf24-lgtm';
 const REPO_NAME = 'MaturiHanabiBot';
 const BRANCH = 'main';
 
+// 🌐 Renderなどの環境でも確実にWebSocketを接続させるためのオプション設定
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -18,15 +19,15 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildWebhooks,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildPresences, // 他Botのオンライン/オフライン検知に必須
+    GatewayIntentBits.GuildPresences,
   ],
-  makeCache: Options.cacheEverything(),
-  sweepers: {
-    messages: {
-      interval: 3600,
-      lifetime: 1800,
-    },
+  ws: {
+    // 接続のタイムアウトやネットワーク再試行の緩和
+    large_threshold: 250,
   },
+  rest: {
+    timeout: 30000,
+  }
 });
 
 client.commands = new Collection();
@@ -144,10 +145,10 @@ function getMentionString(roleId, guildId) {
   return `<@&${roleId}>`;
 }
 
+// 🟢 ログイン完了時のイベント
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
 
-  // 🚀 自Botの再起動通知（オンライン復帰時）の送信処理
   const settings = client.getSettings();
   for (const [guildId, guildSettings] of Object.entries(settings)) {
     const config = guildSettings?.restartNotify;
@@ -176,7 +177,6 @@ client.once('clientReady', async (c) => {
     }
   }
 
-  // 🔄 Botのステータス（アクティビティ）を定期切り替え
   let statusToggle = false;
   setInterval(() => {
     const guildCount = client.guilds.cache.size;
@@ -197,9 +197,7 @@ client.once('clientReady', async (c) => {
   }, 8000);
 });
 
-// -------------------------------------------------------------
-// 🤖 他Botのオンライン/オフライン検知・通知（/bot-monitor 設定に基づく）
-// -------------------------------------------------------------
+// 🤖 他Bot監視機能
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
   if (!isBotStarted) return;
   if (!newPresence || !newPresence.user || !newPresence.user.bot) return;
@@ -249,12 +247,10 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
   }
 });
 
+// ⚙️ インタラクション処理
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // -------------------------------------------------------------
-  // ⚙️ /bot-monitor コマンドの処理
-  // -------------------------------------------------------------
   if (interaction.commandName === 'bot-monitor') {
     const status = interaction.options.getString('status');
     const channel = interaction.options.getChannel('channel');
@@ -305,18 +301,20 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// 🌐 Webサーバーの起動
 const app = express();
 const PORT = process.env.PORT || 10000;
 app.get('/', (req, res) => res.send('Discord Bot is Online!'));
 app.listen(PORT, () => console.log(`🌐 [Web Server] ポート ${PORT} で稼働中。`));
 
+// 🚀 起動処理とログイン
 loadDataFromGitHub().then(async () => {
   if (!TOKEN) {
     console.error('[Error] DISCORD_TOKEN が設定されていません！');
     return;
   }
   try {
-    console.log('[Login] Discordへログインします...');
+    console.log('[Login] Discordへ接続を試行しています...');
     await client.login(TOKEN);
   } catch (err) {
     console.error('[Login Error] ログインに失敗しました:', err);
