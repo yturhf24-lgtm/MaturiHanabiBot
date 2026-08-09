@@ -140,6 +140,7 @@ function getMentionString(roleId, guildId) {
 
 client.once('clientReady', async (c) => {
   console.log(`🟢 Bot ログイン完了: ${c.user.tag}`);
+  console.log(`[DEBUG] 参加サーバー数: ${client.guilds.cache.size}`);
 
   // 🚀 自Botの再起動通知（オンライン復帰時）の送信処理
   const settings = client.getSettings();
@@ -196,7 +197,7 @@ client.once('clientReady', async (c) => {
 // -------------------------------------------------------------
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
   if (!isBotStarted) return;
-  if (!newPresence || !newPresence.user || !newPresence.user.bot) return; // 対象がBotでなければ無視
+  if (!newPresence || !newPresence.user || !newPresence.user.bot) return;
 
   const guildId = newPresence.guild.id;
   const settings = client.getSettings();
