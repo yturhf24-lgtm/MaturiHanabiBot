@@ -76,35 +76,26 @@ global.saveData = saveData;
 // ✅ 許可ロール取得
 async function getAllowedRoles(gid) { const { content } = await loadData(); return content[gid] || []; }
 
-// ✅ 🔑 コマンド別 権限チェック
-async function checkCommandPermission(i) {
+// ✅ 🔑 権限チェック
+async function canUse(i) {
   const userId = i.user.id;
   const subCommand = i.options.getSubcommand();
 
-  // ✅ ADMIN_ID はどのコマンドも無条件許可（全サーバー共通）
+  // ✅ 1. ADMIN_ID は 全サーバー・全コマンド 無条件許可
   if (userId === ADMIN_ID) return true;
 
-  // ✅ /role 許可 /role 削除 → サーバー所有者のみ許可
-  if (subCommand === '許可' || subCommand === '削除') {
-    return i.guild.ownerId === userId;
-  }
+  // ✅ 2. サーバー所有者は そのサーバーの全コマンド 許可
+  if (i.guild.ownerId === userId) return true;
 
-  // ✅ /role 一覧 → サーバー管理者 または 許可ロール保持者
+  // ✅ 3. それ以外 → /role 一覧 だけ許可（管理者 または 許可ロール保持者）
   if (subCommand === '一覧') {
     if (i.member.permissions.has('Administrator')) return true;
     const allowed = await getAllowedRoles(i.guildId);
     return i.member.roles.cache.some(r => allowed.includes(r.id));
   }
 
+  // ❌ それ以外（許可/削除）は実行不可
   return false;
-}
-
-// ✅ 実行権限 統合チェック
-async function canUse(i) {
-  // ADMIN_ID は無条件で全許可
-  if (i.user.id === ADMIN_ID) return true;
-  // それ以外はコマンド別ルールで判定
-  return checkCommandPermission(i);
 }
 
 // ✅ チャンネル権限チェック
