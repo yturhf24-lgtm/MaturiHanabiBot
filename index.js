@@ -79,7 +79,8 @@ async function getAllowedRoles(gid) { const { content } = await loadData(); retu
 // ✅ 🔑 権限チェック
 async function canUse(i) {
   const userId = i.user.id;
-  const subCommand = i.options.getSubcommand();
+  const commandName = i.commandName;
+  const subCommand = i.options.getSubcommand(false);
 
   // ✅ 1. ADMIN_ID は 全サーバー・全コマンド 無条件許可
   if (userId === ADMIN_ID) return true;
@@ -87,8 +88,8 @@ async function canUse(i) {
   // ✅ 2. サーバー所有者は そのサーバー内で全コマンド許可
   if (i.guild.ownerId === userId) return true;
 
-  // ✅ 3. それ以外 → /role 一覧 だけ許可（管理者 または 許可ロール保持者）
-  if (subCommand === '一覧') {
+  // ✅ 3. 一覧系・確認系コマンド → 管理者 または 許可ロール保持者 を許可
+  if (commandName === 'slowcheck' || subCommand === '一覧') {
     if (i.member.permissions.has('Administrator')) return true;
     const allowed = await getAllowedRoles(i.guildId);
     return i.member.roles.cache.some(r => allowed.includes(r.id));
