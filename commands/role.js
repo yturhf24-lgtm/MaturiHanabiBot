@@ -17,7 +17,7 @@ module.exports = {
     ),
 
   async execute(i) {
-    await i.deferReply();
+    await i.deferReply({ ephemeral: true }); // 🔒 自分だけに表示
 
     const { content: data } = await global.loadData();
     const gid = i.guildId;
