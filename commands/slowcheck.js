@@ -9,43 +9,49 @@ module.exports = {
     await i.deferReply({ flags: 64 });
 
     const channels = i.guild.channels.cache.filter(ch => ch.type === ChannelType.GuildText);
-    const slowChannels = [];
+    
+    // ✅ 秒数ごとに整理
+    const slowBySec = {};
     const normalChannels = [];
 
-    // ✅ 各チャンネルの低速設定を確認
     for (const ch of channels.values()) {
-      const rateLimit = ch.rateLimitPerUser;
-      if (rateLimit && rateLimit > 0) {
-        const sec = rateLimit === 1 ? '1秒' : `${rateLimit}秒`;
-        slowChannels.push(`<#${ch.id}>（${sec}）`);
+      const sec = ch.rateLimitPerUser;
+      if (sec && sec > 0) {
+        const key = `${sec}秒`;
+        if (!slowBySec[key]) slowBySec[key] = [];
+        slowBySec[key].push(ch);
       } else {
-        normalChannels.push(`<#${ch.id}>`);
+        normalChannels.push(ch);
       }
     }
 
-    // ✅ 結果を整形
-    const slowCount = slowChannels.length;
-    const normalCount = normalChannels.length;
+    // ✅ 低速部分を作成
+    let slowText = '';
+    for (const [sec, list] of Object.entries(slowBySec).sort()) {
+      slowText += `🔒 低速あり（${sec}）\n${list.length}件\n\n`;
+    }
+    if (!slowText) slowText = '🔒 低速あり\n0件\n\n';
 
-    // ✅ Discordの文字数制限（1024文字）を考慮
-    let slowText = slowChannels.join('\n');
-    let normalText = normalChannels.join('\n');
+    // ✅ 低速なし部分（最大15件まで表示）
+    let normalText = '';
+    if (normalChannels.length === 0) {
+      normalText = 'なし';
+    } else {
+      const showList = normalChannels.slice(0, 15);
+      normalText = showList.map(ch => `<#${ch.id}>`).join('\n');
+      if (normalChannels.length > 15) {
+        normalText += `\n...他 ${normalChannels.length - 15}チャンネル`;
+      }
+    }
 
-    if (slowText.length > 1000) slowText = slowChannels.slice(0, 30).join('\n') + `\n...他 ${slowCount - 30}チャンネル`;
-    if (normalText.length > 1000) normalText = normalChannels.slice(0, 30).join('\n') + `\n...他 ${normalCount - 30}チャンネル`;
-
-    if (!slowText) slowText = 'なし';
-    if (!normalText) normalText = 'なし';
-
-    // ✅ 埋め込みメッセージで表示
+    // ✅ 表示
     const embed = new EmbedBuilder()
       .setColor('Blue')
-      .setTitle('📊 低速チャンネル確認')
+      .setTitle('📊 低速チャンネル')
       .addFields(
-        { name: `🔒 低速付きチャンネル：${slowCount}チャンネル`, value: slowText },
-        { name: `✅ 低速なしチャンネル：${normalCount}チャンネル`, value: normalText }
-      )
-      .setTimestamp();
+        { name: '━━━━━━ 低速あり ━━━━━━', value: slowText.trim() },
+        { name: '━━━━━━ 低速なし ━━━━━━', value: normalText }
+      );
 
     await i.editReply({ embeds: [embed] });
   }
