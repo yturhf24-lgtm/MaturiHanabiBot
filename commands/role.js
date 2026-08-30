@@ -17,7 +17,8 @@ module.exports = {
     ),
 
   async execute(i) {
-    await i.deferReply(); // 保存に時間がかかるので先に応答
+    // ✅ まず最初に「応答する」ことを通知 → 3秒制限を回避！
+    await i.deferReply();
 
     const { content: data } = await global.loadData();
     const gid = i.guildId;
