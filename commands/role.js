@@ -17,7 +17,6 @@ module.exports = {
     ),
 
   async execute(i) {
-    // ✅ まず最初に「応答する」ことを通知 → 3秒制限を回避！
     await i.deferReply();
 
     const { content: data } = await global.loadData();
@@ -32,7 +31,7 @@ module.exports = {
       await global.saveData(data);
       return i.editReply({ embeds: [
         new EmbedBuilder().setColor('Green').setTitle('✅ 許可ロール追加')
-          .setDescription(`<@&${role.id}> を許可ロールに設定しました\n💾 GitHubに保存完了`)
+          .setDescription(`<@&${role.id}> をこのサーバーの許可ロールに設定しました\n💾 GitHubに保存完了`)
       ]});
     }
 
@@ -41,7 +40,7 @@ module.exports = {
       await global.saveData(data);
       return i.editReply({ embeds: [
         new EmbedBuilder().setColor('Orange').setTitle('🗑️ 許可ロール削除')
-          .setDescription(`<@&${role.id}> を許可ロールから外しました\n💾 GitHubに保存完了`)
+          .setDescription(`<@&${role.id}> をこのサーバーの許可ロールから外しました\n💾 GitHubに保存完了`)
       ]});
     }
 
