@@ -2,6 +2,15 @@ const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require('discord
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 
+// ✅ ポートを開く（Renderの警告を消すため）
+const http = require('http');
+const PORT = process.env.PORT || 10000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Discord Bot is Running!\n');
+}).listen(PORT, '0.0.0.0');
+console.log(`✅ ポート ${PORT} を開きました`);
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 client.commands = new Collection();
 
@@ -11,7 +20,6 @@ const GITHUB_OWNER = 'yturhf24-lgtm';
 const GITHUB_REPO = '-bot';
 const FILE_PATH = 'roles.json';
 
-// ✅ Renderの環境変数から読み込み
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
 // ✅ GitHubから読み込み
@@ -93,6 +101,5 @@ client.on('interactionCreate', async i => {
   catch (e) { console.error(e); await i.reply({ content: '❌ エラーが発生しました', ephemeral: true }); }
 });
 
-// こちらに置き換え
 client.on('clientReady', () => console.log(`✅ ${client.user.tag} オンライン！`));
 client.login(process.env.TOKEN);
