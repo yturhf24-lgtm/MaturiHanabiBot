@@ -14,24 +14,13 @@ console.log(`✅ ポート ${PORT} を開きました`);
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 client.commands = new Collection();
 
-// ✅ 設定
+// ✅ 固定設定
 const ADMIN_ID = '1266013271518089258';
 const GITHUB_OWNER = 'yturhf24-lgtm';
 const GITHUB_REPO = 'MaturiHanabiBot';
 const FILE_PATH = 'roles.json';
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
 
-// ✅ 環境変数チェック（無いときはエラー表示）
-if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
-  console.error('❌ 環境変数が不足しています！ TOKEN, CLIENT_ID, GUILD_ID を確認してください');
-  process.exit(1);
-}
-
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
-// ✅ コマンド一覧を読み込み
+// ✅ コマンド一覧を先読み
 const commands = [];
 const commandsPath = './commands';
 for (const f of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
@@ -40,8 +29,18 @@ for (const f of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
   commands.push(cmd.data.toJSON());
 }
 
-// ✅ 自動コマンド登録
+// ✅ 自動コマンド登録（起動後に実行＝環境変数確実に読める）
 async function deployCommands() {
+  const TOKEN = process.env.TOKEN;
+  const CLIENT_ID = process.env.CLIENT_ID;
+  const GUILD_ID = process.env.GUILD_ID;
+
+  if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
+    console.error('❌ 環境変数不足！');
+    console.log(`TOKEN=${!!TOKEN} CLIENT_ID=${!!CLIENT_ID} GUILD_ID=${!!GUILD_ID}`);
+    return;
+  }
+
   try {
     console.log('🔄 コマンドを自動登録中...');
     const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -51,13 +50,14 @@ async function deployCommands() {
     );
     console.log('✅ コマンド自動登録 完了！');
   } catch (e) {
-    console.error('❌ コマンド登録エラー:', e.message);
+    console.error('❌ 登録エラー:', e.message);
   }
 }
 
 // ✅ GitHub読み書き
 async function loadData() {
   try {
+    const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
     const { data } = await octokit.rest.repos.getContent({
       owner: GITHUB_OWNER, repo: GITHUB_REPO, path: FILE_PATH
     });
@@ -65,6 +65,7 @@ async function loadData() {
   } catch { return { content: {}, sha: null }; }
 }
 async function saveData(newData) {
+  const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
   const { sha } = await loadData();
   await octokit.rest.repos.createOrUpdateFileContents({
     owner: GITHUB_OWNER, repo: GITHUB_REPO, path: FILE_PATH,
@@ -105,10 +106,11 @@ client.on('interactionCreate', async i => {
   catch (e) { console.error(e); await i.reply({ content: '❌ エラー', ephemeral: true }); }
 });
 
-// ✅ Bot起動時に自動登録（順番を正しく！）
+// ✅ 完全に起動してから登録実行
 client.on('clientReady', async () => {
   console.log(`✅ ${client.user.tag} オンライン！`);
-  await deployCommands(); // 🔑 TOKENを確実に読んだ後に実行
+  await deployCommands();
 });
 
-client.login(TOKEN);
+// ✅ ログイン
+client.login(process.env.TOKEN);
