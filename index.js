@@ -1,8 +1,8 @@
-const { Client, GatewayIntentBits, Collection, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, REST, Routes } = require('discord.js');
 const { Octokit } = require('@octokit/rest');
 const fs = require('fs');
 
-// ✅ ポートを開く（Renderの警告を消すため）
+// ✅ Renderポート警告消し用
 const http = require('http');
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
@@ -17,12 +17,36 @@ client.commands = new Collection();
 // ✅ 設定
 const ADMIN_ID = '1266013271518089258';
 const GITHUB_OWNER = 'yturhf24-lgtm';
-const GITHUB_REPO = '-bot';
+const GITHUB_REPO = 'MaturiHanabiBot';
 const FILE_PATH = 'roles.json';
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-// ✅ GitHubから読み込み
+// ✅ コマンド一覧を読み込み
+const commands = [];
+const commandsPath = './commands';
+for (const f of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
+  const cmd = require(`${commandsPath}/${f}`);
+  client.commands.set(cmd.data.name, cmd);
+  commands.push(cmd.data.toJSON());
+}
+
+// ✅ 自動コマンド登録
+async function deployCommands() {
+  try {
+    console.log('🔄 コマンドを自動登録中...');
+    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+    await rest.put(
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+      { body: commands }
+    );
+    console.log('✅ コマンド自動登録 完了！');
+  } catch (e) {
+    console.error('❌ コマンド登録エラー:', e);
+  }
+}
+
+// ✅ GitHub読み書き
 async function loadData() {
   try {
     const { data } = await octokit.rest.repos.getContent({
@@ -36,57 +60,37 @@ async function loadData() {
     return { content: {}, sha: null };
   }
 }
-
-// ✅ GitHubに直接書き込み保存
 async function saveData(newData) {
   const { sha } = await loadData();
   const content = Buffer.from(JSON.stringify(newData, null, 2)).toString('base64');
-  
   await octokit.rest.repos.createOrUpdateFileContents({
-    owner: GITHUB_OWNER,
-    repo: GITHUB_REPO,
-    path: FILE_PATH,
-    message: `💾 ロール更新 - ${new Date().toLocaleString('ja-JP')}`,
-    content,
-    sha
+    owner: GITHUB_OWNER, repo: GITHUB_REPO, path: FILE_PATH,
+    message: `💾 更新 - ${new Date().toLocaleString('ja-JP')}`, content, sha
   });
-  console.log('✅ GitHubに保存しました');
+  console.log('✅ GitHubに保存');
 }
-
 global.loadData = loadData;
 global.saveData = saveData;
 
-// ✅ 許可ロール取得
-async function getAllowedRoles(guildId) {
+// ✅ 権限チェック
+async function getAllowedRoles(gid) {
   const { content } = await loadData();
-  return content[guildId] || [];
+  return content[gid] || [];
 }
-
-// ✅ 実行権限チェック
 async function canUse(i) {
   if (i.user.id === ADMIN_ID) return true;
   if (i.member.permissions.has('Administrator')) return true;
-  const allowed = await getAllowedRoles(i.guildId);
-  return i.member.roles.cache.some(r => allowed.includes(r.id));
+  return i.member.roles.cache.some(r => getAllowedRoles(i.guildId).includes(r.id));
 }
-
-// ✅ チャンネル権限チェック → 無い場合Embedでお知らせ
 async function checkPerm(i) {
   const bot = i.guild.members.me;
   const ok = bot.permissionsIn(i.channel).has('SendMessages') &&
              bot.permissionsIn(i.channel).has('EmbedLinks');
   if (!ok) {
-    const emb = new EmbedBuilder().setColor('Red').setTitle('⚠️ 権限なし').setDescription('このチャンネルでは使えません');
-    await i.reply({ embeds: [emb], ephemeral: true });
+    await i.reply({ embeds: [new EmbedBuilder().setColor('Red').setTitle('⚠️ 権限なし').setDescription('このチャンネルでは使えません')], ephemeral: true });
     return false;
   }
   return true;
-}
-
-// ✅ コマンド読み込み
-for (const f of fs.readdirSync('./commands').filter(f => f.endsWith('.js'))) {
-  const cmd = require(`./commands/${f}`);
-  client.commands.set(cmd.data.name, cmd);
 }
 
 // ✅ コマンド処理
@@ -94,12 +98,16 @@ client.on('interactionCreate', async i => {
   if (!i.isChatInputCommand()) return;
   if (!await canUse(i)) return i.reply({ content: '⛔ 実行権限がありません', ephemeral: true });
   if (!await checkPerm(i)) return;
-
   const cmd = client.commands.get(i.commandName);
   if (!cmd) return;
   try { await cmd.execute(i); }
-  catch (e) { console.error(e); await i.reply({ content: '❌ エラーが発生しました', ephemeral: true }); }
+  catch (e) { console.error(e); await i.reply({ content: '❌ エラー', ephemeral: true }); }
 });
 
-client.on('clientReady', () => console.log(`✅ ${client.user.tag} オンライン！`));
+// ✅ Bot起動時に自動登録実行！
+client.on('clientReady', async () => {
+  console.log(`✅ ${client.user.tag} オンライン！`);
+  await deployCommands(); // 🔑 自動的にコマンド登録！
+});
+
 client.login(process.env.TOKEN);
