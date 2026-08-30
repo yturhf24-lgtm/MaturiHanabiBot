@@ -69,13 +69,15 @@ async function checkPerm(i) {
 // ✅ メイン処理
 client.on('interactionCreate', async i => {
 
-  // ============== ロール監視 メニュー処理 ==============
-  if ((i.isRoleSelectMenu() || i.isChannelSelectMenu()) && i.customId.startsWith('step')) {
-    const step = i.customId.split('-')[0];
+  // ============== ロール監視 メニュー/ボタン処理 ==============
+  if ((i.isRoleSelectMenu() || i.isChannelSelectMenu() || i.isButton()) && i.customId.startsWith('step')) {
+    let step = i.customId.includes('-skip') || i.customId.includes('-back')
+      ? i.customId.replace(/-skip|-back/g, '').split('-')[0] + '-' + i.customId.split('-')[1]
+      : i.customId.split('-')[0];
     const cmd = client.commands.get('ロール監視');
     if (cmd?.handleSelect) return cmd.handleSelect(i, step);
   }
-  // ======================================================
+  // ==============================================================
 
   // ✅ スラッシュコマンド処理
   if (!i.isChatInputCommand() || !i.guild) return;
