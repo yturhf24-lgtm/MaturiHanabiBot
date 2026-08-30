@@ -84,7 +84,7 @@ async function canUse(i) {
   // ✅ 1. ADMIN_ID は 全サーバー・全コマンド 無条件許可
   if (userId === ADMIN_ID) return true;
 
-  // ✅ 2. サーバー所有者は そのサーバーの全コマンド 許可
+  // ✅ 2. サーバー所有者は そのサーバー内で全コマンド許可
   if (i.guild.ownerId === userId) return true;
 
   // ✅ 3. それ以外 → /role 一覧 だけ許可（管理者 または 許可ロール保持者）
@@ -94,7 +94,7 @@ async function canUse(i) {
     return i.member.roles.cache.some(r => allowed.includes(r.id));
   }
 
-  // ❌ それ以外（許可/削除）は実行不可
+  // ❌ 許可/削除 は実行不可
   return false;
 }
 
@@ -104,7 +104,7 @@ async function checkPerm(i) {
   const ok = bot.permissionsIn(i.channel).has('SendMessages') &&
              bot.permissionsIn(i.channel).has('EmbedLinks');
   if (!ok) {
-    await i.reply({ embeds: [new EmbedBuilder().setColor('Red').setTitle('⚠️ 権限なし').setDescription('このチャンネルでは使えません')], ephemeral: true });
+    await i.reply({ embeds: [new EmbedBuilder().setColor('Red').setTitle('⚠️ 権限なし').setDescription('このチャンネルでは使えません')], flags: 64 });
     return false;
   }
   return true;
@@ -115,13 +115,13 @@ client.on('interactionCreate', async i => {
   if (!i.isChatInputCommand()) return;
   if (!i.guild) return;
 
-  if (!await canUse(i)) return i.reply({ content: '⛔ 実行権限がありません', ephemeral: true });
+  if (!await canUse(i)) return i.reply({ content: '⛔ 実行権限がありません', flags: 64 });
   if (!await checkPerm(i)) return;
 
   const cmd = client.commands.get(i.commandName);
   if (!cmd) return;
   try { await cmd.execute(i); }
-  catch (e) { console.error(e); await i.reply({ content: '❌ エラーが発生しました', ephemeral: true }); }
+  catch (e) { console.error(e); await i.reply({ content: '❌ エラーが発生しました', flags: 64 }); }
 });
 
 // ✅ 起動完了時に自動登録
