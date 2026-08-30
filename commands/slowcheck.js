@@ -27,16 +27,23 @@ module.exports = {
     const slowCount = slowChannels.length;
     const normalCount = normalChannels.length;
 
-    const slowList = slowCount > 0 ? slowChannels.join('\n') : 'なし';
-    const normalList = normalCount > 0 ? normalChannels.join('\n') : 'なし';
+    // ✅ Discordの文字数制限（1024文字）を考慮
+    let slowText = slowChannels.join('\n');
+    let normalText = normalChannels.join('\n');
+
+    if (slowText.length > 1000) slowText = slowChannels.slice(0, 30).join('\n') + `\n...他 ${slowCount - 30}チャンネル`;
+    if (normalText.length > 1000) normalText = normalChannels.slice(0, 30).join('\n') + `\n...他 ${normalCount - 30}チャンネル`;
+
+    if (!slowText) slowText = 'なし';
+    if (!normalText) normalText = 'なし';
 
     // ✅ 埋め込みメッセージで表示
     const embed = new EmbedBuilder()
       .setColor('Blue')
       .setTitle('📊 低速チャンネル確認')
       .addFields(
-        { name: `🔒 低速付きチャンネル：${slowCount}チャンネル`, value: slowList },
-        { name: `✅ 低速なしチャンネル：${normalCount}チャンネル`, value: normalList }
+        { name: `🔒 低速付きチャンネル：${slowCount}チャンネル`, value: slowText },
+        { name: `✅ 低速なしチャンネル：${normalCount}チャンネル`, value: normalText }
       )
       .setTimestamp();
 
