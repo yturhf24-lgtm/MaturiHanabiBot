@@ -93,5 +93,6 @@ client.on('interactionCreate', async i => {
   catch (e) { console.error(e); await i.reply({ content: '❌ エラーが発生しました', ephemeral: true }); }
 });
 
-client.on('ready', () => console.log(`✅ ${client.user.tag} オンライン！`));
+// こちらに置き換え
+client.on('clientReady', () => console.log(`✅ ${client.user.tag} オンライン！`));
 client.login(process.env.TOKEN);
