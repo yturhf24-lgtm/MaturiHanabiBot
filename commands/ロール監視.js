@@ -33,17 +33,17 @@ module.exports = {
       return;
     }
 
-    // ✅ 確実に応答を保証（タイムアウト防止）
+    // ✅ 応答を保証
     if (!i.deferred && !i.replied) await i.deferUpdate();
 
     let data = temp.get(key) || {};
     const isSkip = customId.endsWith('-skip');
     const isBack = customId.endsWith('-back');
 
-    // ─── 戻るボタン処理 ───
+    // ─── 戻るボタン ───
     if (isBack) {
-      if (step === 'step3' || step === 'step4') {
-        // 手順3/4 → 手順2へ
+      if (step === 'step3') {
+        // 手順3 → 手順2
         const m = new RoleSelectMenuBuilder().setCustomId(`step2-${key}`).setPlaceholder('🎁 付与するロール（任意）').setMinValues(0).setMaxValues(10);
         const skipBtn = new ButtonBuilder().setCustomId(`step2-${key}-skip`).setLabel('スキップ').setStyle(ButtonStyle.Secondary);
         return i.editReply({
@@ -53,6 +53,7 @@ module.exports = {
         });
       }
       if (step === 'step4') {
+        // 手順4 → 手順3
         const m = new RoleSelectMenuBuilder().setCustomId(`step3-${key}`).setPlaceholder('🗑️ 削除するロール（任意）').setMinValues(0).setMaxValues(10);
         const skipBtn = new ButtonBuilder().setCustomId(`step3-${key}-skip`).setLabel('スキップ').setStyle(ButtonStyle.Secondary);
         const backBtn = new ButtonBuilder().setCustomId(`step3-${key}-back`).setLabel('戻る').setStyle(ButtonStyle.Secondary);
@@ -64,14 +65,16 @@ module.exports = {
       }
     }
 
-    // ─── スキップボタン処理 ───
+    // ─── スキップボタン ───
     if (isSkip) {
       if (step === 'step2') data.addRoleIds = [];
       if (step === 'step3') data.removeRoleIds = [];
       temp.set(key, data);
     }
 
-    // ─── 手順1：確認ロール ───
+    // ==================================================
+    // ✅ 手順1：確認ロール → 選んだら自動で手順2へ
+    // ==================================================
     if (step === 'step1') {
       data.checkRoleId = i.roles.first().id;
       temp.set(key, data);
@@ -79,12 +82,14 @@ module.exports = {
       const skipBtn = new ButtonBuilder().setCustomId(`step2-${key}-skip`).setLabel('スキップ').setStyle(ButtonStyle.Secondary);
       return i.editReply({
         embeds: [new EmbedBuilder().setColor('#5865F2').setTitle('🔍 ロール監視')
-          .setDescription(`📌 手順 2/4\n✅ 確認ロール：<@&${data.checkRoleId}>\n\n**🎁 付与するロール** を選ぶか「スキップ」を押してください`)],
+          .setDescription(`📌 手順 2/4\n✅ 確認ロール：<@&${data.checkRoleId}>\n\n**🎁 付与するロール** を選んでください（選択すると自動で次へ進みます）`)],
         components: [new ActionRowBuilder().addComponents(m), new ActionRowBuilder().addComponents(skipBtn)]
       });
     }
 
-    // ─── 手順2：付与ロール ───
+    // ==================================================
+    // ✅ 手順2：付与ロール → 選んだら自動で手順3へ
+    // ==================================================
     if (step === 'step2') {
       if (!isSkip) data.addRoleIds = i.roles.map(r => r.id);
       temp.set(key, data);
@@ -93,12 +98,14 @@ module.exports = {
       const backBtn = new ButtonBuilder().setCustomId(`step3-${key}-back`).setLabel('戻る').setStyle(ButtonStyle.Secondary);
       return i.editReply({
         embeds: [new EmbedBuilder().setColor('#5865F2').setTitle('🔍 ロール監視')
-          .setDescription(`📌 手順 3/4\n✅ 確認ロール：<@&${data.checkRoleId}>\n🎁 付与：${data.addRoleIds.length>0?data.addRoleIds.length+'件':'なし'}\n\n**🗑️ 削除するロール** を選ぶか「スキップ」を押してください`)],
+          .setDescription(`📌 手順 3/4\n✅ 確認ロール：<@&${data.checkRoleId}>\n🎁 付与：${data.addRoleIds.length>0?data.addRoleIds.length+'件':'なし'}\n\n**🗑️ 削除するロール** を選んでください（選択すると自動で次へ進みます）`)],
         components: [new ActionRowBuilder().addComponents(m), new ActionRowBuilder().addComponents(skipBtn, backBtn)]
       });
     }
 
-    // ─── 手順3：削除ロール ───
+    // ==================================================
+    // ✅ 手順3：削除ロール → 選んだら自動で手順4へ
+    // ==================================================
     if (step === 'step3') {
       if (!isSkip) data.removeRoleIds = i.roles.map(r => r.id);
       temp.set(key, data);
@@ -111,7 +118,9 @@ module.exports = {
       });
     }
 
-    // ─── 手順4：ログチャンネル → 実行 ───
+    // ==================================================
+    // ✅ 手順4：ログチャンネル → 実行
+    // ==================================================
     if (step === 'step4') {
       data.logChId = i.channels.first().id;
       temp.delete(key);
