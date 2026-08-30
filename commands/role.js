@@ -1,56 +1,30 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+// ✅ 特定コマンド用 権限チェック
+async function checkCommandPermission(i) {
+  const userId = i.user.id;
+  const subCommand = i.options.getSubcommand();
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('role')
-    .setDescription('許可ロールの管理')
-    .addSubcommand(sc =>
-      sc.setName('許可').setDescription('許可ロールを追加')
-        .addRoleOption(o => o.setName('ロール').setRequired(true).setDescription('追加するロール'))
-    )
-    .addSubcommand(sc =>
-      sc.setName('削除').setDescription('許可ロールを削除')
-        .addRoleOption(o => o.setName('ロール').setRequired(true).setDescription('削除するロール'))
-    )
-    .addSubcommand(sc =>
-      sc.setName('一覧').setDescription('許可ロール一覧を表示')
-    ),
+  // ✅ 1266013271518089258 は全コマンド・全サーバーで無条件許可
+  if (userId === ADMIN_ID) return true;
 
-  async execute(i) {
-    await i.deferReply({ ephemeral: true }); // 🔒 自分だけに表示
-
-    const { content: data } = await global.loadData();
-    const gid = i.guildId;
-    if (!data[gid]) data[gid] = [];
-
-    const sub = i.options.getSubcommand();
-    const role = i.options.getRole('ロール');
-
-    if (sub === '許可') {
-      if (!data[gid].includes(role.id)) data[gid].push(role.id);
-      await global.saveData(data);
-      return i.editReply({ embeds: [
-        new EmbedBuilder().setColor('Green').setTitle('✅ 許可ロール追加')
-          .setDescription(`<@&${role.id}> をこのサーバーの許可ロールに設定しました\n💾 GitHubに保存完了`)
-      ]});
-    }
-
-    if (sub === '削除') {
-      data[gid] = data[gid].filter(id => id !== role.id);
-      await global.saveData(data);
-      return i.editReply({ embeds: [
-        new EmbedBuilder().setColor('Orange').setTitle('🗑️ 許可ロール削除')
-          .setDescription(`<@&${role.id}> をこのサーバーの許可ロールから外しました\n💾 GitHubに保存完了`)
-      ]});
-    }
-
-    if (sub === '一覧') {
-      const list = data[gid].length
-        ? data[gid].map(id => `<@&${id}>`).join('\n')
-        : 'まだ設定されていません';
-      return i.editReply({ embeds: [
-        new EmbedBuilder().setColor('Blue').setTitle('📋 許可ロール一覧').setDescription(list)
-      ]});
-    }
+  // ✅ /role 許可 /role 削除 は「サーバー所有者」だけ許可
+  if (subCommand === '許可' || subCommand === '削除') {
+    return i.guild.ownerId === userId;
   }
-};
+
+  // ✅ /role 一覧 は 管理者 または 許可ロール保持者 を許可
+  if (subCommand === '一覧') {
+    if (i.member.permissions.has('Administrator')) return true;
+    const allowed = await getAllowedRoles(i.guildId);
+    return i.member.roles.cache.some(r => allowed.includes(r.id));
+  }
+
+  return false;
+}
+
+// ✅ 権限チェック（統合版）
+async function canUse(i) {
+  // ✅ ADMIN_ID は無条件で全許可
+  if (i.user.id === ADMIN_ID) return true;
+  // ✅ コマンド別の権限チェック
+  return checkCommandPermission(i);
+}
