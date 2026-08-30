@@ -1,12 +1,10 @@
 {
-  "name": "maturi-hanabi-bot",
+  "name": "hanabi-bot",
   "version": "1.0.0",
-  "description": "祭り花火大会Bot",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "deploy": "node deploy.js"
   },
   "dependencies": {
     "discord.js": "^14.25.0",
