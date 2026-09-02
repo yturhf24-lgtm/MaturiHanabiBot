@@ -1,5 +1,7 @@
 const express = require('express');
-const { Client, GatewayIntentBits, REST, Routes, Collection, EmbedBuilder, Events } = require('discord.js');
+
+// インポートに MessageFlags を追加
+const { Client, GatewayIntentBits, REST, Routes, Collection, EmbedBuilder, Events, MessageFlags } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -149,12 +151,10 @@ async function processMemberRoles(member, guildConfig) {
   return true;
 }
 
-// サーバー指定の一括スキャン（有効化されている場合のみ実行）
 async function scanSingleGuild(guild) {
   const allConfigs = loadConfig();
   const guildConfig = allConfigs[guild.id];
   
-  // 停止中の場合、または条件ロール未設定の場合はスキップ
   if (!guildConfig || !guildConfig.enabled || !guildConfig.conditionRoleId) return 0;
 
   let updatedCount = 0;
@@ -176,7 +176,6 @@ async function scanSingleGuild(guild) {
   return updatedCount;
 }
 
-// 全サーバー自動スキャン
 async function scanAllGuilds() {
   for (const guild of client.guilds.cache.values()) {
     await scanSingleGuild(guild);
@@ -193,7 +192,6 @@ client.once(Events.ClientReady, async (c) => {
 
   await scanAllGuilds();
 
-  // 10秒毎に自動チェック
   setInterval(async () => {
     await scanAllGuilds();
   }, 10 * 1000);
@@ -208,7 +206,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
     if (interaction.guild.ownerId !== interaction.user.id) {
-      return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', ephemeral: true });
+      return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
     }
 
     const guildId = interaction.guildId;
@@ -242,13 +240,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embed], components: components });
     }
 
-    // 開始/停止 ボタンの処理
     if (interaction.customId === 'toggle_active_button') {
       const currentConfig = loadConfig()[guildId] || {};
       
-      // 条件ロール未設定で開始しようとした場合はブロック
       if (!currentConfig.enabled && !currentConfig.conditionRoleId) {
-        return interaction.reply({ content: '⚠️ 「1. チェックするロール」を事前に設定してください。', ephemeral: true });
+        return interaction.reply({ content: '⚠️ 「1. チェックするロール」を事前に設定してください。', flags: MessageFlags.Ephemeral });
       }
 
       const nextStatus = !currentConfig.enabled;
