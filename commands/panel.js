@@ -9,7 +9,7 @@ module.exports = {
     .setName('panel')
     .setDescription('ロール更新の設定を行い、実行用パネルを生成します（サーバー所有者限定）')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    // 条件ロール (複数不可・必須)
+    // 条件ロール (単一・必須)
     .addRoleOption(opt => opt.setName('condition_role').setDescription('保有を確認する条件ロール（1つのみ）').setRequired(true))
     // 削除対象ロール (複数可能・任意)
     .addRoleOption(opt => opt.setName('remove_role1').setDescription('削除するロール 1'))
@@ -22,7 +22,7 @@ module.exports = {
     // ログチャンネル (任意)
     .addChannelOption(opt => opt.setName('log_channel').setDescription('実行結果を出力するログチャンネル')),
 
-  async execute(interaction) {
+  async execute(interaction, saveConfigToGithub) {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ このコマンドはサーバー所有者のみ実行可能です。', ephemeral: true });
     }
@@ -43,7 +43,7 @@ module.exports = {
       if (r) addRoles.push(r.id);
     }
 
-    // 設定を config.json に個別保存
+    // ローカルに設定を書き込み
     let config = {};
     if (fs.existsSync(configPath)) {
       try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
@@ -57,6 +57,11 @@ module.exports = {
     };
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+    // GitHubへ直接保存
+    if (saveConfigToGithub) {
+      await saveConfigToGithub();
+    }
 
     // パネルメッセージの構築
     const embed = new EmbedBuilder()
