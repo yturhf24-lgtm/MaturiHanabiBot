@@ -17,6 +17,9 @@ const BRANCH = 'main';
 
 const configPath = path.join(__dirname, 'config.json');
 
+// レート制限対策用ユーティリティ（指定ミリ秒待機）
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function saveConfigToGithub() {
   if (!GITHUB_TOKEN) return;
   if (!fs.existsSync(configPath)) return;
@@ -84,92 +87,104 @@ const panelModule = require(commandPath);
 client.commands.set(panelModule.data.name, panelModule);
 const commandsArray = [panelModule.data.toJSON()];
 
-// 1人のメンバーのロール変更処理
-async function processMemberRoles(member, guildConfig) {
-  const { conditionRoleId, removeRoleIds = [], addRoleIds = [] } = guildConfig;
-  if (!conditionRoleId) return null;
+// 安全にロール操作を行う関数（レート制限エラー時は自動待機してリトライ）
+async function safeRoleAction(actionFn) {
+  try {
+    await actionFn();
+  } catch (error) {
+    // レート制限(429)が発生した場合、指定された時間待機してリトライ
+    if (error.code === 429 || error.status === 429) {
+      const retryAfter = (error.retryAfter || 1000) + 100;
+      console.warn(`⚠️ レート制限を検知。 ${retryAfter}ms 待機して再試行します...`);
+      await sleep(retryAfter);
+      try {
+        await actionFn();
+      } catch (retryErr) {
+        console.error('リトライ失敗:', retryErr);
+      }
+    } else {
+      console.error('ロール操作エラー:', error);
+    }
+  }
+}
 
-  // 条件ロールを持っていない場合は対象外
-  if (!member.roles.cache.has(conditionRoleId)) return null;
+// 1人のメンバーのロール変更処理＆個別ログ送信
+async function processMemberRoles(member, guildConfig, executionType = 'manual') {
+  const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
+  if (!conditionRoleId) return false;
+
+  // チェック対象のロールを持っていなければスキップ
+  if (!member.roles.cache.has(conditionRoleId)) return false;
 
   const rolesToRemove = removeRoleIds.filter(id => member.roles.cache.has(id));
   const rolesToAdd = addRoleIds.filter(id => !member.roles.cache.has(id));
 
   // 変更の必要がない場合
-  if (rolesToRemove.length === 0 && rolesToAdd.length === 0) return null;
+  if (rolesToRemove.length === 0 && rolesToAdd.length === 0) return false;
 
-  // 実際の付け外し処理
+  // 実際の付け外し処理（レート制限回避ラッパー付き）
   for (const id of rolesToRemove) {
-    try { await member.roles.remove(id); } catch (e) {}
+    await safeRoleAction(() => member.roles.remove(id));
+    await sleep(100); // 100msウェイト
   }
 
   for (const id of rolesToAdd) {
-    try { await member.roles.add(id); } catch (e) {}
+    await safeRoleAction(() => member.roles.add(id));
+    await sleep(100); // 100msウェイト
   }
 
-  // ログ記載用のデータを返す
-  return {
-    member: member,
-    removedRoles: rolesToRemove,
-    addedRoles: rolesToAdd
-  };
+  // 個別ログの送信
+  if (logChannelId) {
+    const logChannel = member.guild.channels.cache.get(logChannelId);
+    if (logChannel) {
+      let titleText = '⚙️ あなたが手動で実行した更新ログ';
+      if (executionType === 'auto') titleText = '🔄 5分定期チェックによる自動更新ログ';
+      if (executionType === 'startup') titleText = '🔄 Bot起動時の自動更新ログ';
+
+      const removedText = rolesToRemove.length > 0 ? rolesToRemove.map(id => `<@&${id}>`).join(', ') : 'なし';
+      const addedText = rolesToAdd.length > 0 ? rolesToAdd.map(id => `<@&${id}>`).join(', ') : 'なし';
+
+      const embed = new EmbedBuilder()
+        .setTitle(titleText)
+        .setColor(0x00ff00)
+        .addFields(
+          { name: '👤 プレイヤー名', value: `${member.user.tag} (<@${member.id}>)` },
+          { name: '🗑️ 削除ロール', value: removedText },
+          { name: '➕ 付与ロール', value: addedText }
+        )
+        .setTimestamp();
+
+      await safeRoleAction(() => logChannel.send({ embeds: [embed] }));
+    }
+  }
+
+  return true;
 }
 
-// サーバー指定の一括スキャン（プレイヤー単位で結果をまとめて通知）
+// サーバー指定の一括スキャン（レート制限に配慮して一人ずつ順次処理）
 async function scanSingleGuild(guild, executionType) {
   const allConfigs = loadConfig();
   const guildConfig = allConfigs[guild.id];
   if (!guildConfig || !guildConfig.conditionRoleId) return 0;
 
-  const results = [];
+  let updatedCount = 0;
   try {
     const members = await guild.members.fetch();
     for (const member of members.values()) {
       if (!member.user.bot) {
-        const res = await processMemberRoles(member, guildConfig);
-        if (res) results.push(res);
+        const updated = await processMemberRoles(member, guildConfig, executionType);
+        if (updated) {
+          updatedCount++;
+          // 大量処理時のレート制限回避のためメンバー間で 200ms 待機
+          await sleep(200);
+        }
       }
     }
   } catch (err) {
     console.error(`Guild fetch error (${guild.id}):`, err);
   }
 
-  // 変更のあったプレイヤーがいる場合のみ、まとめログを送信
-  if (results.length > 0 && guildConfig.logChannelId) {
-    const logChannel = guild.channels.cache.get(guildConfig.logChannelId);
-    if (logChannel) {
-      let titleText = '⚙️ パネルからの手動一括実行';
-      if (executionType === 'auto') titleText = '🔄 5分定期チェックによる自動更新';
-      if (executionType === 'startup') titleText = '🔄 Bot起動時の自動更新';
-
-      const embed = new EmbedBuilder()
-        .setTitle(titleText)
-        .setColor(0x00ff00)
-        .setDescription(`**更新人数:** ${results.length}名`)
-        .setTimestamp();
-
-      // 各プレイヤー単位でフィールドを追加
-      // Discord Embedのフィールド上限(25件)に対応するため最大20名まで表示
-      for (const res of results.slice(0, 20)) {
-        const removedText = res.removedRoles.length > 0 ? res.removedRoles.map(id => `<@&${id}>`).join(', ') : 'なし';
-        const addedText = res.addedRoles.length > 0 ? res.addedRoles.map(id => `<@&${id}>`).join(', ') : 'なし';
-
-        embed.addFields({
-          name: `👤 ${res.member.user.tag} (${res.member.displayName})`,
-          value: `**削除ロール:** ${removedText}\n**付与ロール:** ${addedText}`,
-          inline: false
-        });
-      }
-
-      if (results.length > 20) {
-        embed.setFooter({ text: `※他 ${results.length - 20} 名の処理結果は省略されました` });
-      }
-
-      await logChannel.send({ embeds: [embed] }).catch(() => {});
-    }
-  }
-
-  return results.length;
+  return updatedCount;
 }
 
 // 全サーバー自動スキャン（定期監視用）
@@ -227,12 +242,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.customId === 'select_log_channel') {
-      const updatedConfig = updateGuildConfig(guildId, 'logChannelId', interaction.values[0] || null);
+      const selectedChannel = interaction.values[0] || null;
+      const updatedConfig = updateGuildConfig(guildId, 'logChannelId', selectedChannel);
       const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
       return interaction.update({ embeds: [embed] });
     }
 
-    // 全メンバー一括実行ボタンの処理
     if (interaction.customId === 'process_roles_button') {
       await interaction.deferReply({ ephemeral: true });
 
@@ -240,15 +255,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const guildConfig = allConfigs[guildId];
 
       if (!guildConfig || !guildConfig.conditionRoleId) {
-        return interaction.editReply({ content: '⚠️ 「1. チェックするロール」が選ばれていません。メニューから選んでください！' });
+        return interaction.editReply({ content: '⚠️ 「1. チェックするロール」が設定されていません。メニューから選んで設定してください。' });
       }
 
       const count = await scanSingleGuild(interaction.guild, 'manual');
 
       if (count > 0) {
-        await interaction.editReply({ content: `✅ スキャン完了！\n**${count}名**のロールを更新し、ログチャンネルへ結果を送信しました。` });
+        await interaction.editReply({ content: `✅ スキャン完了！\n**${count}名**のロールを更新し、各プレイヤーの個別のログを送信しました。` });
       } else {
-        await interaction.editReply({ content: 'ℹ️ 全メンバーをチェックしましたが、ロールを変更したプレイヤーはいませんでした。' });
+        await interaction.editReply({ content: 'ℹ️ 全メンバーをチェックしましたが、ロールの変更が必要なプレイヤーはいませんでした。' });
       }
     }
   }
