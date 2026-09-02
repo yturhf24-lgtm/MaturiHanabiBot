@@ -91,14 +91,14 @@ function loadConfig() {
   }
 }
 
-// 唯一のコマンド (panel.js) を個別読み込み
+// コマンド (panel.js) を個別読み込み
 const commandPath = path.join(__dirname, 'commands/panel.js');
 const command = require(commandPath);
 client.commands.set(command.data.name, command);
 const commandsArray = [command.data.toJSON()];
 
 // 共通ロール処理関数
-async function processMemberRoles(member, guildConfig, isAutoCheck = false) {
+async function processMemberRoles(member, guildConfig, executionType = 'manual') {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
 
@@ -121,11 +121,15 @@ async function processMemberRoles(member, guildConfig, isAutoCheck = false) {
   if (logChannelId) {
     const logChannel = member.guild.channels.cache.get(logChannelId);
     if (logChannel) {
+      let titleText = '⚙️ パネル手動更新実行';
+      if (executionType === 'auto') titleText = '🔄 5分定期監視ロール自動更新';
+      if (executionType === 'startup') titleText = '🔄 オンライン復帰時自動ロール更新';
+
       const removedText = rolesToRemove.length > 0 ? rolesToRemove.map(id => `<@&${id}>`).join(', ') : 'なし';
       const addedText = rolesToAdd.length > 0 ? rolesToAdd.map(id => `<@&${id}>`).join(', ') : 'なし';
 
       const embed = new EmbedBuilder()
-        .setTitle(isAutoCheck ? '🔄 オンライン復帰時自動ロール更新' : '⚙️ パネル手動更新実行')
+        .setTitle(titleText)
         .setColor(0x00ff00)
         .addFields(
           { name: '対象ユーザー', value: `${member.user.tag} (<@${member.id}>)` },
@@ -142,6 +146,27 @@ async function processMemberRoles(member, guildConfig, isAutoCheck = false) {
   return true;
 }
 
+// ギルド巡回スキャン関数
+async function scanAllGuilds(executionType) {
+  const allConfigs = loadConfig();
+
+  for (const guild of client.guilds.cache.values()) {
+    const guildConfig = allConfigs[guild.id];
+    if (!guildConfig || !guildConfig.conditionRoleId) continue;
+
+    try {
+      const members = await guild.members.fetch();
+      for (const member of members.values()) {
+        if (!member.user.bot) {
+          await processMemberRoles(member, guildConfig, executionType);
+        }
+      }
+    } catch (err) {
+      console.error(`Guild member fetch error (${guild.id}):`, err);
+    }
+  }
+}
+
 // clientReady イベントリスナー
 client.once(Events.ClientReady, async (c) => {
   console.log(`Bot logged in as ${c.user.tag}`);
@@ -155,26 +180,16 @@ client.once(Events.ClientReady, async (c) => {
     console.error('コマンド登録エラー:', e);
   }
 
-  // オンライン復帰時のロール自動チェック
+  // オンライン復帰時の即時チェック
   console.log('オンライン復帰時のメンバーロールスキャンを開始...');
-  const allConfigs = loadConfig();
-
-  for (const guild of client.guilds.cache.values()) {
-    const guildConfig = allConfigs[guild.id];
-    if (!guildConfig || !guildConfig.conditionRoleId) continue;
-
-    try {
-      const members = await guild.members.fetch();
-      for (const member of members.values()) {
-        if (!member.user.bot) {
-          await processMemberRoles(member, guildConfig, true);
-        }
-      }
-    } catch (err) {
-      console.error(`Guild member fetch error (${guild.id}):`, err);
-    }
-  }
+  await scanAllGuilds('startup');
   console.log('オンライン復帰時ロールチェック完了');
+
+  // --- 5分に1回の定期ロール監視タスク (300,000 ms) ---
+  setInterval(async () => {
+    console.log('⏰ [定期処理] 5分間隔のロール状態監視スキャンを実行中...');
+    await scanAllGuilds('auto');
+  }, 5 * 60 * 1000);
 });
 
 // インタラクション処理
@@ -198,7 +213,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ content: '⚠️ サーバー設定が見つかりません。先に `/panel` コマンドで設定を作成してください。' });
     }
 
-    const updated = await processMemberRoles(interaction.member, guildConfig, false);
+    const updated = await processMemberRoles(interaction.member, guildConfig, 'manual');
 
     if (updated) {
       await interaction.editReply({ content: '✅ ロールの更新処理が正常に完了しました。' });
