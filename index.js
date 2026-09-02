@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST, Routes, Collection, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, Collection, EmbedBuilder, Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -33,7 +33,7 @@ async function processMemberRoles(member, guildConfig, isAutoCheck = false) {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
 
-  // 条件ロールを所有している場合のみ実行
+  // 条件ロールを保有している場合のみ処理
   if (!member.roles.cache.has(conditionRoleId)) return false;
 
   const rolesToRemove = removeRoleIds.filter(id => member.roles.cache.has(id));
@@ -73,19 +73,20 @@ async function processMemberRoles(member, guildConfig, isAutoCheck = false) {
   return true;
 }
 
-// オンライン復帰時のロール自動チェック処理
-client.once('ready', async () => {
-  console.log(`Bot logged in as ${client.user.tag}`);
+// clientReady イベントリスナー (DeprecationWarning 解消)
+client.once(Events.ClientReady, async (c) => {
+  console.log(`Bot logged in as ${c.user.tag}`);
 
-  // スラッシュコマンド（/panelのみ）を登録
+  // スラッシュコマンド（/panel）の登録
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commandsArray });
+    await rest.put(Routes.applicationCommands(c.user.id), { body: commandsArray });
     console.log('/panel コマンドの登録完了');
   } catch (e) {
     console.error('コマンド登録エラー:', e);
   }
 
+  // オンライン復帰時のロール自動チェック
   console.log('オンライン復帰時のメンバーロールスキャンを開始...');
   const allConfigs = loadConfig();
 
@@ -108,7 +109,7 @@ client.once('ready', async () => {
 });
 
 // インタラクション処理
-client.on('interactionCreate', async (interaction) => {
+client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     const cmd = client.commands.get('panel');
     if (cmd) await cmd.execute(interaction);
