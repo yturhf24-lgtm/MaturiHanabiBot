@@ -1,13 +1,8 @@
-// インポートに MessageFlags を追加
 const { SlashCommandBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-const configPath = path.join(__dirname, '../config.json');
 
 function buildPanelEmbed(guild, config) {
   const c = config[guild.id] || {};
-  
+
   const conditionStr = c.conditionRoleId ? `<@&${c.conditionRoleId}>` : '未設定（選択必須）';
   const removeStr = (c.removeRoleIds && c.removeRoleIds.length > 0) ? c.removeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
   const addStr = (c.addRoleIds && c.addRoleIds.length > 0) ? c.addRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
@@ -18,7 +13,7 @@ function buildPanelEmbed(guild, config) {
     .setTitle('🛡️ ロール自動制御パネル')
     .setDescription(
       '下のメニューから対象の役職や設定を選択してください。\n' +
-      '設定した内容は自動保存されます。'
+      '設定した内容は直接 GitHub へ保存されます。'
     )
     .setColor(c.enabled ? 0x00ff00 : 0xff0000)
     .addFields(
@@ -87,20 +82,14 @@ module.exports = {
   buildPanelEmbed,
   buildPanelComponents,
 
-  async execute(interaction) {
+  async execute(interaction, globalConfig = {}) {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ このパネルはサーバー所有者しか開けません。', flags: MessageFlags.Ephemeral });
     }
 
-    let config = {};
-    if (fs.existsSync(configPath)) {
-      try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
-    }
+    const embed = buildPanelEmbed(interaction.guild, globalConfig);
+    const components = buildPanelComponents(interaction.guild, globalConfig);
 
-    const embed = buildPanelEmbed(interaction.guild, config);
-    const components = buildPanelComponents(interaction.guild, config);
-
-    // flags: MessageFlags.Ephemeral に変更
     await interaction.reply({ embeds: [embed], components: components, flags: MessageFlags.Ephemeral });
   }
 };
