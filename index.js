@@ -10,7 +10,8 @@ app.get('/', (req, res) => res.send('Bot Status: Online'));
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 
 // --- GitHub トークンによる config.json 直接保存 ---
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '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';
+// 環境変数からのみ取得（セキュリティ自動失効対策）
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const OWNER = 'yturhf24-lgtm';
 const REPO = '-bot';
 const BRANCH = 'main';
@@ -18,6 +19,10 @@ const BRANCH = 'main';
 const configPath = path.join(__dirname, 'config.json');
 
 async function saveConfigToGithub() {
+  if (!GITHUB_TOKEN) {
+    console.error('❌ GITHUB_TOKEN が設定されていません。Renderの環境変数を確認してください。');
+    return;
+  }
   if (!fs.existsSync(configPath)) return;
 
   const content = fs.readFileSync(configPath, 'utf8');
@@ -95,16 +100,18 @@ const panelModule = require(commandPath);
 client.commands.set(panelModule.data.name, panelModule);
 const commandsArray = [panelModule.data.toJSON()];
 
-// ロール処理関数
+// ロール処理およびログ送信関数
 async function processMemberRoles(member, guildConfig, executionType = 'manual') {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
 
+  // 条件ロールを持っていない場合は処理スキップ
   if (!member.roles.cache.has(conditionRoleId)) return false;
 
   const rolesToRemove = removeRoleIds.filter(id => member.roles.cache.has(id));
   const rolesToAdd = addRoleIds.filter(id => !member.roles.cache.has(id));
 
+  // 変更対象ロールがない場合は終了
   if (rolesToRemove.length === 0 && rolesToAdd.length === 0) return false;
 
   for (const id of rolesToRemove) {
@@ -115,6 +122,7 @@ async function processMemberRoles(member, guildConfig, executionType = 'manual')
     try { await member.roles.add(id); } catch (e) { console.error(`Role add error (${id}):`, e); }
   }
 
+  // 設定されたログチャンネルへ送信
   if (logChannelId) {
     const logChannel = member.guild.channels.cache.get(logChannelId);
     if (logChannel) {
@@ -143,7 +151,7 @@ async function processMemberRoles(member, guildConfig, executionType = 'manual')
   return true;
 }
 
-// 全サーバー監視スキャン
+// 全サーバー監視スキャン関数
 async function scanAllGuilds(executionType) {
   const allConfigs = loadConfig();
 
@@ -176,28 +184,28 @@ client.once(Events.ClientReady, async (c) => {
     console.error('コマンド登録エラー:', e);
   }
 
-  // オンライン復帰時確認
+  // 1. オフラインからオンライン復帰時の確認
   console.log('オンライン復帰時の確認スキャンを開始...');
   await scanAllGuilds('startup');
   console.log('オンライン復帰時スキャン完了');
 
-  // 5分定時監視タスク
+  // 2. 5分ごとの最新状態定時監視タスク (300,000 ms)
   setInterval(async () => {
-    console.log('⏰ [5分定期監視] スキャンを実行中...');
+    console.log('⏰ [5分定期監視] ロール状態の最新更新スキャンを実行中...');
     await scanAllGuilds('auto');
   }, 5 * 60 * 1000);
 });
 
-// インタラクション受信（パネル操作およびボタン対応）
+// インタラクション受信（パネル操作・ドロップダウン・ボタン対応）
 client.on(Events.InteractionCreate, async (interaction) => {
-  // コマンド実行
+  // /panel コマンド実行
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     const cmd = client.commands.get('panel');
     if (cmd) await cmd.execute(interaction);
     return;
   }
 
-  // 以降のコンポーネント操作（ドロップダウンメニュー・ボタン）はすべて所有者限定
+  // 以降のパネル操作（メニュー・ボタン）はすべてサーバー所有者限定
   if (interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者限定です。', ephemeral: true });
@@ -237,7 +245,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embed] });
     }
 
-    // 5. 即時実行ボタン
+    // 5. 手動実行ボタン
     if (interaction.customId === 'process_roles_button') {
       await interaction.deferReply({ ephemeral: true });
 
