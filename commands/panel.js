@@ -7,7 +7,7 @@ const configPath = path.join(__dirname, '../config.json');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('panel')
-    .setDescription('ロール更新の設定を行い、実行用パネルを生成します（サーバー所有者限定）')
+    .setDescription('ロール更新の設定を行い、埋め込みパネルを生成します（所有者限定）')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     // 条件ロール (単一・必須)
     .addRoleOption(opt => opt.setName('condition_role').setDescription('保有を確認する条件ロール（1つのみ）').setRequired(true))
@@ -43,7 +43,7 @@ module.exports = {
       if (r) addRoles.push(r.id);
     }
 
-    // ローカルに設定を書き込み
+    // ローカルへ設定書き込み
     let config = {};
     if (fs.existsSync(configPath)) {
       try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
@@ -63,26 +63,28 @@ module.exports = {
       await saveConfigToGithub();
     }
 
-    // パネルメッセージの構築
+    // 埋め込み式パネル (Embed) の作成
     const embed = new EmbedBuilder()
-      .setTitle('ロール更新管理パネル')
-      .setDescription(
-        `下のボタンを押すとロールの自動更新処理を実行します。\n\n` +
-        `**【設定情報】**\n` +
-        `・条件ロール: <@&${conditionRole.id}>\n` +
-        `・削除対象: ${removeRoles.length > 0 ? removeRoles.map(id => `<@&${id}>`).join(', ') : 'なし'}\n` +
-        `・追加対象: ${addRoles.length > 0 ? addRoles.map(id => `<@&${id}>`).join(', ') : 'なし'}\n` +
-        `・ログ出力先: ${logChannel ? `<#${logChannel.id}>` : 'なし'}`
+      .setTitle('🛡️ ロール自動更新・管理パネル')
+      .setDescription('下のボタンを押すことで、手動でロール状態のチェックと更新を実行できます。\n（※Bot側で**5分ごと**に自動監視・更新処理も行われています）')
+      .setColor(0x3498db)
+      .addFields(
+        { name: '🔹 条件判定ロール', value: `<@&${conditionRole.id}>`, inline: false },
+        { name: '🗑️ 削除対象ロール', value: removeRoles.length > 0 ? removeRoles.map(id => `<@&${id}>`).join(', ') : 'なし', inline: true },
+        { name: '➕ 追加対象ロール', value: addRoles.length > 0 ? addRoles.map(id => `<@&${id}>`).join(', ') : 'なし', inline: true },
+        { name: '📜 ログ送信先', value: logChannel ? `<#${logChannel.id}>` : 'なし', inline: false }
       )
-      .setColor(0x001f3f);
+      .setFooter({ text: 'サーバー所有者専用管理機能' })
+      .setTimestamp();
 
     const button = new ButtonBuilder()
       .setCustomId('process_roles_button')
-      .setLabel('ロール更新を実行')
+      .setLabel('ロール更新を手動実行')
       .setStyle(ButtonStyle.Primary);
 
     const row = new ActionRowBuilder().addComponents(button);
 
+    // 埋め込みパネルを返信
     await interaction.reply({ embeds: [embed], components: [row] });
   }
 };
