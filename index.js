@@ -1,7 +1,5 @@
 const express = require('express');
 const { Client, GatewayIntentBits, REST, Routes, Collection, EmbedBuilder, Events, MessageFlags } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
 
 // --- Express サーバー ---
 const app = express();
@@ -9,44 +7,53 @@ const port = process.env.PORT || 4000;
 app.get('/', (req, res) => res.send('Bot Status: Online'));
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 
-// --- GitHub 自動保存・同期 ---
+// --- GitHub 自動生成＆直接保存・同期 ---
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const OWNER = 'yturhf24-lgtm';
 const REPO = '-bot';
 const BRANCH = 'main';
+const FILE_PATH = 'config.json';
 
-const configPath = path.join(__dirname, 'config.json');
+// メモリ上で管理する設定データ構造
+let globalConfig = {};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// GitHub から最新の config.json を取得してローカルに読み込む
+// GitHub から設定ファイルを直接読み込み（なければ初期テンプレートを自動作成）
 async function syncConfigFromGithub() {
-  if (!GITHUB_TOKEN) return;
-  const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/config.json?ref=${BRANCH}`;
+  if (!GITHUB_TOKEN) {
+    console.warn('⚠️ GITHUB_TOKEN が設定されていません。メモリ上でのみ設定を保持します。');
+    return;
+  }
+  const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}?ref=${BRANCH}`;
 
   try {
     const res = await fetch(url, {
       headers: { Authorization: `token ${GITHUB_TOKEN}`, 'User-Agent': 'Node.js' }
     });
+
     if (res.ok) {
       const data = await res.json();
       const content = Buffer.from(data.content, 'base64').toString('utf8');
-      fs.writeFileSync(configPath, content);
-      console.log('✅ GitHub から最新の config.json を取得・更新しました。');
+      globalConfig = JSON.parse(content || '{}');
+      console.log('✅ GitHub から最新の設定データを同期しました。');
+    } else if (res.status === 404) {
+      console.log('ℹ️ GitHub 上に config.json が見つかりません。新規作成します...');
+      globalConfig = {};
+      await saveConfigToGithub();
     }
   } catch (err) {
-    console.error('GitHub からの同期エラー:', err);
+    console.error('GitHub 同期エラー:', err);
   }
 }
 
-// GitHub に config.json を保存する
+// メモリ上の設定データを直接 GitHub にコミット＆保存
 async function saveConfigToGithub() {
   if (!GITHUB_TOKEN) return;
-  if (!fs.existsSync(configPath)) return;
 
-  const content = fs.readFileSync(configPath, 'utf8');
+  const content = JSON.stringify(globalConfig, null, 2);
   const base64Content = Buffer.from(content).toString('base64');
-  const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/config.json`;
+  const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}`;
 
   let sha = null;
   try {
@@ -68,12 +75,13 @@ async function saveConfigToGithub() {
         'User-Agent': 'Node.js'
       },
       body: JSON.stringify({
-        message: 'Update config.json via Bot',
+        message: 'Auto-updated config by Bot',
         content: base64Content,
         branch: BRANCH,
         ...(sha ? { sha } : {})
       })
     });
+
     if (putRes.ok) {
       console.log('✅ GitHub への直接保存が完了しました。');
     } else {
@@ -82,6 +90,23 @@ async function saveConfigToGithub() {
   } catch (err) {
     console.error('GitHub 保存エラー:', err);
   }
+}
+
+// サーバーごとの設定を更新してGitHubへ直接同期
+async function updateGuildConfig(guildId, key, value) {
+  if (!globalConfig[guildId]) {
+    globalConfig[guildId] = {
+      enabled: false,
+      conditionRoleId: null,
+      removeRoleIds: [],
+      addRoleIds: [],
+      logChannelId: null
+    };
+  }
+
+  globalConfig[guildId][key] = value;
+  await saveConfigToGithub();
+  return globalConfig;
 }
 
 // --- Discord Bot ---
@@ -95,27 +120,12 @@ const client = new Client({
 
 client.commands = new Collection();
 
-function loadConfig() {
-  if (!fs.existsSync(configPath)) return {};
-  try { return JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) { return {}; }
-}
-
-async function updateGuildConfig(guildId, key, value) {
-  const config = loadConfig();
-  if (!config[guildId]) config[guildId] = {};
-  config[guildId][key] = value;
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  
-  // GitHub に直接即時保存（完了を待機）
-  await saveConfigToGithub();
-  return config;
-}
-
-const commandPath = path.join(__dirname, 'commands/panel.js');
+const commandPath = require.resolve('./commands/panel.js');
 const panelModule = require(commandPath);
 client.commands.set(panelModule.data.name, panelModule);
 const commandsArray = [panelModule.data.toJSON()];
 
+// レート制限対策付き ロール操作ラッパー
 async function safeRoleAction(actionFn) {
   try {
     await actionFn();
@@ -135,6 +145,7 @@ async function safeRoleAction(actionFn) {
   }
 }
 
+// 1人のメンバーのロール変更処理＆個別ログ送信
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
@@ -179,10 +190,9 @@ async function processMemberRoles(member, guildConfig) {
   return true;
 }
 
+// 単一サーバーのスキャン
 async function scanSingleGuild(guild) {
-  const allConfigs = loadConfig();
-  const guildConfig = allConfigs[guild.id];
-  
+  const guildConfig = globalConfig[guild.id];
   if (!guildConfig || !guildConfig.enabled || !guildConfig.conditionRoleId) return 0;
 
   let updatedCount = 0;
@@ -204,6 +214,7 @@ async function scanSingleGuild(guild) {
   return updatedCount;
 }
 
+// 全サーバーのスキャン
 async function scanAllGuilds() {
   for (const guild of client.guilds.cache.values()) {
     await scanSingleGuild(guild);
@@ -213,7 +224,7 @@ async function scanAllGuilds() {
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
 
-  // 起動時に GitHub から最新設定を取得
+  // Bot起動時に GitHub から設定を直接ダウンロード
   await syncConfigFromGithub();
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -223,6 +234,7 @@ client.once(Events.ClientReady, async (c) => {
 
   await scanAllGuilds();
 
+  // 10秒ごとに自動監視
   setInterval(async () => {
     await scanAllGuilds();
   }, 10 * 1000);
@@ -230,10 +242,9 @@ client.once(Events.ClientReady, async (c) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
-    // パネルを開く前にも最新の設定を GitHub から読み直す
     await syncConfigFromGithub();
     const cmd = client.commands.get('panel');
-    if (cmd) await cmd.execute(interaction);
+    if (cmd) await cmd.execute(interaction, globalConfig);
     return;
   }
 
@@ -274,8 +285,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.customId === 'toggle_active_button') {
-      const currentConfig = loadConfig()[guildId] || {};
-      
+      const currentConfig = globalConfig[guildId] || {};
+
       if (!currentConfig.enabled && !currentConfig.conditionRoleId) {
         return interaction.reply({ content: '⚠️ 「1. チェックするロール」を事前に設定してください。', flags: MessageFlags.Ephemeral });
       }
