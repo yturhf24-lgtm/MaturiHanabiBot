@@ -17,7 +17,7 @@ const BRANCH = 'main';
 
 const configPath = path.join(__dirname, 'config.json');
 
-// レート制限対策用ユーティリティ（指定ミリ秒待機）
+// レート制限対策用（指定ミリ秒待機）
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function saveConfigToGithub() {
@@ -87,12 +87,11 @@ const panelModule = require(commandPath);
 client.commands.set(panelModule.data.name, panelModule);
 const commandsArray = [panelModule.data.toJSON()];
 
-// 安全にロール操作を行う関数（レート制限エラー時は自動待機してリトライ）
+// 安全にロール操作を行う関数（レート制限対策）
 async function safeRoleAction(actionFn) {
   try {
     await actionFn();
   } catch (error) {
-    // レート制限(429)が発生した場合、指定された時間待機してリトライ
     if (error.code === 429 || error.status === 429) {
       const retryAfter = (error.retryAfter || 1000) + 100;
       console.warn(`⚠️ レート制限を検知。 ${retryAfter}ms 待機して再試行します...`);
@@ -113,32 +112,28 @@ async function processMemberRoles(member, guildConfig, executionType = 'manual')
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
 
-  // チェック対象のロールを持っていなければスキップ
   if (!member.roles.cache.has(conditionRoleId)) return false;
 
   const rolesToRemove = removeRoleIds.filter(id => member.roles.cache.has(id));
   const rolesToAdd = addRoleIds.filter(id => !member.roles.cache.has(id));
 
-  // 変更の必要がない場合
   if (rolesToRemove.length === 0 && rolesToAdd.length === 0) return false;
 
-  // 実際の付け外し処理（レート制限回避ラッパー付き）
   for (const id of rolesToRemove) {
     await safeRoleAction(() => member.roles.remove(id));
-    await sleep(100); // 100msウェイト
+    await sleep(100);
   }
 
   for (const id of rolesToAdd) {
     await safeRoleAction(() => member.roles.add(id));
-    await sleep(100); // 100msウェイト
+    await sleep(100);
   }
 
-  // 個別ログの送信
   if (logChannelId) {
     const logChannel = member.guild.channels.cache.get(logChannelId);
     if (logChannel) {
       let titleText = '⚙️ あなたが手動で実行した更新ログ';
-      if (executionType === 'auto') titleText = '🔄 5分定期チェックによる自動更新ログ';
+      if (executionType === 'auto') titleText = '🔄 自動チェックによる更新ログ';
       if (executionType === 'startup') titleText = '🔄 Bot起動時の自動更新ログ';
 
       const removedText = rolesToRemove.length > 0 ? rolesToRemove.map(id => `<@&${id}>`).join(', ') : 'なし';
@@ -161,7 +156,7 @@ async function processMemberRoles(member, guildConfig, executionType = 'manual')
   return true;
 }
 
-// サーバー指定の一括スキャン（レート制限に配慮して一人ずつ順次処理）
+// サーバー指定の一括スキャン
 async function scanSingleGuild(guild, executionType) {
   const allConfigs = loadConfig();
   const guildConfig = allConfigs[guild.id];
@@ -175,7 +170,6 @@ async function scanSingleGuild(guild, executionType) {
         const updated = await processMemberRoles(member, guildConfig, executionType);
         if (updated) {
           updatedCount++;
-          // 大量処理時のレート制限回避のためメンバー間で 200ms 待機
           await sleep(200);
         }
       }
@@ -187,7 +181,7 @@ async function scanSingleGuild(guild, executionType) {
   return updatedCount;
 }
 
-// 全サーバー自動スキャン（定期監視用）
+// 全サーバー自動スキャン
 async function scanAllGuilds(executionType) {
   for (const guild of client.guilds.cache.values()) {
     await scanSingleGuild(guild, executionType);
@@ -204,9 +198,10 @@ client.once(Events.ClientReady, async (c) => {
 
   await scanAllGuilds('startup');
 
+  // 10秒ごとに自動監視（10,000ミリ秒）
   setInterval(async () => {
     await scanAllGuilds('auto');
-  }, 5 * 60 * 1000);
+  }, 10 * 1000);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
