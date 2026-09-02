@@ -1,10 +1,10 @@
-const { SlashCommandBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+// インポートに MessageFlags を追加
+const { SlashCommandBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 const configPath = path.join(__dirname, '../config.json');
 
-// パネル用のEmbedメッセージを生成
 function buildPanelEmbed(guild, config) {
   const c = config[guild.id] || {};
   
@@ -32,11 +32,9 @@ function buildPanelEmbed(guild, config) {
     .setTimestamp();
 }
 
-// パネルの操作用メニューを生成（保存済み設定を初期値としてセット）
 function buildPanelComponents(guild, config) {
   const c = config[guild.id] || {};
 
-  // 1. チェック対象ロール選択
   const conditionMenuBuilder = new RoleSelectMenuBuilder()
     .setCustomId('select_condition_role')
     .setPlaceholder('1. チェックするロールを選ぶ（1つ選択）')
@@ -44,7 +42,6 @@ function buildPanelComponents(guild, config) {
     .setMaxValues(1);
   if (c.conditionRoleId) conditionMenuBuilder.setDefaultRoles([c.conditionRoleId]);
 
-  // 2. 削除対象ロール選択
   const removeMenuBuilder = new RoleSelectMenuBuilder()
     .setCustomId('select_remove_roles')
     .setPlaceholder('2. 自動で外したいロールを選ぶ（複数選択可）')
@@ -52,7 +49,6 @@ function buildPanelComponents(guild, config) {
     .setMaxValues(10);
   if (c.removeRoleIds && c.removeRoleIds.length > 0) removeMenuBuilder.setDefaultRoles(c.removeRoleIds);
 
-  // 3. 付与対象ロール選択
   const addMenuBuilder = new RoleSelectMenuBuilder()
     .setCustomId('select_add_roles')
     .setPlaceholder('3. 自動でつけたいロールを選ぶ（複数選択可）')
@@ -60,7 +56,6 @@ function buildPanelComponents(guild, config) {
     .setMaxValues(10);
   if (c.addRoleIds && c.addRoleIds.length > 0) addMenuBuilder.setDefaultRoles(c.addRoleIds);
 
-  // 4. ログチャンネル選択
   const channelMenuBuilder = new ChannelSelectMenuBuilder()
     .setCustomId('select_log_channel')
     .setPlaceholder('4. ログを送るチャンネルを選ぶ（なしでもOK）')
@@ -69,7 +64,6 @@ function buildPanelComponents(guild, config) {
     .setMaxValues(1);
   if (c.logChannelId) channelMenuBuilder.setDefaultChannels([c.logChannelId]);
 
-  // 5. 開始 / 停止 ボタン
   const toggleButton = new ButtonBuilder()
     .setCustomId('toggle_active_button')
     .setLabel(c.enabled ? '⏹️ 監視を停止する' : '▶️ 監視を開始する')
@@ -95,7 +89,7 @@ module.exports = {
 
   async execute(interaction) {
     if (interaction.guild.ownerId !== interaction.user.id) {
-      return interaction.reply({ content: '❌ このパネルはサーバー所有者しか開けません。', ephemeral: true });
+      return interaction.reply({ content: '❌ このパネルはサーバー所有者しか開けません。', flags: MessageFlags.Ephemeral });
     }
 
     let config = {};
@@ -106,7 +100,7 @@ module.exports = {
     const embed = buildPanelEmbed(interaction.guild, config);
     const components = buildPanelComponents(interaction.guild, config);
 
-    // 自分にのみ表示 (ephemeral: true)
-    await interaction.reply({ embeds: [embed], components: components, ephemeral: true });
+    // flags: MessageFlags.Ephemeral に変更
+    await interaction.reply({ embeds: [embed], components: components, flags: MessageFlags.Ephemeral });
   }
 };
