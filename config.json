@@ -2,7 +2,12 @@
   "1406344310072414218": {
     "enabled": false,
     "conditionRoleId": "1406366861381210113",
-    "removeRoleIds": [],
+    "removeRoleIds": [
+      "1406350341976625204",
+      "1469744654714011730",
+      "1471585848985124979",
+      "1406347004204023940"
+    ],
     "addRoleIds": [],
     "logChannelId": null
   }
