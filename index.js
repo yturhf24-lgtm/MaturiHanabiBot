@@ -1,7 +1,77 @@
+const express = require('express');
 const { Client, GatewayIntentBits, REST, Routes, Collection, EmbedBuilder, Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
+// --- Express サーバー設定 ---
+const app = express();
+const port = process.env.PORT || 4000;
+
+app.get('/', (req, res) => {
+  res.send('Hello World!');
+});
+
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`);
+});
+
+// --- GitHub 直接自動保存処理 ---
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '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';
+const OWNER = 'yturhf24-lgtm';
+const REPO = '-bot';
+const BRANCH = 'main';
+
+const configPath = path.join(__dirname, 'config.json');
+
+async function saveConfigToGithub() {
+  if (!fs.existsSync(configPath)) return;
+
+  const content = fs.readFileSync(configPath, 'utf8');
+  const base64Content = Buffer.from(content).toString('base64');
+  const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/config.json`;
+
+  let sha = null;
+  try {
+    const res = await fetch(`${url}?ref=${BRANCH}`, {
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        'User-Agent': 'Node.js'
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      sha = data.sha;
+    }
+  } catch (e) {}
+
+  try {
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Node.js'
+      },
+      body: JSON.stringify({
+        message: 'Update config.json directly via bot',
+        content: base64Content,
+        branch: BRANCH,
+        ...(sha ? { sha } : {})
+      })
+    });
+
+    if (response.ok) {
+      console.log('✅ GitHubリポジトリへ config.json を直接保存しました。');
+    } else {
+      const errData = await response.json();
+      console.error('❌ GitHubへの直接保存失敗:', errData);
+    }
+  } catch (err) {
+    console.error('❌ GitHub保存エラー:', err);
+  }
+}
+
+// --- Discord Bot 設定 ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -11,7 +81,6 @@ const client = new Client({
 });
 
 client.commands = new Collection();
-const configPath = path.join(__dirname, 'config.json');
 
 function loadConfig() {
   if (!fs.existsSync(configPath)) return {};
@@ -73,7 +142,7 @@ async function processMemberRoles(member, guildConfig, isAutoCheck = false) {
   return true;
 }
 
-// clientReady イベントリスナー (DeprecationWarning 解消)
+// clientReady イベントリスナー
 client.once(Events.ClientReady, async (c) => {
   console.log(`Bot logged in as ${c.user.tag}`);
 
@@ -112,7 +181,7 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     const cmd = client.commands.get('panel');
-    if (cmd) await cmd.execute(interaction);
+    if (cmd) await cmd.execute(interaction, saveConfigToGithub);
   }
 
   if (interaction.isButton() && interaction.customId === 'process_roles_button') {
