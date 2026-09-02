@@ -1,1 +1,9 @@
-{}
+{
+  "1406344310072414218": {
+    "enabled": false,
+    "conditionRoleId": "1406366861381210113",
+    "removeRoleIds": [],
+    "addRoleIds": [],
+    "logChannelId": null
+  }
+}
