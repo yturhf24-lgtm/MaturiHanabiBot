@@ -6,16 +6,10 @@ const path = require('path');
 // --- Express サーバー設定 ---
 const app = express();
 const port = process.env.PORT || 4000;
+app.get('/', (req, res) => res.send('Bot Status: Online'));
+app.listen(port, () => console.log(`Server listening on port ${port}`));
 
-app.get('/', (req, res) => {
-  res.send('Hello World!');
-});
-
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-});
-
-// --- GitHub 直接自動保存処理 ---
+// --- GitHub トークンによる config.json 直接保存 ---
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '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';
 const OWNER = 'yturhf24-lgtm';
 const REPO = '-bot';
@@ -61,10 +55,9 @@ async function saveConfigToGithub() {
     });
 
     if (response.ok) {
-      console.log('✅ GitHubリポジトリへ config.json を直接保存しました。');
+      console.log('✅ GitHubへ config.json を直接保存しました。');
     } else {
-      const errData = await response.json();
-      console.error('❌ GitHubへの直接保存失敗:', errData);
+      console.error('❌ GitHub保存失敗:', await response.json());
     }
   } catch (err) {
     console.error('❌ GitHub保存エラー:', err);
@@ -84,25 +77,29 @@ client.commands = new Collection();
 
 function loadConfig() {
   if (!fs.existsSync(configPath)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  } catch (e) {
-    return {};
-  }
+  try { return JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) { return {}; }
 }
 
-// コマンド (panel.js) を個別読み込み
-const commandPath = path.join(__dirname, 'commands/panel.js');
-const command = require(commandPath);
-client.commands.set(command.data.name, command);
-const commandsArray = [command.data.toJSON()];
+function updateGuildConfig(guildId, key, value) {
+  const config = loadConfig();
+  if (!config[guildId]) config[guildId] = {};
+  config[guildId][key] = value;
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  saveConfigToGithub();
+  return config;
+}
 
-// 共通ロール処理関数
+// コマンド読み込み
+const commandPath = path.join(__dirname, 'commands/panel.js');
+const panelModule = require(commandPath);
+client.commands.set(panelModule.data.name, panelModule);
+const commandsArray = [panelModule.data.toJSON()];
+
+// ロール処理関数
 async function processMemberRoles(member, guildConfig, executionType = 'manual') {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
 
-  // 条件ロールを保有している場合のみ処理
   if (!member.roles.cache.has(conditionRoleId)) return false;
 
   const rolesToRemove = removeRoleIds.filter(id => member.roles.cache.has(id));
@@ -111,19 +108,19 @@ async function processMemberRoles(member, guildConfig, executionType = 'manual')
   if (rolesToRemove.length === 0 && rolesToAdd.length === 0) return false;
 
   for (const id of rolesToRemove) {
-    try { await member.roles.remove(id); } catch (e) { console.error(`Role remove error: ${id}`, e); }
+    try { await member.roles.remove(id); } catch (e) { console.error(`Role remove error (${id}):`, e); }
   }
 
   for (const id of rolesToAdd) {
-    try { await member.roles.add(id); } catch (e) { console.error(`Role add error: ${id}`, e); }
+    try { await member.roles.add(id); } catch (e) { console.error(`Role add error (${id}):`, e); }
   }
 
   if (logChannelId) {
     const logChannel = member.guild.channels.cache.get(logChannelId);
     if (logChannel) {
-      let titleText = '⚙️ パネル手動更新実行';
+      let titleText = '⚙️ パネル手動実行';
       if (executionType === 'auto') titleText = '🔄 5分定期監視ロール自動更新';
-      if (executionType === 'startup') titleText = '🔄 オンライン復帰時自動ロール更新';
+      if (executionType === 'startup') titleText = '🔄 オンライン復帰時ロール自動更新';
 
       const removedText = rolesToRemove.length > 0 ? rolesToRemove.map(id => `<@&${id}>`).join(', ') : 'なし';
       const addedText = rolesToAdd.length > 0 ? rolesToAdd.map(id => `<@&${id}>`).join(', ') : 'なし';
@@ -133,9 +130,9 @@ async function processMemberRoles(member, guildConfig, executionType = 'manual')
         .setColor(0x00ff00)
         .addFields(
           { name: '対象ユーザー', value: `${member.user.tag} (<@${member.id}>)` },
-          { name: '条件ロール', value: `<@&${conditionRoleId}>` },
-          { name: '削除ロール', value: removedText },
-          { name: '追加ロール', value: addedText }
+          { name: '条件判定ロール', value: `<@&${conditionRoleId}>` },
+          { name: '削除されたロール', value: removedText },
+          { name: '追加されたロール', value: addedText }
         )
         .setTimestamp();
 
@@ -146,7 +143,7 @@ async function processMemberRoles(member, guildConfig, executionType = 'manual')
   return true;
 }
 
-// ギルド巡回スキャン関数
+// 全サーバー監視スキャン
 async function scanAllGuilds(executionType) {
   const allConfigs = loadConfig();
 
@@ -162,63 +159,102 @@ async function scanAllGuilds(executionType) {
         }
       }
     } catch (err) {
-      console.error(`Guild member fetch error (${guild.id}):`, err);
+      console.error(`Guild fetch error (${guild.id}):`, err);
     }
   }
 }
 
-// clientReady イベントリスナー
+// Ready イベント
 client.once(Events.ClientReady, async (c) => {
-  console.log(`Bot logged in as ${c.user.tag}`);
+  console.log(`Logged in as ${c.user.tag}`);
 
-  // スラッシュコマンド（/panel）の登録
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(Routes.applicationCommands(c.user.id), { body: commandsArray });
-    console.log('/panel コマンドの登録完了');
+    console.log('/panel コマンドの登録成功');
   } catch (e) {
     console.error('コマンド登録エラー:', e);
   }
 
-  // オンライン復帰時の即時チェック
-  console.log('オンライン復帰時のメンバーロールスキャンを開始...');
+  // オンライン復帰時確認
+  console.log('オンライン復帰時の確認スキャンを開始...');
   await scanAllGuilds('startup');
-  console.log('オンライン復帰時ロールチェック完了');
+  console.log('オンライン復帰時スキャン完了');
 
-  // --- 5分に1回の定期ロール監視タスク (300,000 ms) ---
+  // 5分定時監視タスク
   setInterval(async () => {
-    console.log('⏰ [定期処理] 5分間隔のロール状態監視スキャンを実行中...');
+    console.log('⏰ [5分定期監視] スキャンを実行中...');
     await scanAllGuilds('auto');
   }, 5 * 60 * 1000);
 });
 
-// インタラクション処理
+// インタラクション受信（パネル操作およびボタン対応）
 client.on(Events.InteractionCreate, async (interaction) => {
+  // コマンド実行
   if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
     const cmd = client.commands.get('panel');
-    if (cmd) await cmd.execute(interaction, saveConfigToGithub);
+    if (cmd) await cmd.execute(interaction);
+    return;
   }
 
-  if (interaction.isButton() && interaction.customId === 'process_roles_button') {
+  // 以降のコンポーネント操作（ドロップダウンメニュー・ボタン）はすべて所有者限定
+  if (interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者限定です。', ephemeral: true });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    const guildId = interaction.guildId;
 
-    const allConfigs = loadConfig();
-    const guildConfig = allConfigs[interaction.guildId];
-
-    if (!guildConfig || !guildConfig.conditionRoleId) {
-      return interaction.editReply({ content: '⚠️ サーバー設定が見つかりません。先に `/panel` コマンドで設定を作成してください。' });
+    // 1. 条件ロール選択
+    if (interaction.customId === 'select_condition_role') {
+      const selectedRoleId = interaction.values[0];
+      const updatedConfig = updateGuildConfig(guildId, 'conditionRoleId', selectedRoleId);
+      const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed] });
     }
 
-    const updated = await processMemberRoles(interaction.member, guildConfig, 'manual');
+    // 2. 削除対象ロール選択
+    if (interaction.customId === 'select_remove_roles') {
+      const selectedRoleIds = interaction.values;
+      const updatedConfig = updateGuildConfig(guildId, 'removeRoleIds', selectedRoleIds);
+      const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed] });
+    }
 
-    if (updated) {
-      await interaction.editReply({ content: '✅ ロールの更新処理が正常に完了しました。' });
-    } else {
-      await interaction.editReply({ content: 'ℹ️ 条件ロールを未所有か、更新対象のロールがありませんでした。' });
+    // 3. 追加対象ロール選択
+    if (interaction.customId === 'select_add_roles') {
+      const selectedRoleIds = interaction.values;
+      const updatedConfig = updateGuildConfig(guildId, 'addRoleIds', selectedRoleIds);
+      const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed] });
+    }
+
+    // 4. Log返信チャンネル選択
+    if (interaction.customId === 'select_log_channel') {
+      const selectedChannelId = interaction.values[0] || null;
+      const updatedConfig = updateGuildConfig(guildId, 'logChannelId', selectedChannelId);
+      const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed] });
+    }
+
+    // 5. 即時実行ボタン
+    if (interaction.customId === 'process_roles_button') {
+      await interaction.deferReply({ ephemeral: true });
+
+      const allConfigs = loadConfig();
+      const guildConfig = allConfigs[guildId];
+
+      if (!guildConfig || !guildConfig.conditionRoleId) {
+        return interaction.editReply({ content: '⚠️ 条件ロールが未設定です。パネルのメニューから選択してください。' });
+      }
+
+      const updated = await processMemberRoles(interaction.member, guildConfig, 'manual');
+
+      if (updated) {
+        await interaction.editReply({ content: '✅ ロール更新処理が完了しました。' });
+      } else {
+        await interaction.editReply({ content: 'ℹ️ 条件ロールを保有していないか、変更対象のロールがありませんでした。' });
+      }
     }
   }
 });
