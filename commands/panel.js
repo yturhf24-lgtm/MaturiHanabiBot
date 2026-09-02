@@ -1,90 +1,106 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
 const configPath = path.join(__dirname, '../config.json');
 
+// パネル用のEmbedメッセージを生成する関数
+function buildPanelEmbed(guild, config) {
+  const c = config[guild.id] || {};
+  
+  const conditionStr = c.conditionRoleId ? `<@&${c.conditionRoleId}>` : '未設定';
+  const removeStr = (c.removeRoleIds && c.removeRoleIds.length > 0) ? c.removeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
+  const addStr = (c.addRoleIds && c.addRoleIds.length > 0) ? c.addRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
+  const logStr = c.logChannelId ? `<#${c.logChannelId}>` : '未設定';
+
+  return new EmbedBuilder()
+    .setTitle('🛡️ ロール自動更新・設定管理パネル')
+    .setDescription('各メニューから設定項目を選択してください。設定内容は即時保存されます。\n（※Botが**5分ごと**および**オンライン復帰時**に自動監視します）')
+    .setColor(0x001f3f)
+    .addFields(
+      { name: '1. 条件判定ロール (単一)', value: conditionStr, inline: false },
+      { name: '2. 削除対象ロール (複数可)', value: removeStr, inline: true },
+      { name: '3. 追加対象ロール (複数可)', value: addStr, inline: true },
+      { name: '4. Log返信チャンネル', value: logStr, inline: false }
+    )
+    .setFooter({ text: '⚠️ このパネルおよび操作はサーバー所有者のみ利用可能です' })
+    .setTimestamp();
+
+}
+
+// パネルの操作用UIコンポーネント（メニュー・ボタン）を生成
+function buildPanelComponents() {
+  // 1. 条件ロール選択 (単一)
+  const conditionMenu = new ActionRowBuilder().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId('select_condition_role')
+      .setPlaceholder('1. 条件ロールを選択 (1つのみ)')
+      .setMinValues(1)
+      .setMaxValues(1)
+  );
+
+  // 2. 削除対象ロール選択 (複数可能)
+  const removeMenu = new ActionRowBuilder().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId('select_remove_roles')
+      .setPlaceholder('2. 削除するロールを選択 (複数可能 / 任意)')
+      .setMinValues(0)
+      .setMaxValues(10)
+  );
+
+  // 3. 追加対象ロール選択 (複数可能)
+  const addMenu = new ActionRowBuilder().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId('select_add_roles')
+      .setPlaceholder('3. 追加するロールを選択 (複数可能 / 任意)')
+      .setMinValues(0)
+      .setMaxValues(10)
+  );
+
+  // 4. Log返信チャンネル選択
+  const channelMenu = new ActionRowBuilder().addComponents(
+    new ChannelSelectMenuBuilder()
+      .setCustomId('select_log_channel')
+      .setPlaceholder('4. Log返信チャンネルを選択')
+      .setChannelTypes(ChannelType.GuildText)
+      .setMinValues(0)
+      .setMaxValues(1)
+  );
+
+  // 5. 手動実行ボタン
+  const buttonRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('process_roles_button')
+      .setLabel('今すぐロール更新を即時実行')
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  return [conditionMenu, removeMenu, addMenu, channelMenu, buttonRow];
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('panel')
-    .setDescription('ロール更新の設定を行い、埋め込みパネルを生成します（所有者限定）')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    // 条件ロール (単一・必須)
-    .addRoleOption(opt => opt.setName('condition_role').setDescription('保有を確認する条件ロール（1つのみ）').setRequired(true))
-    // 削除対象ロール (複数可能・任意)
-    .addRoleOption(opt => opt.setName('remove_role1').setDescription('削除するロール 1'))
-    .addRoleOption(opt => opt.setName('remove_role2').setDescription('削除するロール 2'))
-    .addRoleOption(opt => opt.setName('remove_role3').setDescription('削除するロール 3'))
-    // 追加対象ロール (複数可能・任意)
-    .addRoleOption(opt => opt.setName('add_role1').setDescription('追加するロール 1'))
-    .addRoleOption(opt => opt.setName('add_role2').setDescription('追加するロール 2'))
-    .addRoleOption(opt => opt.setName('add_role3').setDescription('追加するロール 3'))
-    // ログチャンネル (任意)
-    .addChannelOption(opt => opt.setName('log_channel').setDescription('実行結果を出力するログチャンネル')),
+    .setDescription('管理パネルを表示します（サーバー所有者限定）')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
-  async execute(interaction, saveConfigToGithub) {
+  buildPanelEmbed,
+  buildPanelComponents,
+
+  async execute(interaction) {
+    // サーバー所有者のみ実行可能
     if (interaction.guild.ownerId !== interaction.user.id) {
-      return interaction.reply({ content: '❌ このコマンドはサーバー所有者のみ実行可能です。', ephemeral: true });
+      return interaction.reply({ content: '❌ このパネルはサーバー所有者のみ開くことができます。', ephemeral: true });
     }
 
-    const guildId = interaction.guildId;
-    const conditionRole = interaction.options.getRole('condition_role');
-    const logChannel = interaction.options.getChannel('log_channel');
-
-    const removeRoles = [];
-    for (let i = 1; i <= 3; i++) {
-      const r = interaction.options.getRole(`remove_role${i}`);
-      if (r) removeRoles.push(r.id);
-    }
-
-    const addRoles = [];
-    for (let i = 1; i <= 3; i++) {
-      const r = interaction.options.getRole(`add_role${i}`);
-      if (r) addRoles.push(r.id);
-    }
-
-    // ローカルへ設定書き込み
     let config = {};
     if (fs.existsSync(configPath)) {
       try { config = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch (e) {}
     }
 
-    config[guildId] = {
-      conditionRoleId: conditionRole.id,
-      logChannelId: logChannel ? logChannel.id : null,
-      removeRoleIds: removeRoles,
-      addRoleIds: addRoles
-    };
+    const embed = buildPanelEmbed(interaction.guild, config);
+    const components = buildPanelComponents();
 
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-
-    // GitHubへ直接保存
-    if (saveConfigToGithub) {
-      await saveConfigToGithub();
-    }
-
-    // 埋め込み式パネル (Embed) の作成
-    const embed = new EmbedBuilder()
-      .setTitle('🛡️ ロール自動更新・管理パネル')
-      .setDescription('下のボタンを押すことで、手動でロール状態のチェックと更新を実行できます。\n（※Bot側で**5分ごと**に自動監視・更新処理も行われています）')
-      .setColor(0x3498db)
-      .addFields(
-        { name: '🔹 条件判定ロール', value: `<@&${conditionRole.id}>`, inline: false },
-        { name: '🗑️ 削除対象ロール', value: removeRoles.length > 0 ? removeRoles.map(id => `<@&${id}>`).join(', ') : 'なし', inline: true },
-        { name: '➕ 追加対象ロール', value: addRoles.length > 0 ? addRoles.map(id => `<@&${id}>`).join(', ') : 'なし', inline: true },
-        { name: '📜 ログ送信先', value: logChannel ? `<#${logChannel.id}>` : 'なし', inline: false }
-      )
-      .setFooter({ text: 'サーバー所有者専用管理機能' })
-      .setTimestamp();
-
-    const button = new ButtonBuilder()
-      .setCustomId('process_roles_button')
-      .setLabel('ロール更新を手動実行')
-      .setStyle(ButtonStyle.Primary);
-
-    const row = new ActionRowBuilder().addComponents(button);
-
-    // 埋め込みパネルを返信
-    await interaction.reply({ embeds: [embed], components: [row] });
+    await interaction.reply({ embeds: [embed], components: components });
   }
 };
