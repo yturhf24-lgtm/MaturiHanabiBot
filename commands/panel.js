@@ -20,7 +20,7 @@ function buildPanelEmbed(guild, config) {
     .addFields(
       { name: '⚡ 現在の動作ステータス', value: statusStr, inline: true },
       { name: '🔄 再起動通知', value: restartNotifyStr, inline: true },
-      { name: '\u200B', value: '\u200B', inline: true }, // レイアウト調整用空フィールド
+      { name: '\u200B', value: '\u200B', inline: true },
       { name: '🔍 1. チェックするロール（この役職を持っている人だけ処理）', value: conditionStr, inline: false },
       { name: '🗑️ 2. 自動で外すロール', value: removeStr, inline: true },
       { name: '➕ 3. 自動でつけるロール', value: addStr, inline: true },
@@ -67,9 +67,9 @@ function buildPanelComponents(guild, config) {
     .setLabel(c.enabled ? '⏹️ 監視を停止する' : '▶️ 監視を開始する')
     .setStyle(c.enabled ? ButtonStyle.Danger : ButtonStyle.Success);
 
-  // 再起動通知 ON/OFF 切替ボタン
+  // 再起動通知 ON/OFF 切替ボタン (customId を index.js と一致するように修正)
   const restartNotifyButton = new ButtonBuilder()
-    .setCustomId('toggle_restart_notify_button')
+    .setCustomId('toggle_restart_notify')
     .setLabel(c.restartNotify ? '🔔 再起動通知: ON' : '🔕 再起動通知: OFF')
     .setStyle(c.restartNotify ? ButtonStyle.Primary : ButtonStyle.Secondary);
 
