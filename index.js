@@ -10,7 +10,8 @@ const {
   MessageFlags, 
   ModalBuilder, 
   TextInputBuilder, 
-  TextInputStyle 
+  TextInputStyle,
+  ActionRowBuilder // 👈 追加！
 } = require('discord.js');
 
 // --- Express サーバー (Render等の常時起動用) ---
