@@ -192,13 +192,15 @@ async function processMemberRoles(member, guildConfig) {
   return true;
 }
 
+// レート制限を回避するため、fetch ではなくキャッシュを安全にスキャン
 async function scanSingleGuild(guild) {
   const guildConfig = globalConfig[guild.id];
   if (!guildConfig || !guildConfig.enabled || !guildConfig.conditionRoleId) return 0;
 
   let updatedCount = 0;
   try {
-    const members = await guild.members.fetch();
+    // キャッシュされているメンバーから処理（ゲートウェイ負荷を回避）
+    const members = guild.members.cache;
     for (const member of members.values()) {
       if (!member.user.bot) {
         const updated = await processMemberRoles(member, guildConfig);
@@ -209,7 +211,7 @@ async function scanSingleGuild(guild) {
       }
     }
   } catch (err) {
-    console.error(`Guild fetch error (${guild.id}):`, err);
+    console.error(`Guild scan error (${guild.id}):`, err);
   }
 
   return updatedCount;
@@ -221,7 +223,6 @@ async function scanAllGuilds() {
   }
 }
 
-// 起動時の再起動通知の送信関数
 async function sendRestartNotifications() {
   for (const guild of client.guilds.cache.values()) {
     const c = globalConfig[guild.id];
@@ -230,7 +231,7 @@ async function sendRestartNotifications() {
       if (channel) {
         const embed = new EmbedBuilder()
           .setTitle('🚀 Bot再起動完了')
-          .setDescription('Botが正常に起動・再接続されました。自動チェックを再開します。')
+          .setDescription('Botが正常に起動・再接続されました。自動チェックを開始します。')
           .setColor(0x3498db)
           .setTimestamp();
 
@@ -250,14 +251,41 @@ client.once(Events.ClientReady, async (c) => {
     await rest.put(Routes.applicationCommands(c.user.id), { body: commandsArray });
   } catch (e) {}
 
-  // 再起動通知を送信
   await sendRestartNotifications();
+
+  // 起動時に1回全メンバーを安全にFetch
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await guild.members.fetch();
+      await sleep(1000); // サーバーごとのインターバル
+    } catch (e) {
+      console.error(`Initial member fetch failed for ${guild.id}:`, e);
+    }
+  }
 
   await scanAllGuilds();
 
+  // 10秒から5分（300,000ms）へ間隔を延長して安全に全数確認
   setInterval(async () => {
     await scanAllGuilds();
-  }, 10 * 1000);
+  }, 5 * 60 * 1000);
+});
+
+// メンバーのロール更新イベントをリアルタイム検知
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  const guildConfig = globalConfig[newMember.guild.id];
+  if (guildConfig && guildConfig.enabled) {
+    await processMemberRoles(newMember, guildConfig);
+  }
+});
+
+// オンライン状態等の変更時にも即座に判定
+client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
+  if (!newPresence || !newPresence.member) return;
+  const guildConfig = globalConfig[newPresence.guild.id];
+  if (guildConfig && guildConfig.enabled) {
+    await processMemberRoles(newPresence.member, guildConfig);
+  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -319,7 +347,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.update({ embeds: [embed], components: components });
     }
 
-    // 再起動通知 ON/OFF 切り替えボタン処理
     if (interaction.customId === 'toggle_restart_notify_button') {
       const currentConfig = globalConfig[guildId] || {};
       const nextStatus = !currentConfig.restartNotify;
