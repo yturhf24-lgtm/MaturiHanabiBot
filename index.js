@@ -1,7 +1,19 @@
 const express = require('express');
-const { Client, GatewayIntentBits, REST, Routes, Collection, EmbedBuilder, Events, MessageFlags } = require('discord.js');
+const { 
+  Client, 
+  GatewayIntentBits, 
+  REST, 
+  Routes, 
+  Collection, 
+  EmbedBuilder, 
+  Events, 
+  MessageFlags, 
+  ModalBuilder, 
+  TextInputBuilder, 
+  TextInputStyle 
+} = require('discord.js');
 
-// --- Express サーバー ---
+// --- Express サーバー (Render等の常時起動用) ---
 const app = express();
 const port = process.env.PORT || 4000;
 app.get('/', (req, res) => res.send('Bot Status: Online'));
@@ -96,6 +108,7 @@ async function saveConfigToGithub() {
   }
 }
 
+// サーバー全般設定の更新
 async function updateGuildConfig(guildId, key, value) {
   if (!globalConfig[guildId]) {
     globalConfig[guildId] = {
@@ -104,7 +117,14 @@ async function updateGuildConfig(guildId, key, value) {
       conditionRoleId: null,
       removeRoleIds: [],
       addRoleIds: [],
-      logChannelId: null
+      logChannelId: null,
+      countConfig: {
+        enabled: false,
+        channelId: null,
+        currentNum: 0,
+        deleteWrong: true,
+        warnEmbed: true
+      }
     };
   }
 
@@ -113,22 +133,52 @@ async function updateGuildConfig(guildId, key, value) {
   return globalConfig;
 }
 
-// --- Discord Bot ---
+// 数字カウンター専用設定の更新
+async function updateCountConfig(guildId, key, value) {
+  if (!globalConfig[guildId]) {
+    await updateGuildConfig(guildId, 'enabled', false);
+  }
+  if (!globalConfig[guildId].countConfig) {
+    globalConfig[guildId].countConfig = {
+      enabled: false,
+      channelId: null,
+      currentNum: 0,
+      deleteWrong: true,
+      warnEmbed: true
+    };
+  }
+
+  globalConfig[guildId].countConfig[key] = value;
+  await saveConfigToGithub();
+  return globalConfig;
+}
+
+// --- Discord Bot クライアントの初期化 ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildPresences
+    GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
 client.commands = new Collection();
 
-const commandPath = require.resolve('./commands/panel.js');
-const panelModule = require(commandPath);
-client.commands.set(panelModule.data.name, panelModule);
-const commandsArray = [panelModule.data.toJSON()];
+// コマンドモジュールの読み込み
+const panelModule = require('./commands/panel.js');
+const countPanelModule = require('./commands/countPanel.js');
 
+client.commands.set(panelModule.data.name, panelModule);
+client.commands.set(countPanelModule.data.name, countPanelModule);
+
+const commandsArray = [
+  panelModule.data.toJSON(),
+  countPanelModule.data.toJSON()
+];
+
+// レート制限対応セーフティラッパー
 async function safeRoleAction(actionFn) {
   try {
     await actionFn();
@@ -143,11 +193,12 @@ async function safeRoleAction(actionFn) {
         console.error('リトライ失敗:', retryErr);
       }
     } else {
-      console.error('ロール操作エラー:', error);
+      console.error('操作エラー:', error);
     }
   }
 }
 
+// メンバー個別の自動ロール判定＆処理
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
@@ -192,14 +243,13 @@ async function processMemberRoles(member, guildConfig) {
   return true;
 }
 
-// レート制限を回避するため、fetch ではなくキャッシュを安全にスキャン
+// レート制限回避のためキャッシュベースでスキャン
 async function scanSingleGuild(guild) {
   const guildConfig = globalConfig[guild.id];
   if (!guildConfig || !guildConfig.enabled || !guildConfig.conditionRoleId) return 0;
 
   let updatedCount = 0;
   try {
-    // キャッシュされているメンバーから処理（ゲートウェイ負荷を回避）
     const members = guild.members.cache;
     for (const member of members.values()) {
       if (!member.user.bot) {
@@ -223,6 +273,7 @@ async function scanAllGuilds() {
   }
 }
 
+// 起動時の再起動通知送信
 async function sendRestartNotifications() {
   for (const guild of client.guilds.cache.values()) {
     const c = globalConfig[guild.id];
@@ -241,23 +292,28 @@ async function sendRestartNotifications() {
   }
 }
 
+// --- 起動イベント ---
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
 
   await syncConfigFromGithub();
 
+  // スラッシュコマンドの一括登録
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(Routes.applicationCommands(c.user.id), { body: commandsArray });
-  } catch (e) {}
+    console.log('✅ スラッシュコマンドを正常に登録しました。');
+  } catch (e) {
+    console.error('スラッシュコマンド登録エラー:', e);
+  }
 
   await sendRestartNotifications();
 
-  // 起動時に1回全メンバーを安全にFetch
+  // 起動時に全サーバーのメンバーを安全に1回だけ取得
   for (const guild of client.guilds.cache.values()) {
     try {
       await guild.members.fetch();
-      await sleep(1000); // サーバーごとのインターバル
+      await sleep(1000);
     } catch (e) {
       console.error(`Initial member fetch failed for ${guild.id}:`, e);
     }
@@ -265,13 +321,57 @@ client.once(Events.ClientReady, async (c) => {
 
   await scanAllGuilds();
 
-  // 10秒から5分（300,000ms）へ間隔を延長して安全に全数確認
+  // 5分（300,000ms）ごとに定期チェック（レート制限対策）
   setInterval(async () => {
     await scanAllGuilds();
   }, 5 * 60 * 1000);
 });
 
-// メンバーのロール更新イベントをリアルタイム検知
+// --- 数字カウンターメッセージ判定イベント ---
+client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot || !message.guild) return;
+
+  const countConfig = globalConfig[message.guild.id]?.countConfig;
+  if (!countConfig || !countConfig.enabled || countConfig.channelId !== message.channel.id) return;
+
+  const inputTrimmed = message.content.trim();
+  const inputNum = parseInt(inputTrimmed, 10);
+  const expectedNum = (countConfig.currentNum || 0) + 1;
+
+  // 不正な数字・テキストの場合
+  if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== expectedNum) {
+    // 削除が有効な場合
+    if (countConfig.deleteWrong !== false) {
+      try {
+        await message.delete();
+      } catch (err) {
+        console.error('メッセージ削除権限不足:', err);
+      }
+    }
+
+    // 警告Embedが有効な場合
+    if (countConfig.warnEmbed !== false) {
+      const warnEmbed = new EmbedBuilder()
+        .setTitle('⚠️ 数字が間違っています！')
+        .setDescription(`<@${message.author.id}> さん、次に送信する正しい数字は **\`${expectedNum}\`** です。`)
+        .setColor(0xffa500)
+        .setTimestamp();
+
+      try {
+        const warnMsg = await message.channel.send({ embeds: [warnEmbed] });
+        setTimeout(() => {
+          warnMsg.delete().catch(() => {});
+        }, 5000);
+      } catch (err) {}
+    }
+  } else {
+    // 正しい数字の場合
+    await updateCountConfig(message.guild.id, 'currentNum', expectedNum);
+    await message.react('✅').catch(() => {});
+  }
+});
+
+// --- リアルタイム判定イベント ---
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   const guildConfig = globalConfig[newMember.guild.id];
   if (guildConfig && guildConfig.enabled) {
@@ -279,7 +379,6 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   }
 });
 
-// オンライン状態等の変更時にも即座に判定
 client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
   if (!newPresence || !newPresence.member) return;
   const guildConfig = globalConfig[newPresence.guild.id];
@@ -288,14 +387,42 @@ client.on(Events.PresenceUpdate, async (oldPresence, newPresence) => {
   }
 });
 
+// --- インタラクション（コマンド・ボタン・メニュー・モーダル）統合処理 ---
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
-    await syncConfigFromGithub();
-    const cmd = client.commands.get('panel');
-    if (cmd) await cmd.execute(interaction, globalConfig);
-    return;
+  // 1. スラッシュコマンド
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'panel') {
+      await syncConfigFromGithub();
+      const cmd = client.commands.get('panel');
+      if (cmd) await cmd.execute(interaction, globalConfig);
+      return;
+    }
+    if (interaction.commandName === 'count-panel') {
+      await syncConfigFromGithub();
+      const cmd = client.commands.get('count-panel');
+      if (cmd) await cmd.execute(interaction, globalConfig);
+      return;
+    }
   }
 
+  // 2. 数字設定モーダルの送信結果受取
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_set_number') {
+    const guildId = interaction.guildId;
+    const inputVal = interaction.fields.getTextInputValue('input_current_number');
+    const parsedVal = parseInt(inputVal, 10);
+
+    if (isNaN(parsedVal) || parsedVal < 0) {
+      return interaction.reply({ content: '❌ 有効な0以上の半角数字を入力してください。', flags: MessageFlags.Ephemeral });
+    }
+
+    const updatedConfig = await updateCountConfig(guildId, 'currentNum', parsedVal);
+    const embed = countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig);
+    const components = countPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig);
+
+    return interaction.update({ embeds: [embed], components: components });
+  }
+
+  // 3. パネル操作（所有者判定）
   if (interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
@@ -303,6 +430,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const guildId = interaction.guildId;
 
+    // --- ロール制御パネル ---
     if (interaction.customId === 'select_condition_role') {
       const updatedConfig = await updateGuildConfig(guildId, 'conditionRoleId', interaction.values[0]);
       const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
@@ -334,14 +462,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.customId === 'toggle_active_button') {
       const currentConfig = globalConfig[guildId] || {};
-
       if (!currentConfig.enabled && !currentConfig.conditionRoleId) {
         return interaction.reply({ content: '⚠️ 「1. チェックするロール」を事前に設定してください。', flags: MessageFlags.Ephemeral });
       }
-
-      const nextStatus = !currentConfig.enabled;
-      const updatedConfig = await updateGuildConfig(guildId, 'enabled', nextStatus);
-
+      const updatedConfig = await updateGuildConfig(guildId, 'enabled', !currentConfig.enabled);
       const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
       const components = panelModule.buildPanelComponents(interaction.guild, updatedConfig);
       return interaction.update({ embeds: [embed], components: components });
@@ -349,14 +473,71 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.customId === 'toggle_restart_notify_button') {
       const currentConfig = globalConfig[guildId] || {};
-      const nextStatus = !currentConfig.restartNotify;
-      const updatedConfig = await updateGuildConfig(guildId, 'restartNotify', nextStatus);
-
+      const updatedConfig = await updateGuildConfig(guildId, 'restartNotify', !currentConfig.restartNotify);
       const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
       const components = panelModule.buildPanelComponents(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed], components: components });
+    }
+
+    // --- カウンターパネル ---
+    if (interaction.customId === 'select_count_channel') {
+      const selectedChannel = interaction.values[0] || null;
+      const updatedConfig = await updateCountConfig(guildId, 'channelId', selectedChannel);
+      const embed = countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig);
+      const components = countPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed], components: components });
+    }
+
+    if (interaction.customId === 'open_set_number_modal') {
+      const modal = new ModalBuilder()
+        .setCustomId('modal_set_number')
+        .setTitle('現在のカウント数字を入力');
+
+      const numInput = new TextInputBuilder()
+        .setCustomId('input_current_number')
+        .setLabel('数字を入力（例: 0 にすると次は 1）')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('0')
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(numInput));
+      return interaction.showModal(modal);
+    }
+
+    if (interaction.customId === 'toggle_count_delete') {
+      const currentConfig = globalConfig[guildId]?.countConfig || {};
+      const currentDeleteState = currentConfig.deleteWrong !== false;
+      const updatedConfig = await updateCountConfig(guildId, 'deleteWrong', !currentDeleteState);
+
+      const embed = countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig);
+      const components = countPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed], components: components });
+    }
+
+    if (interaction.customId === 'toggle_count_warn') {
+      const currentConfig = globalConfig[guildId]?.countConfig || {};
+      const currentWarnState = currentConfig.warnEmbed !== false;
+      const updatedConfig = await updateCountConfig(guildId, 'warnEmbed', !currentWarnState);
+
+      const embed = countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig);
+      const components = countPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed], components: components });
+    }
+
+    if (interaction.customId === 'toggle_count_active') {
+      const currentConfig = globalConfig[guildId]?.countConfig || {};
+
+      if (!currentConfig.enabled && !currentConfig.channelId) {
+        return interaction.reply({ content: '⚠️ カウント対象のチャンネルを事前に設定してください。', flags: MessageFlags.Ephemeral });
+      }
+
+      const updatedConfig = await updateCountConfig(guildId, 'enabled', !currentConfig.enabled);
+      const embed = countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig);
+      const components = countPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig);
       return interaction.update({ embeds: [embed], components: components });
     }
   }
 });
 
+// Bot ログイン
 client.login(process.env.DISCORD_TOKEN);
