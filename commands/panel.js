@@ -7,7 +7,7 @@ function buildPanelEmbed(guild, config) {
   const removeStr = (c.removeRoleIds && c.removeRoleIds.length > 0) ? c.removeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
   const addStr = (c.addRoleIds && c.addRoleIds.length > 0) ? c.addRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
   const logStr = c.logChannelId ? `<#${c.logChannelId}>` : '未設定（なしでもOK）';
-  const statusStr = c.enabled ? '🟢 動作中（10秒ごとに自動チェック）' : '🔴 停止中';
+  const statusStr = c.enabled ? '🟢 動作中（5分ごとに自動チェック）' : '🔴 停止中';
   const restartNotifyStr = c.restartNotify ? '🔔 ON' : '🔕 OFF';
 
   return new EmbedBuilder()
