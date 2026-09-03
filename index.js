@@ -11,7 +11,7 @@ const {
   ModalBuilder, 
   TextInputBuilder, 
   TextInputStyle,
-  ActionRowBuilder // 👈 追加！
+  ActionRowBuilder
 } = require('discord.js');
 
 // --- Express サーバー (Render等の常時起動用) ---
@@ -179,69 +179,67 @@ const commandsArray = [
   countPanelModule.data.toJSON()
 ];
 
-// レート制限対応セーフティラッパー
-async function safeRoleAction(actionFn) {
-  try {
-    await actionFn();
-  } catch (error) {
-    if (error.code === 429 || error.status === 429) {
-      const retryAfter = (error.retryAfter || 1000) + 100;
-      console.warn(`⚠️ レート制限を検知。 ${retryAfter}ms 待機して再試行します...`);
-      await sleep(retryAfter);
-      try {
-        await actionFn();
-      } catch (retryErr) {
-        console.error('リトライ失敗:', retryErr);
-      }
-    } else {
-      console.error('操作エラー:', error);
-    }
-  }
-}
+// 重複処理防止用の処理中セット
+const processingMembers = new Set();
 
-// メンバー個別の自動ロール判定＆処理
+// メンバー個別の自動ロール判定＆処理 (連投・ループ防止版)
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
 
+  // 既に処理中ならスキップ
+  if (processingMembers.has(member.id)) return false;
+
+  // 条件ロールを持っていない場合はスキップ
   if (!member.roles.cache.has(conditionRoleId)) return false;
 
   const rolesToRemove = removeRoleIds.filter(id => member.roles.cache.has(id));
   const rolesToAdd = addRoleIds.filter(id => !member.roles.cache.has(id));
 
+  // 変更が不要ならスキップ
   if (rolesToRemove.length === 0 && rolesToAdd.length === 0) return false;
 
-  for (const id of rolesToRemove) {
-    await safeRoleAction(() => member.roles.remove(id));
-    await sleep(100);
-  }
+  processingMembers.add(member.id);
 
-  for (const id of rolesToAdd) {
-    await safeRoleAction(() => member.roles.add(id));
-    await sleep(100);
-  }
-
-  if (logChannelId) {
-    const logChannel = member.guild.channels.cache.get(logChannelId);
-    if (logChannel) {
-      const removedText = rolesToRemove.length > 0 ? rolesToRemove.map(id => `<@&${id}>`).join(', ') : 'なし';
-      const addedText = rolesToAdd.length > 0 ? rolesToAdd.map(id => `<@&${id}>`).join(', ') : 'なし';
-
-      const embed = new EmbedBuilder()
-        .setTitle('🔄 自動ロール更新ログ')
-        .setColor(0x00ff00)
-        .addFields(
-          { name: '👤 プレイヤー名', value: `${member.user.tag} (<@${member.id}>)` },
-          { name: '🗑️ 削除ロール', value: removedText },
-          { name: '➕ 付与ロール', value: addedText }
-        )
-        .setTimestamp();
-
-      await safeRoleAction(() => logChannel.send({ embeds: [embed] }));
+  try {
+    // ロールを一括処理（複数のGuildMemberUpdateイベント発生を防止）
+    if (rolesToRemove.length > 0) {
+      await member.roles.remove(rolesToRemove).catch(e => console.error('ロール削除エラー:', e));
     }
-  }
+    if (rolesToAdd.length > 0) {
+      await member.roles.add(rolesToAdd).catch(e => console.error('ロール付与エラー:', e));
+    }
 
-  return true;
+    // ログ送信 (1回のみ)
+    if (logChannelId) {
+      const logChannel = member.guild.channels.cache.get(logChannelId);
+      if (logChannel) {
+        const removedText = rolesToRemove.length > 0 ? rolesToRemove.map(id => `<@&${id}>`).join(', ') : 'なし';
+        const addedText = rolesToAdd.length > 0 ? rolesToAdd.map(id => `<@&${id}>`).join(', ') : 'なし';
+
+        const embed = new EmbedBuilder()
+          .setTitle('🔄 自動ロール更新ログ')
+          .setColor(0x00ff00)
+          .addFields(
+            { name: '👤 プレイヤー名', value: `${member.user.tag} (<@${member.id}>)` },
+            { name: '🗑️ 削除ロール', value: removedText },
+            { name: '➕ 付与ロール', value: addedText }
+          )
+          .setTimestamp();
+
+        await logChannel.send({ embeds: [embed] }).catch(() => {});
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('ロール処理中にエラーが発生しました:', err);
+    return false;
+  } finally {
+    // 1秒後にロック解除（イベント連鎖防止）
+    setTimeout(() => {
+      processingMembers.delete(member.id);
+    }, 1000);
+  }
 }
 
 // レート制限回避のためキャッシュベースでスキャン
@@ -287,7 +285,7 @@ async function sendRestartNotifications() {
           .setColor(0x3498db)
           .setTimestamp();
 
-        await safeRoleAction(() => channel.send({ embeds: [embed] }));
+        await channel.send({ embeds: [embed] }).catch(() => {});
       }
     }
   }
