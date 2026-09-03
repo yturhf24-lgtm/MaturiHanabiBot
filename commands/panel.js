@@ -67,7 +67,6 @@ function buildPanelComponents(guild, config) {
     .setLabel(c.enabled ? '⏹️ 監視を停止する' : '▶️ 監視を開始する')
     .setStyle(c.enabled ? ButtonStyle.Danger : ButtonStyle.Success);
 
-  // 再起動通知 ON/OFF 切替ボタン (customId を index.js と一致するように修正)
   const restartNotifyButton = new ButtonBuilder()
     .setCustomId('toggle_restart_notify')
     .setLabel(c.restartNotify ? '🔔 再起動通知: ON' : '🔕 再起動通知: OFF')
