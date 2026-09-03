@@ -103,6 +103,7 @@ function initGuildConfig(guildId) {
     globalConfig[guildId] = {
       enabled: false,
       restartNotify: false,
+      restartNotifyChannelId: null, // 再起動通知のチャンネルIDを追加
       conditionRoleId: null,
       removeRoleIds: [],
       addRoleIds: [],
@@ -300,6 +301,26 @@ client.once(Events.ClientReady, async (c) => {
     console.error('スラッシュコマンド登録エラー:', e);
   }
 
+  // 再起動通知の処理
+  for (const guild of client.guilds.cache.values()) {
+    const config = globalConfig[guild.id];
+    if (config && config.restartNotify) {
+      // 指定されたチャンネル、または設定ログチャンネルをフォールバックとして使用
+      const targetChannelId = config.restartNotifyChannelId || config.logChannelId;
+      if (targetChannelId) {
+        const channel = guild.channels.cache.get(targetChannelId);
+        if (channel) {
+          const restartEmbed = new EmbedBuilder()
+            .setTitle('🟢 システム再起動完了')
+            .setDescription('Botが正常に起動・再起動されました。')
+            .setColor(0x00ff00)
+            .setTimestamp();
+          await channel.send({ embeds: [restartEmbed] }).catch(() => {});
+        }
+      }
+    }
+  }
+
   for (const guild of client.guilds.cache.values()) {
     try {
       await guild.members.fetch();
@@ -404,6 +425,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     if (interaction.customId === 'select_log_channel') {
       const updatedConfig = await updateGuildConfig(guildId, 'logChannelId', interaction.values[0] || null);
+      return interaction.update({ embeds: [panelModule.buildPanelEmbed(interaction.guild, updatedConfig)], components: panelModule.buildPanelComponents(interaction.guild, updatedConfig) });
+    }
+    if (interaction.customId === 'select_restart_notify_channel') {
+      const updatedConfig = await updateGuildConfig(guildId, 'restartNotifyChannelId', interaction.values[0] || null);
+      return interaction.update({ embeds: [panelModule.buildPanelEmbed(interaction.guild, updatedConfig)], components: panelModule.buildPanelComponents(interaction.guild, updatedConfig) });
+    }
+    if (interaction.customId === 'toggle_restart_notify') {
+      const currentConfig = globalConfig[guildId] || {};
+      const updatedConfig = await updateGuildConfig(guildId, 'restartNotify', !currentConfig.restartNotify);
       return interaction.update({ embeds: [panelModule.buildPanelEmbed(interaction.guild, updatedConfig)], components: panelModule.buildPanelComponents(interaction.guild, updatedConfig) });
     }
     if (interaction.customId === 'toggle_active_button') {
