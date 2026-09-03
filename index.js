@@ -14,12 +14,10 @@ const REPO = '-bot';
 const BRANCH = 'main';
 const FILE_PATH = 'config.json';
 
-// メモリ上で管理する設定データ構造
 let globalConfig = {};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// GitHub から設定ファイルを直接読み込み（なければ初期テンプレートを自動作成）
 async function syncConfigFromGithub() {
   if (!GITHUB_TOKEN) {
     console.warn('⚠️ GITHUB_TOKEN が設定されていません。メモリ上でのみ設定を保持します。');
@@ -29,7 +27,11 @@ async function syncConfigFromGithub() {
 
   try {
     const res = await fetch(url, {
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'User-Agent': 'Node.js' }
+      headers: {
+        Authorization: `Bearer ${GITHUB_TOKEN.trim()}`,
+        'User-Agent': 'Node.js',
+        'Accept': 'application/vnd.github.v3+json'
+      }
     });
 
     if (res.ok) {
@@ -41,13 +43,14 @@ async function syncConfigFromGithub() {
       console.log('ℹ️ GitHub 上に config.json が見つかりません。新規作成します...');
       globalConfig = {};
       await saveConfigToGithub();
+    } else {
+      console.error(`GitHub 同期失敗 (${res.status}):`, await res.text());
     }
   } catch (err) {
     console.error('GitHub 同期エラー:', err);
   }
 }
 
-// メモリ上の設定データを直接 GitHub にコミット＆保存
 async function saveConfigToGithub() {
   if (!GITHUB_TOKEN) return;
 
@@ -55,11 +58,16 @@ async function saveConfigToGithub() {
   const base64Content = Buffer.from(content).toString('base64');
   const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}`;
 
+  const headers = {
+    Authorization: `Bearer ${GITHUB_TOKEN.trim()}`,
+    'User-Agent': 'Node.js',
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json'
+  };
+
   let sha = null;
   try {
-    const res = await fetch(`${url}?ref=${BRANCH}`, {
-      headers: { Authorization: `token ${GITHUB_TOKEN}`, 'User-Agent': 'Node.js' }
-    });
+    const res = await fetch(`${url}?ref=${BRANCH}`, { headers });
     if (res.ok) {
       const data = await res.json();
       sha = data.sha;
@@ -69,11 +77,7 @@ async function saveConfigToGithub() {
   try {
     const putRes = await fetch(url, {
       method: 'PUT',
-      headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Node.js'
-      },
+      headers,
       body: JSON.stringify({
         message: 'Auto-updated config by Bot',
         content: base64Content,
@@ -85,18 +89,18 @@ async function saveConfigToGithub() {
     if (putRes.ok) {
       console.log('✅ GitHub への直接保存が完了しました。');
     } else {
-      console.error('GitHub 保存失敗:', await putRes.text());
+      console.error(`GitHub 保存失敗 (${putRes.status}):`, await putRes.text());
     }
   } catch (err) {
     console.error('GitHub 保存エラー:', err);
   }
 }
 
-// サーバーごとの設定を更新してGitHubへ直接同期
 async function updateGuildConfig(guildId, key, value) {
   if (!globalConfig[guildId]) {
     globalConfig[guildId] = {
       enabled: false,
+      restartNotify: false,
       conditionRoleId: null,
       removeRoleIds: [],
       addRoleIds: [],
@@ -125,7 +129,6 @@ const panelModule = require(commandPath);
 client.commands.set(panelModule.data.name, panelModule);
 const commandsArray = [panelModule.data.toJSON()];
 
-// レート制限対策付き ロール操作ラッパー
 async function safeRoleAction(actionFn) {
   try {
     await actionFn();
@@ -145,7 +148,6 @@ async function safeRoleAction(actionFn) {
   }
 }
 
-// 1人のメンバーのロール変更処理＆個別ログ送信
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
@@ -190,7 +192,6 @@ async function processMemberRoles(member, guildConfig) {
   return true;
 }
 
-// 単一サーバーのスキャン
 async function scanSingleGuild(guild) {
   const guildConfig = globalConfig[guild.id];
   if (!guildConfig || !guildConfig.enabled || !guildConfig.conditionRoleId) return 0;
@@ -214,17 +215,34 @@ async function scanSingleGuild(guild) {
   return updatedCount;
 }
 
-// 全サーバーのスキャン
 async function scanAllGuilds() {
   for (const guild of client.guilds.cache.values()) {
     await scanSingleGuild(guild);
   }
 }
 
+// 起動時の再起動通知の送信関数
+async function sendRestartNotifications() {
+  for (const guild of client.guilds.cache.values()) {
+    const c = globalConfig[guild.id];
+    if (c && c.restartNotify && c.logChannelId) {
+      const channel = guild.channels.cache.get(c.logChannelId);
+      if (channel) {
+        const embed = new EmbedBuilder()
+          .setTitle('🚀 Bot再起動完了')
+          .setDescription('Botが正常に起動・再接続されました。自動チェックを再開します。')
+          .setColor(0x3498db)
+          .setTimestamp();
+
+        await safeRoleAction(() => channel.send({ embeds: [embed] }));
+      }
+    }
+  }
+}
+
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
 
-  // Bot起動時に GitHub から設定を直接ダウンロード
   await syncConfigFromGithub();
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -232,9 +250,11 @@ client.once(Events.ClientReady, async (c) => {
     await rest.put(Routes.applicationCommands(c.user.id), { body: commandsArray });
   } catch (e) {}
 
+  // 再起動通知を送信
+  await sendRestartNotifications();
+
   await scanAllGuilds();
 
-  // 10秒ごとに自動監視
   setInterval(async () => {
     await scanAllGuilds();
   }, 10 * 1000);
@@ -293,6 +313,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const nextStatus = !currentConfig.enabled;
       const updatedConfig = await updateGuildConfig(guildId, 'enabled', nextStatus);
+
+      const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
+      const components = panelModule.buildPanelComponents(interaction.guild, updatedConfig);
+      return interaction.update({ embeds: [embed], components: components });
+    }
+
+    // 再起動通知 ON/OFF 切り替えボタン処理
+    if (interaction.customId === 'toggle_restart_notify_button') {
+      const currentConfig = globalConfig[guildId] || {};
+      const nextStatus = !currentConfig.restartNotify;
+      const updatedConfig = await updateGuildConfig(guildId, 'restartNotify', nextStatus);
 
       const embed = panelModule.buildPanelEmbed(interaction.guild, updatedConfig);
       const components = panelModule.buildPanelComponents(interaction.guild, updatedConfig);
