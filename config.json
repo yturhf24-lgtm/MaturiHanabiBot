@@ -25,7 +25,9 @@
       "checkRoleIds": [
         "1406366861381210113"
       ],
-      "addRoleIds": [],
+      "addRoleIds": [
+        "1406366861381210113"
+      ],
       "logChannelId": null
     }
   }
