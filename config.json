@@ -11,6 +11,7 @@
     "addRoleIds": [
       "1406366861381210113"
     ],
-    "logChannelId": "1536062285330645112"
+    "logChannelId": "1536062285330645112",
+    "restartNotify": true
   }
 }
