@@ -1,43 +1,24 @@
-const { 
-  SlashCommandBuilder, 
-  ActionRowBuilder, 
-  RoleSelectMenuBuilder, 
-  ChannelSelectMenuBuilder,
-  ChannelType,
-  ButtonBuilder, 
-  ButtonStyle, 
-  EmbedBuilder, 
-  PermissionFlagsBits, 
-  MessageFlags 
-} = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ChannelSelectMenuBuilder, ChannelType, ButtonBuilder, ButtonStyle, EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 
 function buildRoleAddPanelEmbed(guild, config) {
   const c = config[guild.id]?.addRoleConfig || {};
 
-  const enabledStr = c.enabled ? '🟢 動作中' : '🔴 停止中';
-  
-  const checkRolesStr = (c.checkRoleIds && c.checkRoleIds.length > 0)
-    ? c.checkRoleIds.map(id => `<@&${id}>`).join(', ')
-    : 'なし（全員対象）';
-
-  const addRolesStr = (c.addRoleIds && c.addRoleIds.length > 0)
-    ? c.addRoleIds.map(id => `<@&${id}>`).join(', ')
-    : '未設定';
-
-  const logChannelStr = c.logChannelId ? `<#${c.logChannelId}>` : '未設定';
+  const excludeStr = (c.excludeRoleIds && c.excludeRoleIds.length > 0) ? c.excludeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし（全員対象）';
+  const targetStr = (c.targetRoleIds && c.targetRoleIds.length > 0) ? c.targetRoleIds.map(id => `<@&${id}>`).join(', ') : '未設定（選択必須）';
+  const logStr = c.logChannelId ? `<#${c.logChannelId}>` : '未設定（なしでもOK）';
+  const statusStr = c.enabled ? '🟢 動作中（5分ごとに自動チェック）' : '🔴 停止中';
 
   return new EmbedBuilder()
-    .setTitle('➕ ロール条件付与パネル')
+    .setTitle('➕ 条件ロール自動付与パネル')
     .setDescription(
-      '【対象条件】\n' +
-      '設定した**「未所持チェックロール」を1つも持っていない**メンバーに対し、**「付与ロール」**を自動付与します。'
+      '設定した**除外ロール以外の全員**を対象に、自動でロールを付与します。'
     )
     .setColor(c.enabled ? 0x00ff00 : 0xff0000)
     .addFields(
-      { name: '⚡ 機能ステータス', value: enabledStr, inline: false },
-      { name: '❓ 未所持チェックロール (これが無い人に対象)', value: checkRolesStr, inline: false },
-      { name: '➕ 付与するロール (自動追加)', value: addRolesStr, inline: false },
-      { name: '📜 ログ出力チャンネル', value: logChannelStr, inline: false }
+      { name: '⚡ 現在の動作ステータス', value: statusStr, inline: false },
+      { name: '🚫 1. 除外ロール（このロール以外が自動付与の対象）', value: excludeStr, inline: false },
+      { name: '➕ 2. 付与するロール（自動でつける役職）', value: targetStr, inline: false },
+      { name: '📜 3. ログ送信先チャンネル', value: logStr, inline: false }
     )
     .setFooter({ text: '※この操作パネルはあなただけに表示されています' })
     .setTimestamp();
@@ -46,45 +27,45 @@ function buildRoleAddPanelEmbed(guild, config) {
 function buildRoleAddPanelComponents(guild, config) {
   const c = config[guild.id]?.addRoleConfig || {};
 
-  const checkRoleMenu = new RoleSelectMenuBuilder()
-    .setCustomId('select_add_check_roles')
-    .setPlaceholder('持っていないことを確認するロールを選択 (複数可)')
+  const excludeMenuBuilder = new RoleSelectMenuBuilder()
+    .setCustomId('select_add_exclude_roles')
+    .setPlaceholder('1. 除外するロールを選ぶ（これ以外の人に付与）')
     .setMinValues(0)
     .setMaxValues(10);
-  if (c.checkRoleIds && c.checkRoleIds.length > 0) checkRoleMenu.setDefaultRoles(c.checkRoleIds);
+  if (c.excludeRoleIds && c.excludeRoleIds.length > 0) excludeMenuBuilder.setDefaultRoles(c.excludeRoleIds);
 
-  const addRoleMenu = new RoleSelectMenuBuilder()
+  const targetMenuBuilder = new RoleSelectMenuBuilder()
     .setCustomId('select_add_target_roles')
-    .setPlaceholder('付与するロールを選択 (複数可)')
+    .setPlaceholder('2. 自動で付与するロールを選ぶ')
     .setMinValues(0)
     .setMaxValues(10);
-  if (c.addRoleIds && c.addRoleIds.length > 0) addRoleMenu.setDefaultRoles(c.addRoleIds);
+  if (c.targetRoleIds && c.targetRoleIds.length > 0) targetMenuBuilder.setDefaultRoles(c.targetRoleIds);
 
-  const logChannelMenu = new ChannelSelectMenuBuilder()
+  const channelMenuBuilder = new ChannelSelectMenuBuilder()
     .setCustomId('select_add_role_log_channel')
-    .setPlaceholder('ログ送信先のテキストチャンネルを選択')
+    .setPlaceholder('3. ログを送るチャンネルを選ぶ（なしでもOK）')
     .setChannelTypes(ChannelType.GuildText)
     .setMinValues(0)
     .setMaxValues(1);
-  if (c.logChannelId) logChannelMenu.setDefaultChannels([c.logChannelId]);
+  if (c.logChannelId) channelMenuBuilder.setDefaultChannels([c.logChannelId]);
 
   const toggleButton = new ButtonBuilder()
     .setCustomId('toggle_role_add_active')
-    .setLabel(c.enabled ? '⏹️ 機能を停止' : '▶️ 機能を開始')
+    .setLabel(c.enabled ? '⏹️ 自動付与を停止する' : '▶️ 自動付与を開始する')
     .setStyle(c.enabled ? ButtonStyle.Danger : ButtonStyle.Success);
 
   return [
-    new ActionRowBuilder().addComponents(checkRoleMenu),
-    new ActionRowBuilder().addComponents(addRoleMenu),
-    new ActionRowBuilder().addComponents(logChannelMenu),
+    new ActionRowBuilder().addComponents(excludeMenuBuilder),
+    new ActionRowBuilder().addComponents(targetMenuBuilder),
+    new ActionRowBuilder().addComponents(channelMenuBuilder),
     new ActionRowBuilder().addComponents(toggleButton)
   ];
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('role-add-panel')
-    .setDescription('ロール非所持者への自動ロール付与パネルを開きます')
+    .setName('roleaddpanel')
+    .setDescription('条件ロール自動付与の設定パネルを開きます')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   buildRoleAddPanelEmbed,
