@@ -14,7 +14,7 @@
     "logChannelId": "1536062285330645112",
     "restartNotify": true,
     "countConfig": {
-      "enabled": false,
+      "enabled": true,
       "channelId": "1420393215089180845",
       "currentNum": 44,
       "deleteWrong": true,
