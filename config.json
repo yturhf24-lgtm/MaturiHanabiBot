@@ -12,6 +12,13 @@
       "1406366861381210113"
     ],
     "logChannelId": "1536062285330645112",
-    "restartNotify": true
+    "restartNotify": true,
+    "countConfig": {
+      "enabled": false,
+      "channelId": "1420393215089180845",
+      "currentNum": 0,
+      "deleteWrong": true,
+      "warnEmbed": true
+    }
   }
 }
