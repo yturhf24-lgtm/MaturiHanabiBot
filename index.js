@@ -159,15 +159,18 @@ client.commands = new Collection();
 const panelModule = require('./commands/panel.js');
 const countPanelModule = require('./commands/countPanel.js');
 const roleAddPanelModule = require('./commands/roleAddPanel.js');
+const statusModule = require('./commands/status.js');
 
 client.commands.set(panelModule.data.name, panelModule);
 client.commands.set(countPanelModule.data.name, countPanelModule);
 client.commands.set(roleAddPanelModule.data.name, roleAddPanelModule);
+client.commands.set(statusModule.data.name, statusModule);
 
 const commandsArray = [
   panelModule.data.toJSON(),
   countPanelModule.data.toJSON(),
-  roleAddPanelModule.data.toJSON()
+  roleAddPanelModule.data.toJSON(),
+  statusModule.data.toJSON()
 ];
 
 const processingMembers = new Set();
