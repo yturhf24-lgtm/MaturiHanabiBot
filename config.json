@@ -39,5 +39,28 @@
         "1406366861381210113"
       ]
     }
+  },
+  "1543524546341240892": {
+    "enabled": false,
+    "restartNotify": false,
+    "restartNotifyChannelId": null,
+    "conditionRoleId": null,
+    "hasRoleIds": [],
+    "removeRoleIds": [],
+    "addRoleIds": [],
+    "logChannelId": null,
+    "countConfig": {
+      "enabled": false,
+      "channelId": null,
+      "currentNum": 0,
+      "deleteWrong": false,
+      "warnEmbed": true
+    },
+    "addRoleConfig": {
+      "enabled": false,
+      "excludeRoleIds": [],
+      "targetRoleIds": [],
+      "logChannelId": null
+    }
   }
 }
