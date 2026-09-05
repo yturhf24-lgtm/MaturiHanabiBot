@@ -1,6 +1,6 @@
 {
   "1406344310072414218": {
-    "enabled": false,
+    "enabled": true,
     "conditionRoleId": "1406366861381210113",
     "removeRoleIds": [
       "1406350341976625204",
