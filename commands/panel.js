@@ -38,7 +38,7 @@ function saveGlobalConfig(config) {
 // グローバル設定オブジェクト
 const globalConfig = loadGlobalConfig();
 
-// 各パネルモジュールの読み込み (commands/ 配下のファイルを参照)
+// commands/ 内のモジュールを読み込み
 const panelModule = require('./commands/panel.js');
 const countPanelModule = require('./commands/countPanel.js');
 const roleAddPanelModule = require('./commands/roleAddPanel.js');
