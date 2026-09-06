@@ -38,7 +38,7 @@ function saveGlobalConfig(config) {
 // グローバル設定オブジェクト
 const globalConfig = loadGlobalConfig();
 
-// 【★ここを修正★】 commands/ 内のパネルモジュールを読み込み
+// commands/ 内のパネルモジュールを読み込み
 const panelModule = require('./commands/panel.js');
 const countPanelModule = require('./commands/countPanel.js');
 const roleAddPanelModule = require('./commands/roleAddPanel.js');
@@ -241,7 +241,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.customId === 'toggle_count_delete') {
       const currentConfig = globalConfig[guildId]?.countConfig || {};
       const updatedConfig = updateCountConfig(guildId, 'deleteWrong', !(currentConfig.deleteWrong !== false));
-      return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig)], components: countPanelPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig) });
+      return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig) });
     }
     if (interaction.customId === 'toggle_count_warn') {
       const currentConfig = globalConfig[guildId]?.countConfig || {};
@@ -289,9 +289,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const hadCondition = oldMember.roles.cache.has(cfg.conditionRoleId);
     const hasCondition = newMember.roles.cache.has(cfg.conditionRoleId);
 
-    // 条件ロールが付与された瞬間
     if (!hadCondition && hasCondition) {
-      // 指定された所有ロールをすべて持っているか判定（空の場合は全対象）
       const hasAllRequired = !cfg.hasRoleIds || cfg.hasRoleIds.length === 0 || 
         cfg.hasRoleIds.every(roleId => newMember.roles.cache.has(roleId));
 
@@ -299,7 +297,6 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
         const removedRoleNames = [];
         const addedRoleNames = [];
 
-        // 剥奪ロール処理
         if (cfg.removeRoleIds && cfg.removeRoleIds.length > 0) {
           for (const roleId of cfg.removeRoleIds) {
             if (newMember.roles.cache.has(roleId)) {
@@ -312,7 +309,6 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
           }
         }
 
-        // 付与ロール処理
         if (cfg.addRoleIds && cfg.addRoleIds.length > 0) {
           for (const roleId of cfg.addRoleIds) {
             if (!newMember.roles.cache.has(roleId)) {
@@ -325,7 +321,6 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
           }
         }
 
-        // ログ出力
         if (cfg.logChannelId && (removedRoleNames.length > 0 || addedRoleNames.length > 0)) {
           const logChannel = newMember.guild.channels.cache.get(cfg.logChannelId);
           if (logChannel && logChannel.isTextBased()) {
@@ -351,9 +346,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const oldRoleIds = new Set(oldMember.roles.cache.keys());
     const newRoleIds = new Set(newMember.roles.cache.keys());
 
-    // ロールが何か新しく追加されたか判定
     if (newRoleIds.size > oldRoleIds.size) {
-      // 除外ロールを持っているかチェック
       const hasExcludeRole = addCfg.excludeRoleIds && addCfg.excludeRoleIds.some(id => newMember.roles.cache.has(id));
 
       if (!hasExcludeRole) {
@@ -400,13 +393,11 @@ client.on(Events.MessageCreate, async (message) => {
   const inputNum = parseInt(message.content.trim(), 10);
   const expectedNum = (countCfg.currentNum ?? 0) + 1;
 
-  // 入力が数字かつ正解の場合
   if (!isNaN(inputNum) && inputNum === expectedNum && /^\d+$/.test(message.content.trim())) {
     countCfg.currentNum = expectedNum;
     saveGlobalConfig(globalConfig);
     await message.react('✅').catch(() => {});
   } else {
-    // 不正解・誤爆メッセージの場合
     if (countCfg.deleteWrong !== false) {
       await message.delete().catch(() => {});
     }
