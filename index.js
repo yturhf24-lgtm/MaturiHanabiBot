@@ -59,7 +59,7 @@ async function syncConfigFromGithub() {
   }
 }
 
-// GitHub への設定非同期保存（画面描画・レスポンスをブロックしないようバックグラウンド実行）
+// GitHub への設定非同期保存
 async function saveConfigToGithub() {
   if (!GITHUB_TOKEN) return;
 
@@ -132,21 +132,21 @@ function initGuildConfig(guildId) {
 function updateGuildConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId][key] = value;
-  saveConfigToGithub(); // バックグラウンド非同期保存
+  saveConfigToGithub();
   return globalConfig;
 }
 
 function updateCountConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId].countConfig[key] = value;
-  saveConfigToGithub(); // バックグラウンド非同期保存
+  saveConfigToGithub();
   return globalConfig;
 }
 
 function updateAddRoleConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId].addRoleConfig[key] = value;
-  saveConfigToGithub(); // バックグラウンド非同期保存
+  saveConfigToGithub();
   return globalConfig;
 }
 
@@ -182,7 +182,7 @@ const commandsArray = [
 
 const processingMembers = new Set();
 
-// --- 自動ロール付与・削除のロジック ---
+// --- 自動ロール処理 ---
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, hasRoleIds = [], removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
@@ -299,6 +299,39 @@ async function scanAllGuilds() {
   }
 }
 
+// --- 5分毎のカウンター整合性チェック ---
+async function checkCountChannelsPeriodically() {
+  for (const guild of client.guilds.cache.values()) {
+    const countConfig = globalConfig[guild.id]?.countConfig;
+    if (!countConfig || !countConfig.enabled || !countConfig.channelId) continue;
+
+    const channel = guild.channels.cache.get(countConfig.channelId);
+    if (!channel) continue;
+
+    try {
+      // 記録されている直前メッセージの存在確認
+      if (countConfig.lastMessageId) {
+        const lastMsg = await channel.messages.fetch(countConfig.lastMessageId).catch(() => null);
+
+        // メッセージが削除されている、または編集されて数字が変わっている場合
+        if (!lastMsg) {
+          updateCountConfig(guild.id, 'lastMessageId', null);
+        } else {
+          const inputTrimmed = lastMsg.content ? lastMsg.content.trim() : '';
+          const inputNum = parseInt(inputTrimmed, 10);
+
+          if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
+            await lastMsg.delete().catch(() => {});
+            updateCountConfig(guild.id, 'lastMessageId', null);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`カウンター定期チェックエラー (${guild.id}):`, err);
+    }
+  }
+}
+
 // --- イベント: ClientReady ---
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
@@ -337,8 +370,10 @@ client.once(Events.ClientReady, async (c) => {
     } catch (e) {}
   }
 
+  // 5分毎のロール＆カウンター定期実行
   await scanAllGuilds();
   setInterval(scanAllGuilds, 5 * 60 * 1000);
+  setInterval(checkCountChannelsPeriodically, 5 * 60 * 1000);
 });
 
 // --- イベント: リアルタイム ロール更新検知 ---
@@ -392,7 +427,7 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// --- 数字カウンター: メッセージ編集監視（巻き戻し対応） ---
+// --- 数字カウンター: メッセージ編集監視 ---
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (newMessage.author?.bot || !newMessage.guild) return;
 
@@ -405,24 +440,19 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     const inputTrimmed = newMessage.content ? newMessage.content.trim() : '';
     const inputNum = parseInt(inputTrimmed, 10);
 
-    // 送信時の数字と異なる内容に変更された場合
+    // 送信時の正しい数字と異なる内容に変更された場合
     if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
-      // 編集されたメッセージを削除
+      // 改ざんメッセージを削除
       await newMessage.delete().catch(() => {});
 
-      // カウントを 1 つ前の状態に巻き戻す
-      const rolledBackNum = countConfig.currentNum - 1;
-      updateCountConfig(guildId, 'currentNum', rolledBackNum);
-      updateCountConfig(guildId, 'lastMessageId', null); // 直前IDをリセット
-
-      const nextNum = rolledBackNum + 1;
+      const nextNum = countConfig.currentNum + 1;
 
       const warnEmbed = new EmbedBuilder()
         .setTitle('⚠️ カウントメッセージが編集されました')
         .setDescription(
-          `<@${newMessage.author.id}> さんがカウントメッセージを編集したため、カウントを巻き戻しました。\n\n` +
-          `現在のカウント: **\`${rolledBackNum}\`**\n` +
-          `次に送信する正しい数字: **\`${nextNum}\`**`
+          `<@${newMessage.author.id}> さんがカウントメッセージを編集したため削除しました。\n\n` +
+          `現在のカウント: **\`${countConfig.currentNum}\`**\n` +
+          `次に送信する数字: **\`${nextNum}\`**`
         )
         .setColor(0xff0000)
         .setTimestamp();
@@ -433,7 +463,7 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   }
 });
 
-// --- 数字カウンター: メッセージ削除監視（巻き戻し対応） ---
+// --- 数字カウンター: メッセージ削除監視 ---
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
 
@@ -443,19 +473,14 @@ client.on(Events.MessageDelete, async (message) => {
 
   // 最後に送信された正解メッセージが削除された場合
   if (countConfig.lastMessageId === message.id) {
-    // カウントを 1 つ前の状態に巻き戻す
-    const rolledBackNum = countConfig.currentNum - 1;
-    updateCountConfig(guildId, 'currentNum', rolledBackNum);
-    updateCountConfig(guildId, 'lastMessageId', null); // 直前IDをリセット
-
-    const nextNum = rolledBackNum + 1;
+    const nextNum = countConfig.currentNum + 1;
 
     const warnEmbed = new EmbedBuilder()
       .setTitle('🗑️ カウントメッセージが削除されました')
       .setDescription(
-        `直前のカウントメッセージ（**\`${countConfig.currentNum}\`**）が削除されたため、カウントを 1 つ巻き戻しました。\n\n` +
-        `現在のカウント: **\`${rolledBackNum}\`**\n` +
-        `次に送信する正しい数字: **\`${nextNum}\`**`
+        `直前のカウントメッセージ（**\`${countConfig.currentNum}\`**）が削除されましたが、カウントは維持されます。\n\n` +
+        `現在のカウント: **\`${countConfig.currentNum}\`**\n` +
+        `次に送信する数字: **\`${nextNum}\`**`
       )
       .setColor(0xffa500)
       .setTimestamp();
@@ -465,9 +490,8 @@ client.on(Events.MessageDelete, async (message) => {
   }
 });
 
-// --- インタラクション制御（コマンド・ボタン・セレクトメニュー・モーダル） ---
+// --- インタラクション制御 ---
 client.on(Events.InteractionCreate, async (interaction) => {
-  // 他サーバーでのBot不在チェック
   if (interaction.guild && !client.guilds.cache.has(interaction.guild.id)) {
     return interaction.reply({
       content: '❌ このBotがサーバー内に存在しないか権限が無いため、操作を行えません。',
@@ -475,7 +499,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }).catch(() => {});
   }
 
-  // 1. スラッシュコマンド処理
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) {
@@ -488,7 +511,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // 2. モーダル起動ボタン（数字変更）
   if (interaction.isButton() && interaction.customId === 'open_set_number_modal') {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
@@ -512,7 +534,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.showModal(modal);
   }
 
-  // 3. モーダル送信時の処理（数字変更適用）
   if (interaction.isModalSubmit() && interaction.customId === 'set_number_modal') {
     await interaction.deferUpdate();
 
@@ -532,7 +553,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  // 4. その他のボタン・セレクトメニュー操作
   if (interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
@@ -543,7 +563,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const guildId = interaction.guildId;
     initGuildConfig(guildId);
 
-    // --- ロール自動制御パネル ---
+    // ロール自動制御パネル
     if (interaction.customId === 'select_condition_role') {
       updateGuildConfig(guildId, 'conditionRoleId', interaction.values[0]);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
@@ -578,7 +598,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
 
-    // --- カウンターパネル ---
+    // カウンターパネル
     if (interaction.customId === 'select_count_channel') {
       updateCountConfig(guildId, 'channelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
@@ -602,7 +622,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
 
-    // --- 条件ロール自動付与パネル ---
+    // 条件ロール自動付与パネル
     if (interaction.customId === 'select_add_exclude_roles') {
       updateAddRoleConfig(guildId, 'excludeRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
