@@ -38,7 +38,7 @@ function saveGlobalConfig(config) {
 // グローバル設定オブジェクト
 const globalConfig = loadGlobalConfig();
 
-// commands/ 内のモジュールを読み込み
+// 【★ここを修正★】 commands/ 内のパネルモジュールを読み込み
 const panelModule = require('./commands/panel.js');
 const countPanelModule = require('./commands/countPanel.js');
 const roleAddPanelModule = require('./commands/roleAddPanel.js');
@@ -241,7 +241,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.customId === 'toggle_count_delete') {
       const currentConfig = globalConfig[guildId]?.countConfig || {};
       const updatedConfig = updateCountConfig(guildId, 'deleteWrong', !(currentConfig.deleteWrong !== false));
-      return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig) });
+      return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, updatedConfig)], components: countPanelPanelModule.buildCountPanelComponents(interaction.guild, updatedConfig) });
     }
     if (interaction.customId === 'toggle_count_warn') {
       const currentConfig = globalConfig[guildId]?.countConfig || {};
