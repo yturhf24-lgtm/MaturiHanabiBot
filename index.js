@@ -392,43 +392,72 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// --- 数字カウンター: メッセージ編集監視 ---
+// --- 数字カウンター: メッセージ編集監視（巻き戻し対応） ---
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (newMessage.author?.bot || !newMessage.guild) return;
 
-  const countConfig = globalConfig[newMessage.guild.id]?.countConfig;
+  const guildId = newMessage.guild.id;
+  const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== newMessage.channel.id) return;
 
+  // 最後に送信された正解メッセージが編集された場合
   if (countConfig.lastMessageId === newMessage.id) {
     const inputTrimmed = newMessage.content ? newMessage.content.trim() : '';
     const inputNum = parseInt(inputTrimmed, 10);
 
+    // 送信時の数字と異なる内容に変更された場合
     if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
+      // 編集されたメッセージを削除
       await newMessage.delete().catch(() => {});
+
+      // カウントを 1 つ前の状態に巻き戻す
+      const rolledBackNum = countConfig.currentNum - 1;
+      updateCountConfig(guildId, 'currentNum', rolledBackNum);
+      updateCountConfig(guildId, 'lastMessageId', null); // 直前IDをリセット
+
+      const nextNum = rolledBackNum + 1;
+
       const warnEmbed = new EmbedBuilder()
-        .setTitle('⚠️ カウントメッセージが編集されました！')
-        .setDescription(`<@${newMessage.author.id}> さん、カウント用のメッセージ変更は許可されていません。現在のカウントは **\`${countConfig.currentNum}\`** です。`)
+        .setTitle('⚠️ カウントメッセージが編集されました')
+        .setDescription(
+          `<@${newMessage.author.id}> さんがカウントメッセージを編集したため、カウントを巻き戻しました。\n\n` +
+          `現在のカウント: **\`${rolledBackNum}\`**\n` +
+          `次に送信する正しい数字: **\`${nextNum}\`**`
+        )
         .setColor(0xff0000)
         .setTimestamp();
 
       const warnMsg = await newMessage.channel.send({ embeds: [warnEmbed] }).catch(() => {});
-      if (warnMsg) setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+      if (warnMsg) setTimeout(() => warnMsg.delete().catch(() => {}), 7000);
     }
   }
 });
 
-// --- 数字カウンター: メッセージ削除監視 ---
+// --- 数字カウンター: メッセージ削除監視（巻き戻し対応） ---
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
 
-  const countConfig = globalConfig[message.guild.id]?.countConfig;
+  const guildId = message.guild.id;
+  const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== message.channel.id) return;
 
+  // 最後に送信された正解メッセージが削除された場合
   if (countConfig.lastMessageId === message.id) {
+    // カウントを 1 つ前の状態に巻き戻す
+    const rolledBackNum = countConfig.currentNum - 1;
+    updateCountConfig(guildId, 'currentNum', rolledBackNum);
+    updateCountConfig(guildId, 'lastMessageId', null); // 直前IDをリセット
+
+    const nextNum = rolledBackNum + 1;
+
     const warnEmbed = new EmbedBuilder()
-      .setTitle('ℹ️ カウントメッセージが削除されました')
-      .setDescription(`直前のカウントメッセージ（数値: **\`${countConfig.currentNum}\`**）が削除されましたが、カウントは **\`${countConfig.currentNum}\`** のまま維持されます。次の数字は **\`${countConfig.currentNum + 1}\`** です。`)
-      .setColor(0x00bfff)
+      .setTitle('🗑️ カウントメッセージが削除されました')
+      .setDescription(
+        `直前のカウントメッセージ（**\`${countConfig.currentNum}\`**）が削除されたため、カウントを 1 つ巻き戻しました。\n\n` +
+        `現在のカウント: **\`${rolledBackNum}\`**\n` +
+        `次に送信する正しい数字: **\`${nextNum}\`**`
+      )
+      .setColor(0xffa500)
       .setTimestamp();
 
     const warnMsg = await message.channel.send({ embeds: [warnEmbed] }).catch(() => {});
