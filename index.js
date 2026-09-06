@@ -299,37 +299,6 @@ async function scanAllGuilds() {
   }
 }
 
-// --- 5分毎のカウンター整合性チェック ---
-async function checkCountChannelsPeriodically() {
-  for (const guild of client.guilds.cache.values()) {
-    const countConfig = globalConfig[guild.id]?.countConfig;
-    if (!countConfig || !countConfig.enabled || !countConfig.channelId) continue;
-
-    const channel = guild.channels.cache.get(countConfig.channelId);
-    if (!channel) continue;
-
-    try {
-      if (countConfig.lastMessageId) {
-        const lastMsg = await channel.messages.fetch(countConfig.lastMessageId).catch(() => null);
-
-        if (!lastMsg) {
-          updateCountConfig(guild.id, 'lastMessageId', null);
-        } else {
-          const inputTrimmed = lastMsg.content ? lastMsg.content.trim() : '';
-          const inputNum = parseInt(inputTrimmed, 10);
-
-          if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
-            await lastMsg.delete().catch(() => {});
-            updateCountConfig(guild.id, 'lastMessageId', null);
-          }
-        }
-      }
-    } catch (err) {
-      console.error(`カウンター定期チェックエラー (${guild.id}):`, err);
-    }
-  }
-}
-
 // --- イベント: ClientReady ---
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
@@ -368,9 +337,9 @@ client.once(Events.ClientReady, async (c) => {
     } catch (e) {}
   }
 
+  // ロール定期スキャン
   await scanAllGuilds();
   setInterval(scanAllGuilds, 5 * 60 * 1000);
-  setInterval(checkCountChannelsPeriodically, 5 * 60 * 1000);
 });
 
 // --- イベント: リアルタイム ロール更新検知 ---
@@ -394,7 +363,7 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   }
 });
 
-// --- 数字カウンター: メッセージ送信時 ---
+// --- 数字カウンター: メッセージ送信時（即座に判定） ---
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -424,7 +393,7 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// --- 数字カウンター: メッセージ編集監視 ---
+// --- 数字カウンター: メッセージ編集監視（即座に検知・判定） ---
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (newMessage.author?.bot || !newMessage.guild) return;
 
@@ -432,20 +401,28 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== newMessage.channel.id) return;
 
+  // 直前成功メッセージが改ざんされた瞬間
   if (countConfig.lastMessageId === newMessage.id) {
     const inputTrimmed = newMessage.content ? newMessage.content.trim() : '';
     const inputNum = parseInt(inputTrimmed, 10);
 
+    // 正解の数字から改ざんされた場合
     if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
       await newMessage.delete().catch(() => {});
 
-      const targetNum = countConfig.currentNum; // 前回プレイヤーが成功させた数字
+      // 瞬時に1つ前の数字へ巻き戻し
+      const prevNum = Math.max(0, countConfig.currentNum - 1);
+      updateCountConfig(guildId, 'currentNum', prevNum);
+      updateCountConfig(guildId, 'lastMessageId', null);
+
+      const nextNum = prevNum + 1;
 
       const warnEmbed = new EmbedBuilder()
         .setTitle('⚠️ カウントメッセージが編集されました')
         .setDescription(
-          `<@${newMessage.author.id}> さんがカウントメッセージを編集したため削除しました。\n\n` +
-          `前回の成功数字: **\`${targetNum}\`**`
+          `<@${newMessage.author.id}> さんがカウントメッセージを編集したため即座に無効化しました。\n\n` +
+          `以前のプレイヤーが成功させた数字: **\`${prevNum}\`**\n` +
+          `次に送信する正しい数字: **\`${nextNum}\`**`
         )
         .setColor(0xff0000)
         .setTimestamp();
@@ -456,7 +433,7 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   }
 });
 
-// --- 数字カウンター: メッセージ削除監視 ---
+// --- 数字カウンター: メッセージ削除監視（即座に検知・判定） ---
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
 
@@ -464,14 +441,21 @@ client.on(Events.MessageDelete, async (message) => {
   const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== message.channel.id) return;
 
+  // 直前成功メッセージが削除された瞬間
   if (countConfig.lastMessageId === message.id) {
-    const targetNum = countConfig.currentNum; // 前回プレイヤーが成功させた数字
+    // 瞬時に1つ前の数字へ巻き戻し
+    const prevNum = Math.max(0, countConfig.currentNum - 1);
+    updateCountConfig(guildId, 'currentNum', prevNum);
+    updateCountConfig(guildId, 'lastMessageId', null);
+
+    const nextNum = prevNum + 1;
 
     const warnEmbed = new EmbedBuilder()
       .setTitle('🗑️ カウントメッセージが削除されました')
       .setDescription(
-        `直前のカウントメッセージが削除されました。\n\n` +
-        `前回の成功数字: **\`${targetNum}\`**`
+        `直前のカウントメッセージが削除されたため、即座にカウントを巻き戻しました。\n\n` +
+        `以前のプレイヤーが成功させた数字: **\`${prevNum}\`**\n` +
+        `次に送信する正しい数字: **\`${nextNum}\`**`
       )
       .setColor(0xffa500)
       .setTimestamp();
