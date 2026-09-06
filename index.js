@@ -309,11 +309,9 @@ async function checkCountChannelsPeriodically() {
     if (!channel) continue;
 
     try {
-      // 記録されている直前メッセージの存在確認
       if (countConfig.lastMessageId) {
         const lastMsg = await channel.messages.fetch(countConfig.lastMessageId).catch(() => null);
 
-        // メッセージが削除されている、または編集されて数字が変わっている場合
         if (!lastMsg) {
           updateCountConfig(guild.id, 'lastMessageId', null);
         } else {
@@ -370,7 +368,6 @@ client.once(Events.ClientReady, async (c) => {
     } catch (e) {}
   }
 
-  // 5分毎のロール＆カウンター定期実行
   await scanAllGuilds();
   setInterval(scanAllGuilds, 5 * 60 * 1000);
   setInterval(checkCountChannelsPeriodically, 5 * 60 * 1000);
@@ -435,24 +432,20 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== newMessage.channel.id) return;
 
-  // 最後に送信された正解メッセージが編集された場合
   if (countConfig.lastMessageId === newMessage.id) {
     const inputTrimmed = newMessage.content ? newMessage.content.trim() : '';
     const inputNum = parseInt(inputTrimmed, 10);
 
-    // 送信時の正しい数字と異なる内容に変更された場合
     if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
-      // 改ざんメッセージを削除
       await newMessage.delete().catch(() => {});
 
-      const nextNum = countConfig.currentNum + 1;
+      const targetNum = countConfig.currentNum; // 前回プレイヤーが成功させた数字
 
       const warnEmbed = new EmbedBuilder()
         .setTitle('⚠️ カウントメッセージが編集されました')
         .setDescription(
           `<@${newMessage.author.id}> さんがカウントメッセージを編集したため削除しました。\n\n` +
-          `現在のカウント: **\`${countConfig.currentNum}\`**\n` +
-          `次に送信する数字: **\`${nextNum}\`**`
+          `前回の成功数字: **\`${targetNum}\`**`
         )
         .setColor(0xff0000)
         .setTimestamp();
@@ -471,16 +464,14 @@ client.on(Events.MessageDelete, async (message) => {
   const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== message.channel.id) return;
 
-  // 最後に送信された正解メッセージが削除された場合
   if (countConfig.lastMessageId === message.id) {
-    const nextNum = countConfig.currentNum + 1;
+    const targetNum = countConfig.currentNum; // 前回プレイヤーが成功させた数字
 
     const warnEmbed = new EmbedBuilder()
       .setTitle('🗑️ カウントメッセージが削除されました')
       .setDescription(
-        `直前のカウントメッセージ（**\`${countConfig.currentNum}\`**）が削除されましたが、カウントは維持されます。\n\n` +
-        `現在のカウント: **\`${countConfig.currentNum}\`**\n` +
-        `次に送信する数字: **\`${nextNum}\`**`
+        `直前のカウントメッセージが削除されました。\n\n` +
+        `前回の成功数字: **\`${targetNum}\`**`
       )
       .setColor(0xffa500)
       .setTimestamp();
