@@ -58,7 +58,6 @@ function buildCountPanelComponents(guild, config) {
     .setLabel('🔢 現在の数字を変更')
     .setStyle(ButtonStyle.Secondary);
 
-  // 誤送信メッセージ削除 ON/OFF ボタン
   const deleteButton = new ButtonBuilder()
     .setCustomId('toggle_count_delete')
     .setLabel((c.deleteWrong === false) ? '🗑️ 誤投稿削除: OFF' : '🗑️ 誤投稿削除: ON')
