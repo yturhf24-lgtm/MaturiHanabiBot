@@ -21,7 +21,7 @@
       "warnEmbed": true
     },
     "addRoleConfig": {
-      "enabled": true,
+      "enabled": false,
       "checkRoleIds": [
         "1406366861381210113"
       ],
