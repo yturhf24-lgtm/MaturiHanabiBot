@@ -17,7 +17,7 @@
       "enabled": true,
       "channelId": "1420393215089180845",
       "currentNum": 47,
-      "deleteWrong": true,
+      "deleteWrong": false,
       "warnEmbed": true
     },
     "addRoleConfig": {
