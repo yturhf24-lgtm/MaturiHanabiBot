@@ -70,7 +70,10 @@
     "restartNotifyChannelId": null,
     "conditionRoleId": "1524658796075683922",
     "hasRoleIds": [],
-    "removeRoleIds": [],
+    "removeRoleIds": [
+      "1524730255213072435",
+      "1524658473978036334"
+    ],
     "addRoleIds": [],
     "logChannelId": null,
     "countConfig": {
