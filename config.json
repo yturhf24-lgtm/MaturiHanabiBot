@@ -74,7 +74,9 @@
       "1524730255213072435",
       "1524658473978036334"
     ],
-    "addRoleIds": [],
+    "addRoleIds": [
+      "1524658796075683922"
+    ],
     "logChannelId": null,
     "countConfig": {
       "enabled": false,
