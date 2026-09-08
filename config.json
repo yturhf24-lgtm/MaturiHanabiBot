@@ -87,7 +87,7 @@
       "lastMessageId": null
     },
     "addRoleConfig": {
-      "enabled": false,
+      "enabled": true,
       "excludeRoleIds": [
         "1524730255213072435",
         "1524658473978036334"
