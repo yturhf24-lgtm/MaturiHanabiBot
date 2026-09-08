@@ -65,7 +65,7 @@
     }
   },
   "1524426850305315037": {
-    "enabled": false,
+    "enabled": true,
     "restartNotify": true,
     "restartNotifyChannelId": null,
     "conditionRoleId": "1524658796075683922",
