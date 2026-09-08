@@ -88,7 +88,10 @@
     },
     "addRoleConfig": {
       "enabled": false,
-      "excludeRoleIds": [],
+      "excludeRoleIds": [
+        "1524730255213072435",
+        "1524658473978036334"
+      ],
       "targetRoleIds": [],
       "logChannelId": null
     }
