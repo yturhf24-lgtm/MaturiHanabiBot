@@ -104,6 +104,7 @@ function initGuildConfig(guildId) {
   if (!globalConfig[guildId]) {
     globalConfig[guildId] = {
       enabled: false,
+      executionInterval: 'instant', // 'instant' または '5min'
       restartNotify: false,
       restartNotifyChannelId: null,
       conditionRoleId: null,
@@ -121,11 +122,27 @@ function initGuildConfig(guildId) {
       },
       addRoleConfig: {
         enabled: false,
+        executionInterval: 'instant', // 'instant' または '5min'
         excludeRoleIds: [],
         targetRoleIds: [],
         logChannelId: null
       }
     };
+  }
+  // 既存データの後方互換プロパティ補完
+  if (!globalConfig[guildId].executionInterval) {
+    globalConfig[guildId].executionInterval = 'instant';
+  }
+  if (!globalConfig[guildId].addRoleConfig) {
+    globalConfig[guildId].addRoleConfig = {
+      enabled: false,
+      executionInterval: 'instant',
+      excludeRoleIds: [],
+      targetRoleIds: [],
+      logChannelId: null
+    };
+  } else if (!globalConfig[guildId].addRoleConfig.executionInterval) {
+    globalConfig[guildId].addRoleConfig.executionInterval = 'instant';
   }
 }
 
@@ -182,7 +199,7 @@ const commandsArray = [
 
 const processingMembers = new Set();
 
-// --- ロール制御処理（5分ごとの定期判定用） ---
+// --- 自動ロール処理 ---
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, hasRoleIds = [], removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
@@ -271,26 +288,22 @@ async function processAddRolesOnly(member, addRoleConfig) {
   }
 }
 
-// 5分ごと一括処理（メンバーキャッシュ最新化とスキャン）
-async function scanSingleGuild(guild) {
+// isPeriodicScan パラメータで定期スキャン時かどうかの判定を行う
+async function scanSingleGuild(guild, isPeriodicScan = false) {
   const guildConfig = globalConfig[guild.id];
   if (!guildConfig) return 0;
 
   let updatedCount = 0;
-  
-  try {
-    // 判定前にサーバーメンバーを最新化
-    await guild.members.fetch();
-  } catch (e) {}
-
   const members = guild.members.cache;
 
   for (const member of members.values()) {
     if (!member.user.bot) {
-      if (guildConfig.enabled) {
+      // 自動ロール制御: 「定期スキャン時かつ5分間隔指定」または「初期化スキャン時」に処理
+      if (guildConfig.enabled && (!isPeriodicScan || guildConfig.executionInterval === '5min')) {
         if (await processMemberRoles(member, guildConfig)) updatedCount++;
       }
-      if (guildConfig.addRoleConfig?.enabled) {
+      // 条件ロール付与: 「定期スキャン時かつ5分間隔指定」または「初期化スキャン時」に処理
+      if (guildConfig.addRoleConfig?.enabled && (!isPeriodicScan || guildConfig.addRoleConfig.executionInterval === '5min')) {
         if (await processAddRolesOnly(member, guildConfig.addRoleConfig)) updatedCount++;
       }
       await sleep(100);
@@ -300,12 +313,10 @@ async function scanSingleGuild(guild) {
   return updatedCount;
 }
 
-async function scanAllGuilds() {
-  console.log('🔄 [ロール判定] 5分ごとの定期スキャンを開始します...');
+async function scanAllGuilds(isPeriodicScan = false) {
   for (const guild of client.guilds.cache.values()) {
-    await scanSingleGuild(guild);
+    await scanSingleGuild(guild, isPeriodicScan);
   }
-  console.log('✅ [ロール判定] 5分ごとの定期スキャンが完了しました。');
 }
 
 // --- イベント: ClientReady ---
@@ -339,9 +350,40 @@ client.once(Events.ClientReady, async (c) => {
     }
   }
 
-  // 初回ロール判定実行と、以降5分ごとの定期判定タイマー設置
-  await scanAllGuilds();
-  setInterval(scanAllGuilds, 5 * 60 * 1000);
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await guild.members.fetch();
+      await sleep(1000);
+    } catch (e) {}
+  }
+
+  // 初期スキャン（すべての設定に関わらず全体のチェックを実施）
+  await scanAllGuilds(false);
+  // 定期スキャン（5分ごとに interval 設定が '5min' の場合のみ処理を行う）
+  setInterval(() => scanAllGuilds(true), 5 * 60 * 1000);
+});
+
+// --- イベント: リアルタイム ロール更新検知 ---
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  if (newMember.user.bot) return;
+
+  const guildConfig = globalConfig[newMember.guild.id];
+  if (!guildConfig) return;
+
+  const oldRoles = oldMember.roles.cache;
+  const newRoles = newMember.roles.cache;
+  if (oldRoles.size === newRoles.size && oldRoles.every(role => newRoles.has(role.id))) {
+    return;
+  }
+
+  // 自動ロール: モードが 'instant' (即時) の場合のみ実行
+  if (guildConfig.enabled && (guildConfig.executionInterval || 'instant') === 'instant') {
+    await processMemberRoles(newMember, guildConfig);
+  }
+  // 条件ロール: モードが 'instant' (即時) の場合のみ実行
+  if (guildConfig.addRoleConfig?.enabled && (guildConfig.addRoleConfig.executionInterval || 'instant') === 'instant') {
+    await processAddRolesOnly(newMember, guildConfig.addRoleConfig);
+  }
 });
 
 // --- 数字カウンター: メッセージ送信時（即座に判定） ---
@@ -382,16 +424,13 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== newMessage.channel.id) return;
 
-  // 直前成功メッセージが改ざんされた瞬間
   if (countConfig.lastMessageId === newMessage.id) {
     const inputTrimmed = newMessage.content ? newMessage.content.trim() : '';
     const inputNum = parseInt(inputTrimmed, 10);
 
-    // 正解の数字から改ざんされた場合
     if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
       await newMessage.delete().catch(() => {});
 
-      // 瞬時に1つ前の数字へ巻き戻し
       const prevNum = Math.max(0, countConfig.currentNum - 1);
       updateCountConfig(guildId, 'currentNum', prevNum);
       updateCountConfig(guildId, 'lastMessageId', null);
@@ -422,9 +461,7 @@ client.on(Events.MessageDelete, async (message) => {
   const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== message.channel.id) return;
 
-  // 直前成功メッセージが削除された瞬間
   if (countConfig.lastMessageId === message.id) {
-    // 瞬時に1つ前の数字へ巻き戻し
     const prevNum = Math.max(0, countConfig.currentNum - 1);
     updateCountConfig(guildId, 'currentNum', prevNum);
     updateCountConfig(guildId, 'lastMessageId', null);
@@ -545,6 +582,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       updateGuildConfig(guildId, 'restartNotify', !currentNotifyState);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
+    // 【新機能】実行タイミング切替 (自動ロール制御)
+    if (interaction.customId === 'toggle_interval') {
+      const currentInterval = globalConfig[guildId]?.executionInterval || 'instant';
+      const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
+      updateGuildConfig(guildId, 'executionInterval', nextInterval);
+      return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
+    }
     if (interaction.customId === 'toggle_active_button') {
       const currentConfig = globalConfig[guildId] || {};
       if (!currentConfig.enabled && !currentConfig.conditionRoleId) {
@@ -589,6 +633,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     if (interaction.customId === 'select_add_role_log_channel') {
       updateAddRoleConfig(guildId, 'logChannelId', interaction.values[0] || null);
+      return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
+    }
+    // 【新機能】実行タイミング切替 (条件ロール自動付与)
+    if (interaction.customId === 'toggle_role_add_interval') {
+      const currentInterval = globalConfig[guildId]?.addRoleConfig?.executionInterval || 'instant';
+      const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
+      updateAddRoleConfig(guildId, 'executionInterval', nextInterval);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'toggle_role_add_active') {
