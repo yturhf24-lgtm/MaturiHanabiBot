@@ -25,6 +25,7 @@ module.exports = {
 
     // 1. ロール自動制御設定
     const roleControlStatus = cfg.enabled ? '🟢 動作中' : '🔴 停止中';
+    const roleInterval = cfg.executionInterval === '5min' ? '⏱️ 5分ごと' : '⚡ 即時検知';
     const conditionRole = cfg.conditionRoleId ? `<@&${cfg.conditionRoleId}>` : '未設定';
     const removeRoles = (cfg.removeRoleIds && cfg.removeRoleIds.length > 0) 
       ? cfg.removeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
@@ -36,6 +37,7 @@ module.exports = {
     // 2. 条件ロール自動付与設定
     const addRoleCfg = cfg.addRoleConfig || {};
     const addRoleStatus = addRoleCfg.enabled ? '🟢 動作中' : '🔴 停止中';
+    const addRoleInterval = addRoleCfg.executionInterval === '5min' ? '⏱️ 5分ごと' : '⚡ 即時検知';
     const excludeRoles = (addRoleCfg.excludeRoleIds && addRoleCfg.excludeRoleIds.length > 0) 
       ? addRoleCfg.excludeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし（全員対象）';
     const targetRoles = (addRoleCfg.targetRoleIds && addRoleCfg.targetRoleIds.length > 0) 
@@ -58,6 +60,7 @@ module.exports = {
           name: '🛡️ 1. ロール自動制御',
           value: 
             `> **ステータス:** ${roleControlStatus}\n` +
+            `> **実行タイミング:** ${roleInterval}\n` +
             `> **条件ロール:** ${conditionRole}\n` +
             `> **自動削除:** ${removeRoles}\n` +
             `> **自動付与:** ${addRoles}\n` +
@@ -69,6 +72,7 @@ module.exports = {
           name: '➕ 2. 条件ロール自動付与',
           value: 
             `> **ステータス:** ${addRoleStatus}\n` +
+            `> **実行タイミング:** ${addRoleInterval}\n` +
             `> **除外ロール:** ${excludeRoles}\n` +
             `> **付与ロール:** ${targetRoles}\n` +
             `> **ログ先:** ${addRoleLogChannel}`,
