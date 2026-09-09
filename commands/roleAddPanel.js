@@ -3,10 +3,11 @@ const { SlashCommandBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ChannelSel
 function buildRoleAddPanelEmbed(guild, config) {
   const c = config[guild.id]?.addRoleConfig || {};
 
+  const intervalLabel = c.executionInterval === '5min' ? '⏱️ 5分ごと' : '⚡ 即時検知';
   const excludeStr = (c.excludeRoleIds && c.excludeRoleIds.length > 0) ? c.excludeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし（全員対象）';
   const targetStr = (c.targetRoleIds && c.targetRoleIds.length > 0) ? c.targetRoleIds.map(id => `<@&${id}>`).join(', ') : '未設定（選択必須）';
   const logStr = c.logChannelId ? `<#${c.logChannelId}>` : '未設定（なしでもOK）';
-  const statusStr = c.enabled ? '🟢 動作中（5分ごとに自動チェック）' : '🔴 停止中';
+  const statusStr = c.enabled ? `🟢 動作中（${c.executionInterval === '5min' ? '5分ごとに自動チェック' : '即時検知'}）` : '🔴 停止中';
 
   return new EmbedBuilder()
     .setTitle('➕ 条件ロール自動付与パネル')
@@ -15,7 +16,8 @@ function buildRoleAddPanelEmbed(guild, config) {
     )
     .setColor(c.enabled ? 0x00ff00 : 0xff0000)
     .addFields(
-      { name: '⚡ 現在の動作ステータス', value: statusStr, inline: false },
+      { name: '⚡ 現在の動作ステータス', value: statusStr, inline: true },
+      { name: '⏱️ 実行タイミング', value: intervalLabel, inline: true },
       { name: '🚫 1. 除外ロール（このロール以外が自動付与の対象）', value: excludeStr, inline: false },
       { name: '➕ 2. 付与するロール（自動でつける役職）', value: targetStr, inline: false },
       { name: '📜 3. ログ送信先チャンネル', value: logStr, inline: false }
@@ -54,11 +56,16 @@ function buildRoleAddPanelComponents(guild, config) {
     .setLabel(c.enabled ? '⏹️ 自動付与を停止する' : '▶️ 自動付与を開始する')
     .setStyle(c.enabled ? ButtonStyle.Danger : ButtonStyle.Success);
 
+  const intervalButton = new ButtonBuilder()
+    .setCustomId('toggle_role_add_interval')
+    .setLabel(`⏱️ 間隔: ${c.executionInterval === '5min' ? '5分ごと' : '即時'}`)
+    .setStyle(c.executionInterval === '5min' ? ButtonStyle.Secondary : ButtonStyle.Primary);
+
   return [
     new ActionRowBuilder().addComponents(excludeMenuBuilder),
     new ActionRowBuilder().addComponents(targetMenuBuilder),
     new ActionRowBuilder().addComponents(channelMenuBuilder),
-    new ActionRowBuilder().addComponents(toggleButton)
+    new ActionRowBuilder().addComponents(toggleButton, intervalButton)
   ];
 }
 
