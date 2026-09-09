@@ -182,7 +182,7 @@ const commandsArray = [
 
 const processingMembers = new Set();
 
-// --- 自動ロール処理 ---
+// --- ロール制御処理（5分ごとの定期判定用） ---
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, hasRoleIds = [], removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
   if (!conditionRoleId) return false;
@@ -271,11 +271,18 @@ async function processAddRolesOnly(member, addRoleConfig) {
   }
 }
 
+// 5分ごと一括処理（メンバーキャッシュ最新化とスキャン）
 async function scanSingleGuild(guild) {
   const guildConfig = globalConfig[guild.id];
   if (!guildConfig) return 0;
 
   let updatedCount = 0;
+  
+  try {
+    // 判定前にサーバーメンバーを最新化
+    await guild.members.fetch();
+  } catch (e) {}
+
   const members = guild.members.cache;
 
   for (const member of members.values()) {
@@ -294,9 +301,11 @@ async function scanSingleGuild(guild) {
 }
 
 async function scanAllGuilds() {
+  console.log('🔄 [ロール判定] 5分ごとの定期スキャンを開始します...');
   for (const guild of client.guilds.cache.values()) {
     await scanSingleGuild(guild);
   }
+  console.log('✅ [ロール判定] 5分ごとの定期スキャンが完了しました。');
 }
 
 // --- イベント: ClientReady ---
@@ -330,37 +339,9 @@ client.once(Events.ClientReady, async (c) => {
     }
   }
 
-  for (const guild of client.guilds.cache.values()) {
-    try {
-      await guild.members.fetch();
-      await sleep(1000);
-    } catch (e) {}
-  }
-
-  // ロール定期スキャン
+  // 初回ロール判定実行と、以降5分ごとの定期判定タイマー設置
   await scanAllGuilds();
   setInterval(scanAllGuilds, 5 * 60 * 1000);
-});
-
-// --- イベント: リアルタイム ロール更新検知 ---
-client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-  if (newMember.user.bot) return;
-
-  const guildConfig = globalConfig[newMember.guild.id];
-  if (!guildConfig) return;
-
-  const oldRoles = oldMember.roles.cache;
-  const newRoles = newMember.roles.cache;
-  if (oldRoles.size === newRoles.size && oldRoles.every(role => newRoles.has(role.id))) {
-    return;
-  }
-
-  if (guildConfig.enabled) {
-    await processMemberRoles(newMember, guildConfig);
-  }
-  if (guildConfig.addRoleConfig?.enabled) {
-    await processAddRolesOnly(newMember, guildConfig.addRoleConfig);
-  }
 });
 
 // --- 数字カウンター: メッセージ送信時（即座に判定） ---
