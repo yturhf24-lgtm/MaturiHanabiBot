@@ -3,11 +3,12 @@ const { SlashCommandBuilder, ActionRowBuilder, RoleSelectMenuBuilder, ChannelSel
 function buildPanelEmbed(guild, config) {
   const c = config[guild.id] || {};
 
+  const intervalLabel = c.executionInterval === '5min' ? '⏱️ 5分ごと' : '⚡ 即時検知';
   const conditionStr = c.conditionRoleId ? `<@&${c.conditionRoleId}>` : '未設定（選択必須）';
   const removeStr = (c.removeRoleIds && c.removeRoleIds.length > 0) ? c.removeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
   const addStr = (c.addRoleIds && c.addRoleIds.length > 0) ? c.addRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
   const logStr = c.logChannelId ? `<#${c.logChannelId}>` : '未設定（なしでもOK）';
-  const statusStr = c.enabled ? '🟢 動作中（5分ごとに自動チェック）' : '🔴 停止中';
+  const statusStr = c.enabled ? `🟢 動作中（${c.executionInterval === '5min' ? '5分ごとに自動チェック' : '即時検知'}）` : '🔴 停止中';
   const restartNotifyStr = c.restartNotify ? '🔔 ON' : '🔕 OFF';
 
   return new EmbedBuilder()
@@ -19,8 +20,8 @@ function buildPanelEmbed(guild, config) {
     .setColor(c.enabled ? 0x00ff00 : 0xff0000)
     .addFields(
       { name: '⚡ 現在の動作ステータス', value: statusStr, inline: true },
+      { name: '⏱️ 実行タイミング', value: intervalLabel, inline: true },
       { name: '🔄 再起動通知', value: restartNotifyStr, inline: true },
-      { name: '\u200B', value: '\u200B', inline: true },
       { name: '🔍 1. チェックするロール（この役職を持っている人だけ処理）', value: conditionStr, inline: false },
       { name: '🗑️ 2. 自動で外すロール', value: removeStr, inline: true },
       { name: '➕ 3. 自動でつけるロール', value: addStr, inline: true },
@@ -67,6 +68,11 @@ function buildPanelComponents(guild, config) {
     .setLabel(c.enabled ? '⏹️ 監視を停止する' : '▶️ 監視を開始する')
     .setStyle(c.enabled ? ButtonStyle.Danger : ButtonStyle.Success);
 
+  const intervalButton = new ButtonBuilder()
+    .setCustomId('toggle_interval')
+    .setLabel(`⏱️ 間隔: ${c.executionInterval === '5min' ? '5分ごと' : '即時'}`)
+    .setStyle(c.executionInterval === '5min' ? ButtonStyle.Secondary : ButtonStyle.Primary);
+
   const restartNotifyButton = new ButtonBuilder()
     .setCustomId('toggle_restart_notify')
     .setLabel(c.restartNotify ? '🔔 再起動通知: ON' : '🔕 再起動通知: OFF')
@@ -77,7 +83,7 @@ function buildPanelComponents(guild, config) {
     new ActionRowBuilder().addComponents(removeMenuBuilder),
     new ActionRowBuilder().addComponents(addMenuBuilder),
     new ActionRowBuilder().addComponents(channelMenuBuilder),
-    new ActionRowBuilder().addComponents(toggleButton, restartNotifyButton)
+    new ActionRowBuilder().addComponents(toggleButton, intervalButton, restartNotifyButton)
   ];
 }
 
