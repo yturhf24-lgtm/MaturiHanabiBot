@@ -38,8 +38,10 @@
       ],
       "targetRoleIds": [
         "1406366861381210113"
-      ]
-    }
+      ],
+      "executionInterval": "5min"
+    },
+    "executionInterval": "instant"
   },
   "1543524546341240892": {
     "enabled": false,
