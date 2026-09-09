@@ -41,7 +41,7 @@
       ],
       "executionInterval": "5min"
     },
-    "executionInterval": "instant"
+    "executionInterval": "5min"
   },
   "1543524546341240892": {
     "enabled": false,
