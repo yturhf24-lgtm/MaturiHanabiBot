@@ -100,7 +100,7 @@
       "logChannelId": "1524714468234362891",
       "executionInterval": "5min"
     },
-    "executionInterval": "instant"
+    "executionInterval": "5min"
   },
   "1536775818649538721": {
     "enabled": false,
