@@ -141,7 +141,7 @@
       "channelId": "1532656630607642700",
       "currentNum": 1,
       "deleteWrong": true,
-      "warnEmbed": true,
+      "warnEmbed": false,
       "lastMessageId": null
     },
     "addRoleConfig": {
