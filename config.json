@@ -84,7 +84,7 @@
       "enabled": false,
       "channelId": null,
       "currentNum": 0,
-      "deleteWrong": true,
+      "deleteWrong": false,
       "warnEmbed": true,
       "lastMessageId": null
     },
