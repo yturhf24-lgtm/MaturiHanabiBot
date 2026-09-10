@@ -11,7 +11,8 @@ const {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  ActionRowBuilder
+  ActionRowBuilder,
+  ActivityType // 👈 ActivityType を追加
 } = require('discord.js');
 
 // --- Express サーバー ---
@@ -199,6 +200,22 @@ const commandsArray = [
 
 const processingMembers = new Set();
 
+// --- ステータス（プレイ中）更新処理 ---
+function updateBotPresence(client) {
+  if (!client.user) return;
+
+  const serverCount = client.guilds.cache.size; // 導入サーバー数
+  const ping = Math.round(client.ws.ping);      // WebSocket Ping値
+
+  client.user.setPresence({
+    activities: [{
+      name: `${serverCount} サーバー | Ping: ${ping}ms`,
+      type: ActivityType.Playing
+    }],
+    status: 'online'
+  });
+}
+
 // --- 自動ロール処理 ---
 async function processMemberRoles(member, guildConfig) {
   const { conditionRoleId, hasRoleIds = [], removeRoleIds = [], addRoleIds = [], logChannelId } = guildConfig;
@@ -322,6 +339,15 @@ async function scanAllGuilds(isPeriodicScan = false) {
 // --- イベント: ClientReady ---
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
+
+  // 起動時にステータス（プレイ中）を即座に設定
+  updateBotPresence(c);
+
+  // 1分（60秒）ごとにステータス（サーバー数とPing）を最新に更新
+  setInterval(() => {
+    updateBotPresence(c);
+  }, 60000);
+
   await syncConfigFromGithub();
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -582,7 +608,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       updateGuildConfig(guildId, 'restartNotify', !currentNotifyState);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
-    // 【新機能】実行タイミング切替 (自動ロール制御)
+    // 実行タイミング切替 (自動ロール制御)
     if (interaction.customId === 'toggle_interval') {
       const currentInterval = globalConfig[guildId]?.executionInterval || 'instant';
       const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
@@ -635,7 +661,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       updateAddRoleConfig(guildId, 'logChannelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
-    // 【新機能】実行タイミング切替 (条件ロール自動付与)
+    // 実行タイミング切替 (条件ロール自動付与)
     if (interaction.customId === 'toggle_role_add_interval') {
       const currentInterval = globalConfig[guildId]?.addRoleConfig?.executionInterval || 'instant';
       const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
