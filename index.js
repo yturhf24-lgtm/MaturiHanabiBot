@@ -30,6 +30,9 @@ const FILE_PATH = 'config.json';
 
 let globalConfig = {};
 
+// Bot自身が削除したメッセージIDを一時記憶してMessageDeleteの重複発火を防ぐフラグ Set
+const deletedByBot = new Set();
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // GitHub からの設定データ取得
@@ -351,7 +354,6 @@ async function checkOfflineMessages() {
       for (const msg of sortedMessages) {
         if (msg.author.bot) continue;
 
-        // すでにBotの✅リアクションが付いているメッセージは判定済みとみなす
         const hasBotReaction = msg.reactions.cache.some(
           r => r.emoji.name === '✅' && r.users.cache.has(client.user.id)
         );
@@ -363,6 +365,7 @@ async function checkOfflineMessages() {
 
         if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== expectedNum) {
           if (countConfig.deleteWrong !== false) {
+            deletedByBot.add(msg.id);
             await msg.delete().catch(() => {});
           }
           if (countConfig.warnEmbed !== false) {
@@ -392,7 +395,6 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
   await syncConfigFromGithub();
 
-  // 初期ステータス更新 & 15秒ごとの自動更新
   updatePresence();
   setInterval(updatePresence, 15000);
 
@@ -432,11 +434,9 @@ client.once(Events.ClientReady, async (c) => {
   await scanAllGuilds(false);
   setInterval(() => scanAllGuilds(true), 5 * 60 * 1000);
 
-  // オンライン復帰時にオフライン中のカウントメッセージをチェック
   await checkOfflineMessages();
 });
 
-// サーバー追加・離脱時にステータスを即時再計算
 client.on(Events.GuildCreate, updatePresence);
 client.on(Events.GuildDelete, updatePresence);
 
@@ -473,7 +473,10 @@ client.on(Events.MessageCreate, async (message) => {
   const expectedNum = (countConfig.currentNum || 0) + 1;
 
   if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== expectedNum) {
-    if (countConfig.deleteWrong !== false) await message.delete().catch(() => {});
+    if (countConfig.deleteWrong !== false) {
+      deletedByBot.add(message.id);
+      await message.delete().catch(() => {});
+    }
     if (countConfig.warnEmbed !== false) {
       const warnEmbed = new EmbedBuilder()
         .setTitle('⚠️ 数字が間違っています！')
@@ -504,6 +507,8 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     const inputNum = parseInt(inputTrimmed, 10);
 
     if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
+      // Bot自身による削除であることを記録して二重イベントを防止
+      deletedByBot.add(newMessage.id);
       await newMessage.delete().catch(() => {});
 
       const prevNum = Math.max(0, countConfig.currentNum - 1);
@@ -531,6 +536,12 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
 // --- 数字カウンター: メッセージ削除監視 ---
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
+
+  // Bot自身による削除処理の場合は重複巻き戻しを防ぐため処理をスキップ
+  if (deletedByBot.has(message.id)) {
+    deletedByBot.delete(message.id);
+    return;
+  }
 
   const guildId = message.guild.id;
   const countConfig = globalConfig[guildId]?.countConfig;
