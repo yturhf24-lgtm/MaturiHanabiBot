@@ -133,7 +133,7 @@
     "executionInterval": "instant",
     "restartNotify": false,
     "restartNotifyChannelId": null,
-    "conditionRoleId": null,
+    "conditionRoleId": "1408423678861115555",
     "hasRoleIds": [],
     "removeRoleIds": [],
     "addRoleIds": [],
@@ -144,7 +144,7 @@
       "currentNum": 3,
       "deleteWrong": true,
       "warnEmbed": true,
-      "lastMessageId": "1547726223533150218"
+      "lastMessageId": "1547726243045314612"
     },
     "addRoleConfig": {
       "enabled": false,
