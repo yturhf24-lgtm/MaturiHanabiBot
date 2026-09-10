@@ -130,7 +130,7 @@
   },
   "1408415340219863050": {
     "enabled": true,
-    "executionInterval": "5min",
+    "executionInterval": "instant",
     "restartNotify": false,
     "restartNotifyChannelId": null,
     "conditionRoleId": "1408423678861115555",
