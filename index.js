@@ -24,7 +24,7 @@ app.listen(port, () => console.log(`[MaturiHanabiBot] Server listening on port $
 // --- GitHub 設定データの自動永続化（保存＆同期） ---
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const OWNER = 'yturhf24-lgtm';
-const REPO = '-bot';
+const REPO = 'MaturiHanabiBot'; // 修正完了: 正しいリポジトリ名に更新
 const BRANCH = 'main';
 const FILE_PATH = 'config.json';
 
