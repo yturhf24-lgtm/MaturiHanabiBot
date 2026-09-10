@@ -18,10 +18,10 @@ const {
 // --- Express サーバー ---
 const app = express();
 const port = process.env.PORT || 4000;
-app.get('/', (req, res) => res.send('Bot Status: Online'));
-app.listen(port, () => console.log(`Server listening on port ${port}`));
+app.get('/', (req, res) => res.send('MaturiHanabiBot Status: Online'));
+app.listen(port, () => console.log(`[MaturiHanabiBot] Server listening on port ${port}`));
 
-// --- GitHub 自動生成＆直接保存・同期 ---
+// --- GitHub 設定データの自動永続化（保存＆同期） ---
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const OWNER = 'yturhf24-lgtm';
 const REPO = '-bot';
@@ -32,16 +32,19 @@ let globalConfig = {};
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// GitHub からの設定データ取得
+// GitHub から最新の設定データを同期（読み込み）
 async function syncConfigFromGithub() {
-  if (!GITHUB_TOKEN) return;
+  if (!GITHUB_TOKEN) {
+    console.warn('⚠️ GITHUB_TOKEN が設定されていません。メモリ上のみで動作します。');
+    return;
+  }
   const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}?ref=${BRANCH}`;
 
   try {
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${GITHUB_TOKEN.trim()}`,
-        'User-Agent': 'Node.js',
+        'User-Agent': 'MaturiHanabiBot',
         'Accept': 'application/vnd.github.v3+json'
       }
     });
@@ -50,17 +53,18 @@ async function syncConfigFromGithub() {
       const data = await res.json();
       const content = Buffer.from(data.content, 'base64').toString('utf8');
       globalConfig = JSON.parse(content || '{}');
-      console.log('✅ GitHub から最新の設定データを同期しました。');
+      console.log('✅ [MaturiHanabiBot] GitHubから最新のconfig.jsonを正常に同期しました。');
     } else if (res.status === 404) {
+      console.log('ℹ️ config.json が見つからないため新規作成します。');
       globalConfig = {};
-      saveConfigToGithub();
+      await saveConfigToGithub();
     }
   } catch (err) {
-    console.error('GitHub 同期エラー:', err);
+    console.error('❌ [MaturiHanabiBot] GitHub同期エラー:', err);
   }
 }
 
-// GitHub への設定非同期保存
+// GitHub へ設定データを保存（直接更新）
 async function saveConfigToGithub() {
   if (!GITHUB_TOKEN) return;
 
@@ -70,7 +74,7 @@ async function saveConfigToGithub() {
 
   const headers = {
     Authorization: `Bearer ${GITHUB_TOKEN.trim()}`,
-    'User-Agent': 'Node.js',
+    'User-Agent': 'MaturiHanabiBot',
     'Accept': 'application/vnd.github.v3+json',
     'Content-Type': 'application/json'
   };
@@ -85,18 +89,24 @@ async function saveConfigToGithub() {
   } catch (e) {}
 
   try {
-    await fetch(url, {
+    const putRes = await fetch(url, {
       method: 'PUT',
       headers,
       body: JSON.stringify({
-        message: 'Auto-updated config by Bot',
+        message: 'Auto-updated config by MaturiHanabiBot',
         content: base64Content,
         branch: BRANCH,
         ...(sha ? { sha } : {})
       })
     });
+
+    if (putRes.ok) {
+      console.log('💾 [MaturiHanabiBot] config.json をGitHubへ正常に保存しました。');
+    } else {
+      console.error('❌ GitHub保存レスポンスエラー:', await putRes.text());
+    }
   } catch (err) {
-    console.error('GitHub 保存エラー:', err);
+    console.error('❌ [MaturiHanabiBot] GitHub保存処理エラー:', err);
   }
 }
 
@@ -123,14 +133,13 @@ function initGuildConfig(guildId) {
       },
       addRoleConfig: {
         enabled: false,
-        executionInterval: 'instant', // 'instant' または '5min'
+        executionInterval: 'instant',
         excludeRoleIds: [],
         targetRoleIds: [],
         logChannelId: null
       }
     };
   }
-  // 既存データの後方互換プロパティ補完
   if (!globalConfig[guildId].executionInterval) {
     globalConfig[guildId].executionInterval = 'instant';
   }
@@ -147,24 +156,24 @@ function initGuildConfig(guildId) {
   }
 }
 
-function updateGuildConfig(guildId, key, value) {
+async function updateGuildConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId][key] = value;
-  saveConfigToGithub();
+  await saveConfigToGithub();
   return globalConfig;
 }
 
-function updateCountConfig(guildId, key, value) {
+async function updateCountConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId].countConfig[key] = value;
-  saveConfigToGithub();
+  await saveConfigToGithub();
   return globalConfig;
 }
 
-function updateAddRoleConfig(guildId, key, value) {
+async function updateAddRoleConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId].addRoleConfig[key] = value;
-  saveConfigToGithub();
+  await saveConfigToGithub();
   return globalConfig;
 }
 
@@ -240,10 +249,10 @@ async function processMemberRoles(member, guildConfig) {
         const addedText = rolesToAdd.length > 0 ? rolesToAdd.map(id => `<@&${id}>`).join(', ') : 'なし';
 
         const embed = new EmbedBuilder()
-          .setTitle('🔄 自動ロール更新ログ')
+          .setTitle('🔄 [MaturiHanabiBot] 自動ロール更新ログ')
           .setColor(0x00ff00)
           .addFields(
-            { name: '👤 プレイヤー名', value: `${member.user.tag} (<@${member.id}>)` },
+            { name: '👤 メンバー名', value: `${member.user.tag} (<@${member.id}>)` },
             { name: '🗑️ 削除ロール', value: removedText },
             { name: '➕ 付与ロール', value: addedText }
           )
@@ -282,7 +291,7 @@ async function processAddRolesOnly(member, addRoleConfig) {
         const addedText = rolesToAdd.map(id => `<@&${id}>`).join(', ');
 
         const embed = new EmbedBuilder()
-          .setTitle('➕ 条件ロール付与ログ')
+          .setTitle('➕ [MaturiHanabiBot] 条件ロール付与ログ')
           .setColor(0x00ff00)
           .addFields(
             { name: '👤 対象メンバー', value: `${member.user.tag} (<@${member.id}>)` },
@@ -299,7 +308,6 @@ async function processAddRolesOnly(member, addRoleConfig) {
   }
 }
 
-// isPeriodicScan パラメータで定期スキャン時かどうかの判定を行う
 async function scanSingleGuild(guild, isPeriodicScan = false) {
   const guildConfig = globalConfig[guild.id];
   if (!guildConfig) return 0;
@@ -309,11 +317,9 @@ async function scanSingleGuild(guild, isPeriodicScan = false) {
 
   for (const member of members.values()) {
     if (!member.user.bot) {
-      // 自動ロール制御: 「定期スキャン時かつ5分間隔指定」または「初期化スキャン時」に処理
       if (guildConfig.enabled && (!isPeriodicScan || guildConfig.executionInterval === '5min')) {
         if (await processMemberRoles(member, guildConfig)) updatedCount++;
       }
-      // 条件ロール付与: 「定期スキャン時かつ5分間隔指定」または「初期化スキャン時」に処理
       if (guildConfig.addRoleConfig?.enabled && (!isPeriodicScan || guildConfig.addRoleConfig.executionInterval === '5min')) {
         if (await processAddRolesOnly(member, guildConfig.addRoleConfig)) updatedCount++;
       }
@@ -332,19 +338,18 @@ async function scanAllGuilds(isPeriodicScan = false) {
 
 // --- イベント: ClientReady ---
 client.once(Events.ClientReady, async (c) => {
-  console.log(`Logged in as ${c.user.tag}`);
+  console.log(`[MaturiHanabiBot] Logged in as ${c.user.tag}`);
   await syncConfigFromGithub();
 
-  // 初期ステータス設定 ＆ 15秒ごとの自動更新タイマー開始
   updateBotPresence();
   setInterval(updateBotPresence, 15000);
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(Routes.applicationCommands(c.user.id), { body: commandsArray });
-    console.log('✅ スラッシュコマンドを正常に登録しました。');
+    console.log('✅ [MaturiHanabiBot] スラッシュコマンドを正常に登録しました。');
   } catch (e) {
-    console.error('スラッシュコマンド登録エラー:', e);
+    console.error('❌ [MaturiHanabiBot] スラッシュコマンド登録エラー:', e);
   }
 
   for (const guild of client.guilds.cache.values()) {
@@ -355,7 +360,7 @@ client.once(Events.ClientReady, async (c) => {
         const channel = guild.channels.cache.get(targetChannelId);
         if (channel) {
           const restartEmbed = new EmbedBuilder()
-            .setTitle('🟢 システム再起動完了')
+            .setTitle('🟢 [MaturiHanabiBot] システム起動完了')
             .setDescription('Botが正常に起動・再起動されました。')
             .setColor(0x00ff00)
             .setTimestamp();
@@ -372,9 +377,7 @@ client.once(Events.ClientReady, async (c) => {
     } catch (e) {}
   }
 
-  // 初期スキャン（すべての設定に関わらず全体のチェックを実施）
   await scanAllGuilds(false);
-  // 定期スキャン（5分ごとに interval 設定が '5min' の場合のみ処理を行う）
   setInterval(() => scanAllGuilds(true), 5 * 60 * 1000);
 });
 
@@ -395,17 +398,15 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     return;
   }
 
-  // 自動ロール: モードが 'instant' (即時) の場合のみ実行
   if (guildConfig.enabled && (guildConfig.executionInterval || 'instant') === 'instant') {
     await processMemberRoles(newMember, guildConfig);
   }
-  // 条件ロール: モードが 'instant' (即時) の場合のみ実行
   if (guildConfig.addRoleConfig?.enabled && (guildConfig.addRoleConfig.executionInterval || 'instant') === 'instant') {
     await processAddRolesOnly(newMember, guildConfig.addRoleConfig);
   }
 });
 
-// --- 数字カウンター: メッセージ送信時（即座に判定） ---
+// --- 数字カウンター: メッセージ送信時 ---
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -429,13 +430,13 @@ client.on(Events.MessageCreate, async (message) => {
       if (warnMsg) setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
     }
   } else {
-    updateCountConfig(message.guild.id, 'currentNum', expectedNum);
-    updateCountConfig(message.guild.id, 'lastMessageId', message.id);
+    await updateCountConfig(message.guild.id, 'currentNum', expectedNum);
+    await updateCountConfig(message.guild.id, 'lastMessageId', message.id);
     await message.react('✅').catch(() => {});
   }
 });
 
-// --- 数字カウンター: メッセージ編集監視（即座に検知・判定） ---
+// --- 数字カウンター: メッセージ編集監視 ---
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (newMessage.author?.bot || !newMessage.guild) return;
 
@@ -451,8 +452,8 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
       await newMessage.delete().catch(() => {});
 
       const prevNum = Math.max(0, countConfig.currentNum - 1);
-      updateCountConfig(guildId, 'currentNum', prevNum);
-      updateCountConfig(guildId, 'lastMessageId', null);
+      await updateCountConfig(guildId, 'currentNum', prevNum);
+      await updateCountConfig(guildId, 'lastMessageId', null);
 
       const nextNum = prevNum + 1;
 
@@ -472,7 +473,7 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   }
 });
 
-// --- 数字カウンター: メッセージ削除監視（即座に検知・判定） ---
+// --- 数字カウンター: メッセージ削除監視 ---
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
 
@@ -482,8 +483,8 @@ client.on(Events.MessageDelete, async (message) => {
 
   if (countConfig.lastMessageId === message.id) {
     const prevNum = Math.max(0, countConfig.currentNum - 1);
-    updateCountConfig(guildId, 'currentNum', prevNum);
-    updateCountConfig(guildId, 'lastMessageId', null);
+    await updateCountConfig(guildId, 'currentNum', prevNum);
+    await updateCountConfig(guildId, 'lastMessageId', null);
 
     const nextNum = prevNum + 1;
 
@@ -557,7 +558,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     const guildId = interaction.guildId;
-    updateCountConfig(guildId, 'currentNum', newNum);
+    await updateCountConfig(guildId, 'currentNum', newNum);
 
     return interaction.editReply({
       embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)],
@@ -577,35 +578,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // ロール自動制御パネル
     if (interaction.customId === 'select_condition_role') {
-      updateGuildConfig(guildId, 'conditionRoleId', interaction.values[0]);
+      await updateGuildConfig(guildId, 'conditionRoleId', interaction.values[0]);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'select_has_roles') {
-      updateGuildConfig(guildId, 'hasRoleIds', interaction.values || []);
+      await updateGuildConfig(guildId, 'hasRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'select_remove_roles') {
-      updateGuildConfig(guildId, 'removeRoleIds', interaction.values || []);
+      await updateGuildConfig(guildId, 'removeRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'select_add_roles') {
-      updateGuildConfig(guildId, 'addRoleIds', interaction.values || []);
+      await updateGuildConfig(guildId, 'addRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'select_log_channel') {
-      updateGuildConfig(guildId, 'logChannelId', interaction.values[0] || null);
+      await updateGuildConfig(guildId, 'logChannelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'toggle_restart_notify') {
       const currentNotifyState = globalConfig[guildId]?.restartNotify || false;
-      updateGuildConfig(guildId, 'restartNotify', !currentNotifyState);
+      await updateGuildConfig(guildId, 'restartNotify', !currentNotifyState);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
-    // 実行タイミング切替 (自動ロール制御)
     if (interaction.customId === 'toggle_interval') {
       const currentInterval = globalConfig[guildId]?.executionInterval || 'instant';
       const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
-      updateGuildConfig(guildId, 'executionInterval', nextInterval);
+      await updateGuildConfig(guildId, 'executionInterval', nextInterval);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'toggle_active_button') {
@@ -613,23 +613,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!currentConfig.enabled && !currentConfig.conditionRoleId) {
         return interaction.followUp({ content: '⚠️ 「1. チェックするロール」を事前に設定してください。', flags: MessageFlags.Ephemeral });
       }
-      updateGuildConfig(guildId, 'enabled', !currentConfig.enabled);
+      await updateGuildConfig(guildId, 'enabled', !currentConfig.enabled);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
 
     // カウンターパネル
     if (interaction.customId === 'select_count_channel') {
-      updateCountConfig(guildId, 'channelId', interaction.values[0] || null);
+      await updateCountConfig(guildId, 'channelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'toggle_count_delete') {
       const currentConfig = globalConfig[guildId]?.countConfig || {};
-      updateCountConfig(guildId, 'deleteWrong', !(currentConfig.deleteWrong !== false));
+      await updateCountConfig(guildId, 'deleteWrong', !(currentConfig.deleteWrong !== false));
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'toggle_count_warn') {
       const currentConfig = globalConfig[guildId]?.countConfig || {};
-      updateCountConfig(guildId, 'warnEmbed', !(currentConfig.warnEmbed !== false));
+      await updateCountConfig(guildId, 'warnEmbed', !(currentConfig.warnEmbed !== false));
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'toggle_count_active') {
@@ -637,33 +637,32 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!currentConfig.enabled && !currentConfig.channelId) {
         return interaction.followUp({ content: '⚠️ カウント対象のチャンネルを事前に設定してください。', flags: MessageFlags.Ephemeral });
       }
-      updateCountConfig(guildId, 'enabled', !currentConfig.enabled);
+      await updateCountConfig(guildId, 'enabled', !currentConfig.enabled);
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
 
     // 条件ロール自動付与パネル
     if (interaction.customId === 'select_add_exclude_roles') {
-      updateAddRoleConfig(guildId, 'excludeRoleIds', interaction.values || []);
+      await updateAddRoleConfig(guildId, 'excludeRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'select_add_target_roles') {
-      updateAddRoleConfig(guildId, 'targetRoleIds', interaction.values || []);
+      await updateAddRoleConfig(guildId, 'targetRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'select_add_role_log_channel') {
-      updateAddRoleConfig(guildId, 'logChannelId', interaction.values[0] || null);
+      await updateAddRoleConfig(guildId, 'logChannelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
-    // 実行タイミング切替 (条件ロール自動付与)
     if (interaction.customId === 'toggle_role_add_interval') {
       const currentInterval = globalConfig[guildId]?.addRoleConfig?.executionInterval || 'instant';
       const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
-      updateAddRoleConfig(guildId, 'executionInterval', nextInterval);
+      await updateAddRoleConfig(guildId, 'executionInterval', nextInterval);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
     if (interaction.customId === 'toggle_role_add_active') {
       const currentConfig = globalConfig[guildId]?.addRoleConfig || {};
-      updateAddRoleConfig(guildId, 'enabled', !currentConfig.enabled);
+      await updateAddRoleConfig(guildId, 'enabled', !currentConfig.enabled);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
   }
