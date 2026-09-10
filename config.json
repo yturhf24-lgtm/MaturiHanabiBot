@@ -129,7 +129,7 @@
     "executionInterval": "instant"
   },
   "1408415340219863050": {
-    "enabled": false,
+    "enabled": true,
     "executionInterval": "instant",
     "restartNotify": false,
     "restartNotifyChannelId": null,
