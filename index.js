@@ -174,7 +174,8 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMessageReactions
   ]
 });
 
@@ -334,6 +335,58 @@ async function scanAllGuilds(isPeriodicScan = false) {
   }
 }
 
+// --- オフライン中のカウントチャンネルメッセージチェック ---
+async function checkOfflineMessages() {
+  for (const guild of client.guilds.cache.values()) {
+    const countConfig = globalConfig[guild.id]?.countConfig;
+    if (!countConfig || !countConfig.enabled || !countConfig.channelId) continue;
+
+    const channel = guild.channels.cache.get(countConfig.channelId);
+    if (!channel || !channel.isTextBased()) continue;
+
+    try {
+      const messages = await channel.messages.fetch({ limit: 50 });
+      const sortedMessages = Array.from(messages.values()).sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+
+      for (const msg of sortedMessages) {
+        if (msg.author.bot) continue;
+
+        // すでにBotの✅リアクションが付いているメッセージは判定済みとみなす
+        const hasBotReaction = msg.reactions.cache.some(
+          r => r.emoji.name === '✅' && r.users.cache.has(client.user.id)
+        );
+        if (hasBotReaction) continue;
+
+        const inputTrimmed = msg.content.trim();
+        const inputNum = parseInt(inputTrimmed, 10);
+        const expectedNum = (globalConfig[guild.id].countConfig.currentNum || 0) + 1;
+
+        if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== expectedNum) {
+          if (countConfig.deleteWrong !== false) {
+            await msg.delete().catch(() => {});
+          }
+          if (countConfig.warnEmbed !== false) {
+            const warnEmbed = new EmbedBuilder()
+              .setTitle('⚠️ オフライン中の不正なメッセージを削除しました')
+              .setDescription(`<@${msg.author.id}> さんのメッセージは正しい数字ではなかったため削除されました。\n次に送信する正しい数字は **\`${expectedNum}\`** です。`)
+              .setColor(0xffa500)
+              .setTimestamp();
+
+            const warnMsg = await channel.send({ embeds: [warnEmbed] }).catch(() => {});
+            if (warnMsg) setTimeout(() => warnMsg.delete().catch(() => {}), 7000);
+          }
+        } else {
+          updateCountConfig(guild.id, 'currentNum', expectedNum);
+          updateCountConfig(guild.id, 'lastMessageId', msg.id);
+          await msg.react('✅').catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error(`[${guild.name}] オフラインメッセージ確認中にエラーが発生しました:`, err);
+    }
+  }
+}
+
 // --- イベント: ClientReady ---
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
@@ -378,6 +431,9 @@ client.once(Events.ClientReady, async (c) => {
 
   await scanAllGuilds(false);
   setInterval(() => scanAllGuilds(true), 5 * 60 * 1000);
+
+  // オンライン復帰時にオフライン中のカウントメッセージをチェック
+  await checkOfflineMessages();
 });
 
 // サーバー追加・離脱時にステータスを即時再計算
