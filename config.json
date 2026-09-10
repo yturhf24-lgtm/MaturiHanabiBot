@@ -104,7 +104,7 @@
   },
   "1536775818649538721": {
     "enabled": false,
-    "restartNotify": true,
+    "restartNotify": false,
     "restartNotifyChannelId": null,
     "conditionRoleId": null,
     "hasRoleIds": [],
@@ -123,8 +123,10 @@
       "enabled": false,
       "excludeRoleIds": [],
       "targetRoleIds": [],
-      "logChannelId": null
-    }
+      "logChannelId": null,
+      "executionInterval": "instant"
+    },
+    "executionInterval": "instant"
   },
   "1408415340219863050": {
     "enabled": false,
