@@ -106,7 +106,7 @@
     "enabled": false,
     "restartNotify": true,
     "restartNotifyChannelId": null,
-    "conditionRoleId": null,
+    "conditionRoleId": "1536781771998363688",
     "hasRoleIds": [],
     "removeRoleIds": [],
     "addRoleIds": [],
