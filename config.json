@@ -16,7 +16,7 @@
     "countConfig": {
       "enabled": true,
       "channelId": "1420393215089180845",
-      "currentNum": 15,
+      "currentNum": 16,
       "deleteWrong": true,
       "warnEmbed": true,
       "lastMessageId": "1548266933584003135"
