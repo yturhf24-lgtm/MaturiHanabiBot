@@ -16,10 +16,10 @@
     "countConfig": {
       "enabled": true,
       "channelId": "1420393215089180845",
-      "currentNum": 53,
+      "currentNum": 54,
       "deleteWrong": true,
       "warnEmbed": true,
-      "lastMessageId": "1549263568971767899"
+      "lastMessageId": "1549295168258179114"
     },
     "addRoleConfig": {
       "enabled": true,
