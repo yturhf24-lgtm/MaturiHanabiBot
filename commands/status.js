@@ -42,7 +42,6 @@ module.exports = {
     const addRoles = (cfg.addRoleIds && cfg.addRoleIds.length > 0) 
       ? cfg.addRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
     const roleLogChannel = cfg.logChannelId ? `<#${cfg.logChannelId}>` : '未設定';
-    const restartNotify = cfg.restartNotify ? '🔔 ON' : '🔕 OFF';
 
     // --- 2. 条件ロール自動付与設定 ---
     const addRoleCfg = cfg.addRoleConfig || {};
@@ -62,6 +61,12 @@ module.exports = {
     const deleteWrong = (countCfg.deleteWrong !== false) ? '✅ 有効' : '❌ 無効';
     const warnEmbed = (countCfg.warnEmbed !== false) ? '✅ 有効' : '❌ 無効';
 
+    // --- 4. アナウンス・再起動通知設定 ---
+    const announceEnabled = (cfg.announceEnabled !== false) ? '🟢 ON' : '🔴 OFF';
+    const announceCh = cfg.announceChannelId ? `<#${cfg.announceChannelId}>` : '未設定';
+    const restartEnabled = cfg.restartNotify ? '🟢 ON' : '🔴 OFF';
+    const restartCh = cfg.restartNotifyChannelId ? `<#${cfg.restartNotifyChannelId}>` : (cfg.announceChannelId ? `<#${cfg.announceChannelId}>` : '未設定');
+
     const embed = new EmbedBuilder()
       .setTitle(`📊 現在のBot設定ステータス (${interaction.guild.name})`)
       .setColor(0x3498db)
@@ -75,8 +80,7 @@ module.exports = {
             `> **チェック対象ロール:** ${hasRoles}\n` +
             `> **自動削除:** ${removeRoles}\n` +
             `> **自動付与:** ${addRoles}\n` +
-            `> **ログ先:** ${roleLogChannel}\n` +
-            `> **再起動通知:** ${restartNotify}`,
+            `> **ログ先:** ${roleLogChannel}`,
           inline: false
         },
         {
@@ -97,6 +101,13 @@ module.exports = {
             `> **現在のカウント:** **\`${currentNum}\`**\n` +
             `> **誤爆自動削除:** ${deleteWrong}\n` +
             `> **警告メッセージ:** ${warnEmbed}`,
+          inline: false
+        },
+        {
+          name: '📢 4. アナウンス・再起動通知',
+          value: 
+            `> **通常アナウンス:** ${announceEnabled} (送信先: ${announceCh})\n` +
+            `> **再起動通知:** ${restartEnabled} (送信先: ${restartCh})`,
           inline: false
         }
       )
