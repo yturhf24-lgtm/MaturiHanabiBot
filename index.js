@@ -645,7 +645,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           targetChannel = guild.channels.cache.get(cfg.announceChannelId);
         }
 
-        // 指定がない、または削除されていた場合は #botアナウンス を検索または自動作成
+        // 指定がない、または指定チャンネルが削除されていた場合は #botアナウンス を検索またはその場で自動作成
         if (!targetChannel) {
           targetChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
           if (!targetChannel) {
@@ -660,7 +660,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         if (targetChannel && targetChannel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) {
-          // 自動作成したチャンネルの場合は警告Embedを事前に添付
+          // アナウンス時にチャンネルを自動作成した場合は警告Embedを同時に添付
           if (isAutoCreatedChannel) {
             const warningEmbed = new EmbedBuilder()
               .setTitle('⚠️ アナウンス先チャンネルを自動作成しました')
