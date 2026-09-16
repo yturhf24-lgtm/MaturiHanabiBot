@@ -888,5 +888,33 @@
       "targetRoleIds": [],
       "logChannelId": null
     }
+  },
+  "1549688101759352912": {
+    "enabled": false,
+    "executionInterval": "instant",
+    "restartNotify": false,
+    "restartNotifyChannelId": null,
+    "announceEnabled": true,
+    "announceChannelId": "1549845373088964628",
+    "conditionRoleId": null,
+    "hasRoleIds": [],
+    "removeRoleIds": [],
+    "addRoleIds": [],
+    "logChannelId": null,
+    "countConfig": {
+      "enabled": false,
+      "channelId": null,
+      "currentNum": 0,
+      "deleteWrong": true,
+      "warnEmbed": true,
+      "lastMessageId": null
+    },
+    "addRoleConfig": {
+      "enabled": false,
+      "executionInterval": "instant",
+      "excludeRoleIds": [],
+      "targetRoleIds": [],
+      "logChannelId": null
+    }
   }
 }
