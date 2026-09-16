@@ -41,7 +41,9 @@
       ],
       "executionInterval": "5min"
     },
-    "executionInterval": "5min"
+    "executionInterval": "5min",
+    "announceChannelId": "1536062285330645112",
+    "restartNotifyChannelId": "1549842687350415362"
   },
   "1543524546341240892": {
     "enabled": false,
