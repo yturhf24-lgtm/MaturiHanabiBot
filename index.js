@@ -13,7 +13,8 @@ const {
   TextInputStyle,
   ActionRowBuilder,
   ActivityType,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  ChannelType
 } = require('discord.js');
 
 // --- 管理者ユーザーID設定 (環境変数がない場合はフォールバック) ---
@@ -43,10 +44,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // GitHub からの設定データ取得
 async function syncConfigFromGithub() {
-  if (!GITHUB_TOKEN) {
-    console.warn('⚠️ GITHUB_TOKEN が設定されていないため、ローカルメモリ上で動作します。');
-    return;
-  }
+  if (!GITHUB_TOKEN) return;
   const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}?ref=${BRANCH}`;
 
   try {
@@ -64,7 +62,6 @@ async function syncConfigFromGithub() {
       globalConfig = JSON.parse(content || '{}');
       console.log('✅ GitHub から最新の設定データを同期しました。');
     } else if (res.status === 404) {
-      console.log('ℹ️ 設定ファイルが見つからないため、新規作成します。');
       globalConfig = {};
       await saveConfigToGithub();
     }
@@ -145,20 +142,6 @@ function initGuildConfig(guildId) {
       }
     };
   }
-  if (!globalConfig[guildId].executionInterval) {
-    globalConfig[guildId].executionInterval = 'instant';
-  }
-  if (!globalConfig[guildId].addRoleConfig) {
-    globalConfig[guildId].addRoleConfig = {
-      enabled: false,
-      executionInterval: 'instant',
-      excludeRoleIds: [],
-      targetRoleIds: [],
-      logChannelId: null
-    };
-  } else if (!globalConfig[guildId].addRoleConfig.executionInterval) {
-    globalConfig[guildId].addRoleConfig.executionInterval = 'instant';
-  }
 }
 
 function updateGuildConfig(guildId, key, value) {
@@ -180,6 +163,24 @@ function updateAddRoleConfig(guildId, key, value) {
   globalConfig[guildId].addRoleConfig[key] = value;
   saveConfigToGithub().catch(console.error);
   return globalConfig;
+}
+
+// どちらの送信先にも使われなくなった場合の #botアナウンス 削除チェック関数
+async function cleanupUnusedBotAnnounceChannel(guild, cfg) {
+  const defaultChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
+  if (!defaultChannel) return;
+
+  const isAnnounceUsing = cfg.announceChannelId === defaultChannel.id;
+  const isRestartUsing = cfg.restartNotifyChannelId === defaultChannel.id;
+
+  if (!isAnnounceUsing && !isRestartUsing) {
+    try {
+      await defaultChannel.delete('送信先が全て別チャンネルに変更されたため自動削除');
+      console.log(`[${guild.name}] 不用になった #botアナウンス チャンネルを削除しました。`);
+    } catch (e) {
+      console.error(`[${guild.name}] #botアナウンス チャンネル削除時にエラーが発生しました:`, e);
+    }
+  }
 }
 
 // --- Client 初期化 ---
@@ -231,12 +232,7 @@ function updatePresence() {
   const statusText = `${serverCount} ${serverCount === 1 ? 'server' : 'servers'} | Ping: ${ping}ms`;
 
   client.user.setPresence({
-    activities: [
-      {
-        name: statusText,
-        type: ActivityType.Playing
-      }
-    ],
+    activities: [{ name: statusText, type: ActivityType.Playing }],
     status: 'online'
   });
 }
@@ -293,7 +289,6 @@ async function processAddRolesOnly(member, addRoleConfig) {
   if (!addRoleConfig || !addRoleConfig.enabled) return false;
 
   const { excludeRoleIds = [], targetRoleIds = [], logChannelId } = addRoleConfig;
-
   if (!targetRoleIds || targetRoleIds.length === 0) return false;
 
   if (excludeRoleIds.length > 0) {
@@ -363,7 +358,6 @@ async function scanAllGuilds(isPeriodicScan = false) {
   }
 }
 
-// --- オフライン中のカウントチャンネルメッセージチェック ---
 async function checkOfflineMessages() {
   for (const guild of client.guilds.cache.values()) {
     const countConfig = globalConfig[guild.id]?.countConfig;
@@ -415,7 +409,6 @@ async function checkOfflineMessages() {
   }
 }
 
-// --- イベント: ClientReady ---
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}`);
   await syncConfigFromGithub();
@@ -431,7 +424,6 @@ client.once(Events.ClientReady, async (c) => {
     console.error('スラッシュコマンド登録エラー:', e);
   }
 
-  // 再起動通知処理（専用チャンネル優先）
   for (const guild of client.guilds.cache.values()) {
     const config = globalConfig[guild.id];
     if (config && config.restartNotify) {
@@ -466,7 +458,6 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.GuildCreate, updatePresence);
 client.on(Events.GuildDelete, updatePresence);
 
-// --- イベント: リアルタイム ロール更新検知 ---
 client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   if (newMember.user.bot) return;
 
@@ -487,7 +478,6 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
   }
 });
 
-// --- 数字カウンター: メッセージ送信時 ---
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -528,7 +518,6 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
-// --- 数字カウンター: メッセージ編集監視 ---
 client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   if (newMessage.author?.bot || !newMessage.guild) return;
 
@@ -566,7 +555,6 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
   }
 });
 
-// --- 数字カウンター: メッセージ削除監視 ---
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
 
@@ -610,7 +598,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }).catch(() => {});
   }
 
-  // スラッシュコマンド実行
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) {
@@ -623,7 +610,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // --- アナウンスの一括送信（モーダル受信） ---
+  // --- アナウンス送信（モーダル受信） ---
   if (interaction.isModalSubmit() && interaction.customId === 'announce_modal') {
     if (interaction.user.id !== ALLOWED_USER_ID) return;
 
@@ -652,24 +639,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       try {
         let targetChannel = null;
+        let isAutoCreatedChannel = false;
 
         if (cfg.announceChannelId) {
           targetChannel = guild.channels.cache.get(cfg.announceChannelId);
         }
 
-        if (!targetChannel || !targetChannel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) {
-          targetChannel = guild.systemChannel;
+        // 指定がない、または削除されていた場合は #botアナウンス を検索または自動作成
+        if (!targetChannel) {
+          targetChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
+          if (!targetChannel) {
+            targetChannel = await guild.channels.create({
+              name: 'botアナウンス',
+              type: ChannelType.GuildText,
+              reason: 'アナウンス送信時のチャンネル自動生成'
+            });
+            isAutoCreatedChannel = true;
+          }
+          updateGuildConfig(guild.id, 'announceChannelId', targetChannel.id);
         }
 
-        if (!targetChannel || !targetChannel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) {
-          targetChannel = guild.channels.cache.find(ch => 
-            ch.isTextBased() && 
-            ch.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages) &&
-            ch.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.ViewChannel)
-          );
-        }
+        if (targetChannel && targetChannel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) {
+          // 自動作成したチャンネルの場合は警告Embedを事前に添付
+          if (isAutoCreatedChannel) {
+            const warningEmbed = new EmbedBuilder()
+              .setTitle('⚠️ アナウンス先チャンネルを自動作成しました')
+              .setDescription('送信先チャンネルが未指定だったため `#botアナウンス` を自動作成して設定しました。\n変更したい場合は `/set-announce` コマンドで設定してください。')
+              .setColor(0xffa500);
+            await targetChannel.send({ embeds: [warningEmbed] });
+          }
 
-        if (targetChannel) {
           await targetChannel.send({ embeds: [announceEmbed] });
           successCount++;
         } else {
@@ -685,7 +684,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  // --- カウントパネルの数字設定モーダル表示 ---
   if (interaction.isButton() && interaction.customId === 'open_set_number_modal') {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
@@ -709,7 +707,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.showModal(modal);
   }
 
-  // --- カウントパネルの数字設定モーダル受信 ---
   if (interaction.isModalSubmit() && interaction.customId === 'set_number_modal') {
     await interaction.deferUpdate();
 
@@ -729,7 +726,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
-  // --- 各種パネル・セレクトメニュー・ボタンのインタラクション ---
   if (interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
     if (interaction.guild.ownerId !== interaction.user.id && interaction.user.id !== ALLOWED_USER_ID) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
@@ -740,21 +736,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const guildId = interaction.guildId;
     initGuildConfig(guildId);
 
-    // アナウンスパネル用 通常アナウンスチャンネル選択
+    // 通常アナウンスチャンネル変更
     if (interaction.customId === 'select_announce_channel') {
       const selectedChId = interaction.values[0] || null;
       updateGuildConfig(guildId, 'announceChannelId', selectedChId);
+      await cleanupUnusedBotAnnounceChannel(interaction.guild, globalConfig[guildId]);
       return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
     }
 
-    // アナウンスパネル用 再起動通知チャンネル選択
+    // 再起動通知チャンネル変更
     if (interaction.customId === 'select_restart_channel') {
       const selectedChId = interaction.values[0] || null;
       updateGuildConfig(guildId, 'restartNotifyChannelId', selectedChId);
+      await cleanupUnusedBotAnnounceChannel(interaction.guild, globalConfig[guildId]);
       return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
     }
 
-    // アナウンスパネル用 ON/OFF ボタン制御
     if (interaction.customId === 'toggle_announce_notify') {
       const currentState = globalConfig[guildId]?.announceEnabled ?? true;
       updateGuildConfig(guildId, 'announceEnabled', !currentState);
@@ -767,7 +764,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
     }
 
-    // ロール制御パネル用制御
+    // ロール制御パネル制御
     if (interaction.customId === 'select_condition_role') {
       updateGuildConfig(guildId, 'conditionRoleId', interaction.values[0]);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
@@ -803,7 +800,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
 
-    // カウントパネル用制御
+    // カウントパネル制御
     if (interaction.customId === 'select_count_channel') {
       updateCountConfig(guildId, 'channelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
@@ -827,7 +824,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
 
-    // 条件ロール追加パネル用制御
+    // 条件ロール追加パネル制御
     if (interaction.customId === 'select_add_exclude_roles') {
       updateAddRoleConfig(guildId, 'excludeRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
