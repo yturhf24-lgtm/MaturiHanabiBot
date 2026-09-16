@@ -12,8 +12,12 @@ const {
   TextInputBuilder,
   TextInputStyle,
   ActionRowBuilder,
-  ActivityType
+  ActivityType,
+  PermissionFlagsBits
 } = require('discord.js');
+
+// --- 管理者ユーザーID設定 ---
+const ALLOWED_USER_ID = '1266013271518089258';
 
 // --- Express サーバー ---
 const app = express();
@@ -184,21 +188,28 @@ const client = new Client({
 
 client.commands = new Collection();
 
+// コマンドモジュール読み込み
 const panelModule = require('./commands/panel.js');
 const countPanelModule = require('./commands/countPanel.js');
 const roleAddPanelModule = require('./commands/roleAddPanel.js');
 const statusModule = require('./commands/status.js');
+const serversModule = require('./commands/servers.js');
+const announceModule = require('./commands/announce.js');
 
 client.commands.set(panelModule.data.name, panelModule);
 client.commands.set(countPanelModule.data.name, countPanelModule);
 client.commands.set(roleAddPanelModule.data.name, roleAddPanelModule);
 client.commands.set(statusModule.data.name, statusModule);
+client.commands.set(serversModule.data.name, serversModule);
+client.commands.set(announceModule.data.name, announceModule);
 
 const commandsArray = [
   panelModule.data.toJSON(),
   countPanelModule.data.toJSON(),
   roleAddPanelModule.data.toJSON(),
-  statusModule.data.toJSON()
+  statusModule.data.toJSON(),
+  serversModule.data.toJSON(),
+  announceModule.data.toJSON()
 ];
 
 const processingMembers = new Set();
@@ -507,7 +518,6 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     const inputNum = parseInt(inputTrimmed, 10);
 
     if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== countConfig.currentNum) {
-      // Bot自身による削除であることを記録して二重イベントを防止
       deletedByBot.add(newMessage.id);
       await newMessage.delete().catch(() => {});
 
@@ -537,7 +547,6 @@ client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
 client.on(Events.MessageDelete, async (message) => {
   if (!message.guild) return;
 
-  // Bot自身による削除処理の場合は重複巻き戻しを防ぐため処理をスキップ
   if (deletedByBot.has(message.id)) {
     deletedByBot.delete(message.id);
     return;
@@ -578,6 +587,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }).catch(() => {});
   }
 
+  // スラッシュコマンド実行
   if (interaction.isChatInputCommand()) {
     const cmd = client.commands.get(interaction.commandName);
     if (!cmd) {
@@ -590,6 +600,54 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  // --- アナウンスのモーダル送信処理 ---
+  if (interaction.isModalSubmit() && interaction.customId === 'announce_modal') {
+    if (interaction.user.id !== ALLOWED_USER_ID) return;
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const title = interaction.fields.getTextInputValue('announce_title');
+    const body = interaction.fields.getTextInputValue('announce_body');
+
+    const announceEmbed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(body)
+      .setColor('#ff4757')
+      .setFooter({ text: '公式アナウンス' })
+      .setTimestamp();
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const guild of interaction.client.guilds.cache.values()) {
+      try {
+        let targetChannel = guild.systemChannel;
+
+        if (!targetChannel || !targetChannel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) {
+          targetChannel = guild.channels.cache.find(ch => 
+            ch.isTextBased() && 
+            ch.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages) &&
+            ch.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.ViewChannel)
+          );
+        }
+
+        if (targetChannel) {
+          await targetChannel.send({ embeds: [announceEmbed] });
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (err) {
+        failCount++;
+      }
+    }
+
+    return interaction.editReply({
+      content: `📢 アナウンス送信完了\n・成功: **${successCount}** サーバー\n・失敗/送信不可: **${failCount}** サーバー`
+    });
+  }
+
+  // --- カウントパネルの数字設定モーダル表示 ---
   if (interaction.isButton() && interaction.customId === 'open_set_number_modal') {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
@@ -613,6 +671,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return interaction.showModal(modal);
   }
 
+  // --- カウントパネルの数字設定モーダル受信 ---
   if (interaction.isModalSubmit() && interaction.customId === 'set_number_modal') {
     await interaction.deferUpdate();
 
@@ -632,6 +691,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     });
   }
 
+  // 各種パネル・セレクトメニューのインタラクション
   if (interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isButton()) {
     if (interaction.guild.ownerId !== interaction.user.id) {
       return interaction.reply({ content: '❌ この操作はサーバー所有者しかできません。', flags: MessageFlags.Ephemeral });
