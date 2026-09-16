@@ -34,10 +34,10 @@ const FILE_PATH = 'config.json';
 
 let globalConfig = {};
 
-// Bot自身が削除したメッセージIDを一時記憶してMessageDeleteの重複発火を防ぐフラグ Set
+// 重複処理防止用 Set
 const deletedByBot = new Set();
-// 数字カウンターの連投処理制御用ロック Set
 const processingCountGuilds = new Set();
+const processingMembers = new Set();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -222,8 +222,6 @@ const commandsArray = [
   announceModule.data.toJSON(),
   setAnnounceModule.data.toJSON()
 ];
-
-const processingMembers = new Set();
 
 // --- プレイ中ステータス更新関数 ---
 function updatePresence() {
@@ -433,7 +431,7 @@ client.once(Events.ClientReady, async (c) => {
     console.error('スラッシュコマンド登録エラー:', e);
   }
 
-  // 再起動通知処理（指定チャンネルまたはログチャンネル宛て）
+  // 再起動通知処理（専用チャンネル優先）
   for (const guild of client.guilds.cache.values()) {
     const config = globalConfig[guild.id];
     if (config && config.restartNotify) {
@@ -646,8 +644,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     for (const guild of interaction.client.guilds.cache.values()) {
       const cfg = globalConfig[guild.id] || {};
-      
-      // アナウンス通知がOFFになっているサーバーはスキップ
+
       if (cfg.announceEnabled === false) {
         failCount++;
         continue;
@@ -656,12 +653,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         let targetChannel = null;
 
-        // 設定済みの指定チャンネルがあるか判定
         if (cfg.announceChannelId) {
           targetChannel = guild.channels.cache.get(cfg.announceChannelId);
         }
 
-        // 指定チャンネルがない場合はシステムチャンネルまたは送信可能なテキストチャンネルを探索
         if (!targetChannel || !targetChannel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) {
           targetChannel = guild.systemChannel;
         }
@@ -745,10 +740,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const guildId = interaction.guildId;
     initGuildConfig(guildId);
 
-    // アナウンスパネル用チャンネル選択メニュー
+    // アナウンスパネル用 通常アナウンスチャンネル選択
     if (interaction.customId === 'select_announce_channel') {
       const selectedChId = interaction.values[0] || null;
       updateGuildConfig(guildId, 'announceChannelId', selectedChId);
+      return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
+    }
+
+    // アナウンスパネル用 再起動通知チャンネル選択
+    if (interaction.customId === 'select_restart_channel') {
+      const selectedChId = interaction.values[0] || null;
       updateGuildConfig(guildId, 'restartNotifyChannelId', selectedChId);
       return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
     }
