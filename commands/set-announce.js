@@ -5,53 +5,51 @@ const {
   ButtonBuilder, 
   ButtonStyle, 
   ChannelType, 
-  PermissionFlagsBits 
+  PermissionFlagsBits,
+  MessageFlags
 } = require('discord.js');
 
-// 設定データ保持 ( guildId -> { announceChannelId, restartChannelId, announceEnabled, restartEnabled } )
-// ※ 永続化する場合は DB / JSONファイルへ書き出しを推奨
-const settings = new Map();
+// 実行を許可する特定ユーザーのID（環境変数がない場合はフォールバック）
+const ALLOWED_USER_ID = process.env.ALLOWED_USER_ID || '1266013271518089258';
 
-function getGuildSettings(guildId) {
-  if (!settings.has(guildId)) {
-    settings.set(guildId, {
-      announceChannelId: null,
-      restartChannelId: null,
-      announceEnabled: true,
-      restartEnabled: true
-    });
-  }
-  return settings.get(guildId);
-}
+// パネルEmbed & ボタン生成関数
+function buildAnnouncePanel(guild, globalConfig) {
+  const cfg = globalConfig[guild.id] || {};
+  
+  // アナウンス設定
+  const announceEnabled = cfg.announceEnabled ?? true;
+  const announceChId = cfg.announceChannelId || cfg.logChannelId;
+  const announceStr = announceChId ? `<#${announceChId}>` : '`未設定`';
 
-// パネルEmbed & ボタン生成ヘルパー
-function buildPanelComponents(guild, config) {
-  const announceCh = config.announceChannelId ? `<#${config.announceChannelId}>` : '`未設定`';
-  const restartCh = config.restartChannelId ? `<#${config.restartChannelId}>` : '`未設定`';
+  // 再起動通知設定
+  const restartEnabled = cfg.restartNotify ?? false;
+  const restartChId = cfg.restartNotifyChannelId || announceChId;
+  const restartStr = restartChId ? `<#${restartChId}>` : '`未設定`';
 
   const embed = new EmbedBuilder()
     .setTitle('⚙️ 通知・アナウンス管理パネル')
     .setColor('#3498db')
     .setDescription(
-      `**現在の設定状況**\n\n` +
+      `現在の各通知設定と送信先チャンネルです。\n下のボタンを押すことで通知の ON / OFF を切り替えられます。\n\n` +
       `📢 **通常アナウンス通知**\n` +
-      `・送信先: ${announceCh}\n` +
-      `・状態: ${config.announceEnabled ? '🟢 ON (有効)' : '🔴 OFF (無効)'}\n\n` +
+      `・送信先: ${announceStr}\n` +
+      `・状態: ${announceEnabled ? '🟢 ON (有効)' : '🔴 OFF (無効)'}\n\n` +
       `🔄 **再起動通知**\n` +
-      `・送信先: ${restartCh}\n` +
-      `・状態: ${config.restartEnabled ? '🟢 ON (有効)' : '🔴 OFF (無効)'}\n\n` +
-      `*下のボタンでそれぞれの ON / OFF を切り替えられます。*`
-    );
+      `・送信先: ${restartStr}\n` +
+      `・状態: ${restartEnabled ? '🟢 ON (有効)' : '🔴 OFF (無効)'}`
+    )
+    .setFooter({ text: '※このパネルは操作者だけに表示されています' })
+    .setTimestamp();
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId('toggle_announce')
-      .setLabel(`アナウンス: ${config.announceEnabled ? 'OFFにする' : 'ONにする'}`)
-      .setStyle(config.announceEnabled ? ButtonStyle.Danger : ButtonStyle.Success),
+      .setCustomId('toggle_announce_notify')
+      .setLabel(`通常アナウンス: ${announceEnabled ? 'OFFにする' : 'ONにする'}`)
+      .setStyle(announceEnabled ? ButtonStyle.Danger : ButtonStyle.Success),
     new ButtonBuilder()
-      .setCustomId('toggle_restart')
-      .setLabel(`再起動通知: ${config.restartEnabled ? 'OFFにする' : 'ONにする'}`)
-      .setStyle(config.restartEnabled ? ButtonStyle.Danger : ButtonStyle.Success)
+      .setCustomId('toggle_restart_notify')
+      .setLabel(`再起動通知: ${restartEnabled ? 'OFFにする' : 'ONにする'}`)
+      .setStyle(restartEnabled ? ButtonStyle.Danger : ButtonStyle.Success)
   );
 
   return { embeds: [embed], components: [row] };
@@ -60,98 +58,85 @@ function buildPanelComponents(guild, config) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('set-announce')
-    .setDescription('アナウンス・再起動通知の送信先指定およびパネルの管理')
+    .setDescription('アナウンス・再起動通知の送信先指定および管理パネルを表示します')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
     .addChannelOption(option => 
       option.setName('channel')
         .setDescription('指定するテキストチャンネル（未指定の場合は #botアナウンス を自動検索/作成）')
         .addChannelTypes(ChannelType.GuildText)
         .setRequired(false)
-    )
-    .addStringOption(option =>
-      option.setName('type')
-        .setDescription('設定対象の通知タイプ（指定なしの場合は両方に適用）')
-        .addChoices(
-          { name: '両方 (アナウンス & 再起動)', value: 'both' },
-          { name: '通常アナウンスのみ', value: 'announce' },
-          { name: '再起動通知のみ', value: 'restart' }
-        )
-        .setRequired(false)
     ),
 
-  async execute(interaction) {
-    if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return interaction.reply({ content: '❌ このコマンドを実行する権限（チャンネル管理）がありません。', ephemeral: true });
+  buildAnnouncePanel,
+
+  async execute(interaction, globalConfig = {}) {
+    if (!interaction.guild) {
+      return interaction.reply({
+        content: '❌ このコマンドはサーバー内でのみ使用できます。',
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    const isOwner = interaction.guild.ownerId === interaction.user.id;
+    const isAllowedUser = interaction.user.id === ALLOWED_USER_ID;
+
+    if (!isOwner && !isAllowedUser) {
+      return interaction.reply({ 
+        content: '❌ このコマンドを実行する権限がありません。', 
+        flags: MessageFlags.Ephemeral 
+      });
     }
 
     const guild = interaction.guild;
     const targetChannel = interaction.options.getChannel('channel');
-    const targetType = interaction.options.getString('type') || 'both';
-    const config = getGuildSettings(guild.id);
 
-    let noticeMessage = '';
+    if (!globalConfig[guild.id]) {
+      globalConfig[guild.id] = {};
+    }
+
+    let warningText = '';
 
     // 1. チャンネルが指定されている場合
     if (targetChannel) {
-      if (targetType === 'both' || targetType === 'announce') config.announceChannelId = targetChannel.id;
-      if (targetType === 'both' || targetType === 'restart') config.restartChannelId = targetChannel.id;
-      
-      noticeMessage = `✅ 送信先チャンネルを ${targetChannel} に設定しました。`;
+      globalConfig[guild.id].announceChannelId = targetChannel.id;
+      globalConfig[guild.id].restartNotifyChannelId = targetChannel.id;
     } 
     // 2. チャンネルが指定されていない場合
     else {
       let existingChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
 
       if (existingChannel) {
-        // 既存の #botアナウンス が存在する場合（作成せず警告を表示）
-        return interaction.reply({
-          content: `⚠️ すでに ${existingChannel} チャンネルが存在します。\n送信先にセットする場合は \`/set-announce channel:#${existingChannel.name}\` コマンドを実行して指定してください。`,
-          ephemeral: true
-        });
+        // 既に同名チャンネルが存在する場合（警告を表示してコマンド指定を促す）
+        warningText = `⚠️ 既に ${existingChannel} チャンネルが存在します。\nこのチャンネルにセットしたい場合は \`/set-announce channel:#${existingChannel.name}\` を指定して実行してください。\n\n`;
       } else {
-        // 存在しない場合は新規作成して割り当て
+        // 存在しない場合は自動作成
         try {
           const createdChannel = await guild.channels.create({
             name: 'botアナウンス',
             type: ChannelType.GuildText,
-            reason: 'Botアナウンス送信用チャンネルの自動生成'
+            reason: 'Botアナウンス送信用チャンネルの自動作成'
           });
 
-          if (targetType === 'both' || targetType === 'announce') config.announceChannelId = createdChannel.id;
-          if (targetType === 'both' || targetType === 'restart') config.restartChannelId = createdChannel.id;
-
-          noticeMessage = `📁 \`#botアナウンス\` チャンネルを新規作成し、送信先に割り当てました。`;
+          globalConfig[guild.id].announceChannelId = createdChannel.id;
+          globalConfig[guild.id].restartNotifyChannelId = createdChannel.id;
+          warningText = `📁 \`#botアナウンス\` チャンネルを作成し、送信先に割り当てました！\n\n`;
         } catch (error) {
           console.error(error);
-          return interaction.reply({ content: '❌ チャンネルの自動作成に失敗しました。Botに適切な作成権限があるか確認してください。', ephemeral: true });
+          return interaction.reply({ 
+            content: '❌ チャンネルの自動作成に失敗しました。Botにチャンネル管理権限があるか確認してください。', 
+            flags: MessageFlags.Ephemeral 
+          });
         }
       }
     }
 
-    // パネル表示
-    const panelPayload = buildPanelComponents(guild, config);
+    const panelPayload = buildAnnouncePanel(guild, globalConfig);
+
     return interaction.reply({ 
-      content: noticeMessage,
+      content: warningText ? warningText : undefined,
       embeds: panelPayload.embeds, 
       components: panelPayload.components, 
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral 
     });
-  },
-
-  // ボタンによる ON/OFF 切り替え処理
-  async handleButton(interaction) {
-    const config = getGuildSettings(interaction.guildId);
-
-    if (interaction.customId === 'toggle_announce') {
-      config.announceEnabled = !config.announceEnabled;
-    } else if (interaction.customId === 'toggle_restart') {
-      config.restartEnabled = !config.restartEnabled;
-    } else {
-      return;
-    }
-
-    const updatedPayload = buildPanelComponents(interaction.guild, config);
-    await interaction.update(updatedPayload);
-  },
-
-  getSettingsMap: () => settings
+  }
 };
