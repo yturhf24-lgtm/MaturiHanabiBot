@@ -156,7 +156,8 @@
       "excludeRoleIds": [],
       "targetRoleIds": [],
       "logChannelId": null
-    }
+    },
+    "announceChannelId": "1549845211650195586"
   },
   "1286627808046743562": {
     "enabled": false,
