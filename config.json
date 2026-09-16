@@ -494,5 +494,61 @@
       "targetRoleIds": [],
       "logChannelId": null
     }
+  },
+  "1521768113106849912": {
+    "enabled": false,
+    "executionInterval": "instant",
+    "restartNotify": false,
+    "restartNotifyChannelId": null,
+    "announceEnabled": true,
+    "announceChannelId": "1549845275781107732",
+    "conditionRoleId": null,
+    "hasRoleIds": [],
+    "removeRoleIds": [],
+    "addRoleIds": [],
+    "logChannelId": null,
+    "countConfig": {
+      "enabled": false,
+      "channelId": null,
+      "currentNum": 0,
+      "deleteWrong": true,
+      "warnEmbed": true,
+      "lastMessageId": null
+    },
+    "addRoleConfig": {
+      "enabled": false,
+      "executionInterval": "instant",
+      "excludeRoleIds": [],
+      "targetRoleIds": [],
+      "logChannelId": null
+    }
+  },
+  "1525697338360856756": {
+    "enabled": false,
+    "executionInterval": "instant",
+    "restartNotify": false,
+    "restartNotifyChannelId": null,
+    "announceEnabled": true,
+    "announceChannelId": "1549845281875431436",
+    "conditionRoleId": null,
+    "hasRoleIds": [],
+    "removeRoleIds": [],
+    "addRoleIds": [],
+    "logChannelId": null,
+    "countConfig": {
+      "enabled": false,
+      "channelId": null,
+      "currentNum": 0,
+      "deleteWrong": true,
+      "warnEmbed": true,
+      "lastMessageId": null
+    },
+    "addRoleConfig": {
+      "enabled": false,
+      "executionInterval": "instant",
+      "excludeRoleIds": [],
+      "targetRoleIds": [],
+      "logChannelId": null
+    }
   }
 }
