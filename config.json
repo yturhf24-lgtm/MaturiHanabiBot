@@ -102,7 +102,7 @@
     },
     "executionInterval": "5min",
     "announceChannelId": "1524714468234362891",
-    "announceEnabled": false
+    "announceEnabled": true
   },
   "1536775818649538721": {
     "enabled": false,
