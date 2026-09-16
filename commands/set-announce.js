@@ -12,16 +12,13 @@ const {
 
 const ALLOWED_USER_ID = process.env.ALLOWED_USER_ID || '1266013271518089258';
 
-// パネルEmbed & コンポーネント生成関数
 function buildAnnouncePanel(guild, globalConfig) {
   const cfg = globalConfig[guild.id] || {};
   
-  // 通常アナウンス設定
   const announceEnabled = cfg.announceEnabled ?? true;
   const announceChId = cfg.announceChannelId || null;
   const announceStr = announceChId ? `<#${announceChId}>` : '`未設定`';
 
-  // 再起動通知設定
   const restartEnabled = cfg.restartNotify ?? false;
   const restartChId = cfg.restartNotifyChannelId || null;
   const restartStr = restartChId ? `<#${restartChId}>` : '`未設定`';
@@ -41,7 +38,6 @@ function buildAnnouncePanel(guild, globalConfig) {
     .setFooter({ text: '※このパネルはあなただけに表示されています' })
     .setTimestamp();
 
-  // 1. 通常アナウンス用 チャンネル選択セレクトメニュー
   const announceMenuBuilder = new ChannelSelectMenuBuilder()
     .setCustomId('select_announce_channel')
     .setPlaceholder('📢 通常アナウンス送信先を選択')
@@ -50,7 +46,6 @@ function buildAnnouncePanel(guild, globalConfig) {
     .setMaxValues(1);
   if (announceChId) announceMenuBuilder.setDefaultChannels([announceChId]);
 
-  // 2. 再起動通知用 チャンネル選択セレクトメニュー
   const restartMenuBuilder = new ChannelSelectMenuBuilder()
     .setCustomId('select_restart_channel')
     .setPlaceholder('🔄 再起動通知送信先を選択')
@@ -59,7 +54,6 @@ function buildAnnouncePanel(guild, globalConfig) {
     .setMaxValues(1);
   if (restartChId) restartMenuBuilder.setDefaultChannels([restartChId]);
 
-  // 3. ON/OFF 切り替えボタン
   const buttonRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('toggle_announce_notify')
@@ -111,28 +105,26 @@ module.exports = {
       globalConfig[guild.id] = {};
     }
 
-    // 未設定時の初期自動割り当て（#botアナウンス 検索/生成）
-    if (!globalConfig[guild.id].announceChannelId && !globalConfig[guild.id].restartNotifyChannelId) {
-      let existingChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
-      let targetId = existingChannel?.id;
+    // パネルを開いた際、#botアナウンス がなければ即時作成してセット
+    let existingChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
+    let targetId = existingChannel?.id;
 
-      if (!targetId) {
-        try {
-          const createdChannel = await guild.channels.create({
-            name: 'botアナウンス',
-            type: ChannelType.GuildText,
-            reason: 'Botアナウンス送信用チャンネルの自動作成'
-          });
-          targetId = createdChannel.id;
-        } catch (e) {
-          console.error('自動チャンネル作成失敗:', e);
-        }
+    if (!targetId) {
+      try {
+        const createdChannel = await guild.channels.create({
+          name: 'botアナウンス',
+          type: ChannelType.GuildText,
+          reason: 'Botアナウンス管理パネル初回表示による自動作成'
+        });
+        targetId = createdChannel.id;
+      } catch (e) {
+        console.error('パネル表示時のチャンネル自動作成エラー:', e);
       }
+    }
 
-      if (targetId) {
-        globalConfig[guild.id].announceChannelId = targetId;
-        globalConfig[guild.id].restartNotifyChannelId = targetId;
-      }
+    if (targetId) {
+      if (!globalConfig[guild.id].announceChannelId) globalConfig[guild.id].announceChannelId = targetId;
+      if (!globalConfig[guild.id].restartNotifyChannelId) globalConfig[guild.id].restartNotifyChannelId = targetId;
     }
 
     const panelPayload = buildAnnouncePanel(guild, globalConfig);
