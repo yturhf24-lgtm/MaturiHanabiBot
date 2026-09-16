@@ -27,7 +27,8 @@ function buildAnnouncePanel(guild, globalConfig) {
     .setTitle('⚙️ 通知・アナウンス管理パネル')
     .setColor('#3498db')
     .setDescription(
-      `送信先チャンネルおよび通知の ON / OFF を個別に設定できます。\n\n` +
+      `送信先チャンネルおよび通知の ON / OFF を個別に設定できます。\n` +
+      `※未設定のままアナウンスが送信された場合、自動的に \`#botアナウンス\` チャンネルが作成されます。\n\n` +
       `📢 **通常アナウンス通知**\n` +
       `・送信先: ${announceStr}\n` +
       `・状態: ${announceEnabled ? '🟢 ON (有効)' : '🔴 OFF (無効)'}\n\n` +
@@ -105,28 +106,7 @@ module.exports = {
       globalConfig[guild.id] = {};
     }
 
-    // パネルを開いた際、#botアナウンス がなければ即時作成してセット
-    let existingChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
-    let targetId = existingChannel?.id;
-
-    if (!targetId) {
-      try {
-        const createdChannel = await guild.channels.create({
-          name: 'botアナウンス',
-          type: ChannelType.GuildText,
-          reason: 'Botアナウンス管理パネル初回表示による自動作成'
-        });
-        targetId = createdChannel.id;
-      } catch (e) {
-        console.error('パネル表示時のチャンネル自動作成エラー:', e);
-      }
-    }
-
-    if (targetId) {
-      if (!globalConfig[guild.id].announceChannelId) globalConfig[guild.id].announceChannelId = targetId;
-      if (!globalConfig[guild.id].restartNotifyChannelId) globalConfig[guild.id].restartNotifyChannelId = targetId;
-    }
-
+    // パネル表示のみを行い、チャンネル自動作成は行いません
     const panelPayload = buildAnnouncePanel(guild, globalConfig);
     return interaction.reply({ 
       embeds: panelPayload.embeds, 
