@@ -16,8 +16,8 @@ const {
   PermissionFlagsBits
 } = require('discord.js');
 
-// --- 管理者ユーザーID設定 ---
-const ALLOWED_USER_ID = '1266013271518089258';
+// --- 管理者ユーザーID設定 (環境変数がない場合はフォールバック) ---
+const ALLOWED_USER_ID = process.env.ALLOWED_USER_ID || '1266013271518089258';
 
 // --- Express サーバー ---
 const app = express();
@@ -36,12 +36,17 @@ let globalConfig = {};
 
 // Bot自身が削除したメッセージIDを一時記憶してMessageDeleteの重複発火を防ぐフラグ Set
 const deletedByBot = new Set();
+// 数字カウンターの連投処理制御用ロック Set
+const processingCountGuilds = new Set();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // GitHub からの設定データ取得
 async function syncConfigFromGithub() {
-  if (!GITHUB_TOKEN) return;
+  if (!GITHUB_TOKEN) {
+    console.warn('⚠️ GITHUB_TOKEN が設定されていないため、ローカルメモリ上で動作します。');
+    return;
+  }
   const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}?ref=${BRANCH}`;
 
   try {
@@ -59,8 +64,9 @@ async function syncConfigFromGithub() {
       globalConfig = JSON.parse(content || '{}');
       console.log('✅ GitHub から最新の設定データを同期しました。');
     } else if (res.status === 404) {
+      console.log('ℹ️ 設定ファイルが見つからないため、新規作成します。');
       globalConfig = {};
-      saveConfigToGithub();
+      await saveConfigToGithub();
     }
   } catch (err) {
     console.error('GitHub 同期エラー:', err);
@@ -71,27 +77,27 @@ async function syncConfigFromGithub() {
 async function saveConfigToGithub() {
   if (!GITHUB_TOKEN) return;
 
-  const content = JSON.stringify(globalConfig, null, 2);
-  const base64Content = Buffer.from(content).toString('base64');
-  const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}`;
-
-  const headers = {
-    Authorization: `Bearer ${GITHUB_TOKEN.trim()}`,
-    'User-Agent': 'Node.js',
-    'Accept': 'application/vnd.github.v3+json',
-    'Content-Type': 'application/json'
-  };
-
-  let sha = null;
   try {
-    const res = await fetch(`${url}?ref=${BRANCH}`, { headers });
-    if (res.ok) {
-      const data = await res.json();
-      sha = data.sha;
-    }
-  } catch (e) {}
+    const content = JSON.stringify(globalConfig, null, 2);
+    const base64Content = Buffer.from(content).toString('base64');
+    const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE_PATH}`;
 
-  try {
+    const headers = {
+      Authorization: `Bearer ${GITHUB_TOKEN.trim()}`,
+      'User-Agent': 'Node.js',
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    };
+
+    let sha = null;
+    try {
+      const res = await fetch(`${url}?ref=${BRANCH}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        sha = data.sha;
+      }
+    } catch (e) {}
+
     await fetch(url, {
       method: 'PUT',
       headers,
@@ -156,21 +162,21 @@ function initGuildConfig(guildId) {
 function updateGuildConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId][key] = value;
-  saveConfigToGithub();
+  saveConfigToGithub().catch(console.error);
   return globalConfig;
 }
 
 function updateCountConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId].countConfig[key] = value;
-  saveConfigToGithub();
+  saveConfigToGithub().catch(console.error);
   return globalConfig;
 }
 
 function updateAddRoleConfig(guildId, key, value) {
   initGuildConfig(guildId);
   globalConfig[guildId].addRoleConfig[key] = value;
-  saveConfigToGithub();
+  saveConfigToGithub().catch(console.error);
   return globalConfig;
 }
 
@@ -325,15 +331,20 @@ async function scanSingleGuild(guild, isPeriodicScan = false) {
   const guildConfig = globalConfig[guild.id];
   if (!guildConfig) return 0;
 
+  const autoRoleActive = guildConfig.enabled && (!isPeriodicScan || guildConfig.executionInterval === '5min');
+  const addRoleActive = guildConfig.addRoleConfig?.enabled && (!isPeriodicScan || guildConfig.addRoleConfig.executionInterval === '5min');
+
+  if (!autoRoleActive && !addRoleActive) return 0;
+
   let updatedCount = 0;
   const members = guild.members.cache;
 
   for (const member of members.values()) {
     if (!member.user.bot) {
-      if (guildConfig.enabled && (!isPeriodicScan || guildConfig.executionInterval === '5min')) {
+      if (autoRoleActive) {
         if (await processMemberRoles(member, guildConfig)) updatedCount++;
       }
-      if (guildConfig.addRoleConfig?.enabled && (!isPeriodicScan || guildConfig.addRoleConfig.executionInterval === '5min')) {
+      if (addRoleActive) {
         if (await processAddRolesOnly(member, guildConfig.addRoleConfig)) updatedCount++;
       }
       await sleep(100);
@@ -476,32 +487,40 @@ client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  const countConfig = globalConfig[message.guild.id]?.countConfig;
+  const guildId = message.guild.id;
+  const countConfig = globalConfig[guildId]?.countConfig;
   if (!countConfig || !countConfig.enabled || countConfig.channelId !== message.channel.id) return;
 
-  const inputTrimmed = message.content.trim();
-  const inputNum = parseInt(inputTrimmed, 10);
-  const expectedNum = (countConfig.currentNum || 0) + 1;
+  if (processingCountGuilds.has(guildId)) return;
+  processingCountGuilds.add(guildId);
 
-  if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== expectedNum) {
-    if (countConfig.deleteWrong !== false) {
-      deletedByBot.add(message.id);
-      await message.delete().catch(() => {});
-    }
-    if (countConfig.warnEmbed !== false) {
-      const warnEmbed = new EmbedBuilder()
-        .setTitle('⚠️ 数字が間違っています！')
-        .setDescription(`<@${message.author.id}> さん、次に送信する正しい数字は **\`${expectedNum}\`** です。`)
-        .setColor(0xffa500)
-        .setTimestamp();
+  try {
+    const inputTrimmed = message.content.trim();
+    const inputNum = parseInt(inputTrimmed, 10);
+    const expectedNum = (countConfig.currentNum || 0) + 1;
 
-      const warnMsg = await message.channel.send({ embeds: [warnEmbed] }).catch(() => {});
-      if (warnMsg) setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+    if (isNaN(inputNum) || inputTrimmed !== String(inputNum) || inputNum !== expectedNum) {
+      if (countConfig.deleteWrong !== false) {
+        deletedByBot.add(message.id);
+        await message.delete().catch(() => {});
+      }
+      if (countConfig.warnEmbed !== false) {
+        const warnEmbed = new EmbedBuilder()
+          .setTitle('⚠️ 数字が間違っています！')
+          .setDescription(`<@${message.author.id}> さん、次に送信する正しい数字は **\`${expectedNum}\`** です。`)
+          .setColor(0xffa500)
+          .setTimestamp();
+
+        const warnMsg = await message.channel.send({ embeds: [warnEmbed] }).catch(() => {});
+        if (warnMsg) setTimeout(() => warnMsg.delete().catch(() => {}), 5000);
+      }
+    } else {
+      updateCountConfig(guildId, 'currentNum', expectedNum);
+      updateCountConfig(guildId, 'lastMessageId', message.id);
+      await message.react('✅').catch(() => {});
     }
-  } else {
-    updateCountConfig(message.guild.id, 'currentNum', expectedNum);
-    updateCountConfig(message.guild.id, 'lastMessageId', message.id);
-    await message.react('✅').catch(() => {});
+  } finally {
+    processingCountGuilds.delete(guildId);
   }
 });
 
