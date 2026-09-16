@@ -745,7 +745,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const guildId = interaction.guildId;
     initGuildConfig(guildId);
 
-    // アナウンスパネル用ボタンの制御
+    // アナウンスパネル用チャンネル選択メニュー
+    if (interaction.customId === 'select_announce_channel') {
+      const selectedChId = interaction.values[0] || null;
+      updateGuildConfig(guildId, 'announceChannelId', selectedChId);
+      updateGuildConfig(guildId, 'restartNotifyChannelId', selectedChId);
+      return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
+    }
+
+    // アナウンスパネル用 ON/OFF ボタン制御
     if (interaction.customId === 'toggle_announce_notify') {
       const currentState = globalConfig[guildId]?.announceEnabled ?? true;
       updateGuildConfig(guildId, 'announceEnabled', !currentState);
