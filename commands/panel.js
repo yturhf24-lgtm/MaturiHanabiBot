@@ -9,7 +9,6 @@ function buildPanelEmbed(guild, config) {
   const addStr = (c.addRoleIds && c.addRoleIds.length > 0) ? c.addRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
   const logStr = c.logChannelId ? `<#${c.logChannelId}>` : '未設定（なしでもOK）';
   const statusStr = c.enabled ? `🟢 動作中（${c.executionInterval === '5min' ? '5分ごとに自動チェック' : '即時検知'}）` : '🔴 停止中';
-  const restartNotifyStr = c.restartNotify ? '🔔 ON' : '🔕 OFF';
 
   return new EmbedBuilder()
     .setTitle('🛡️ ロール自動制御パネル')
@@ -21,7 +20,6 @@ function buildPanelEmbed(guild, config) {
     .addFields(
       { name: '⚡ 現在の動作ステータス', value: statusStr, inline: true },
       { name: '⏱️ 実行タイミング', value: intervalLabel, inline: true },
-      { name: '🔄 再起動通知', value: restartNotifyStr, inline: true },
       { name: '🔍 1. チェックするロール（この役職を持っている人だけ処理）', value: conditionStr, inline: false },
       { name: '🗑️ 2. 自動で外すロール', value: removeStr, inline: true },
       { name: '➕ 3. 自動でつけるロール', value: addStr, inline: true },
@@ -73,17 +71,12 @@ function buildPanelComponents(guild, config) {
     .setLabel(`⏱️ 間隔: ${c.executionInterval === '5min' ? '5分ごと' : '即時'}`)
     .setStyle(c.executionInterval === '5min' ? ButtonStyle.Secondary : ButtonStyle.Primary);
 
-  const restartNotifyButton = new ButtonBuilder()
-    .setCustomId('toggle_restart_notify')
-    .setLabel(c.restartNotify ? '🔔 再起動通知: ON' : '🔕 再起動通知: OFF')
-    .setStyle(c.restartNotify ? ButtonStyle.Primary : ButtonStyle.Secondary);
-
   return [
     new ActionRowBuilder().addComponents(conditionMenuBuilder),
     new ActionRowBuilder().addComponents(removeMenuBuilder),
     new ActionRowBuilder().addComponents(addMenuBuilder),
     new ActionRowBuilder().addComponents(channelMenuBuilder),
-    new ActionRowBuilder().addComponents(toggleButton, intervalButton, restartNotifyButton)
+    new ActionRowBuilder().addComponents(toggleButton, intervalButton)
   ];
 }
 
