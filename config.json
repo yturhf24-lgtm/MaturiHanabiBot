@@ -69,7 +69,7 @@
   "1524426850305315037": {
     "enabled": true,
     "restartNotify": true,
-    "restartNotifyChannelId": null,
+    "restartNotifyChannelId": "1524714468234362891",
     "conditionRoleId": "1524658796075683922",
     "hasRoleIds": [],
     "removeRoleIds": [
@@ -100,7 +100,8 @@
       "logChannelId": "1524714468234362891",
       "executionInterval": "5min"
     },
-    "executionInterval": "5min"
+    "executionInterval": "5min",
+    "announceChannelId": "1524714468234362891"
   },
   "1536775818649538721": {
     "enabled": false,
