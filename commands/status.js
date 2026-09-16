@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 
-// 実行を許可する特定ユーザーのID
-const ALLOWED_USER_ID = '1266013271518089258';
+// 実行を許可する特定ユーザーのID（環境変数がない場合はフォールバック値を使用）
+const ALLOWED_USER_ID = process.env.ALLOWED_USER_ID || '1266013271518089258';
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -9,7 +9,15 @@ module.exports = {
     .setDescription('現在のBot設定状態を確認します（許可されたユーザーのみ）'),
 
   async execute(interaction, globalConfig = {}) {
-    // 実行権限チェック（指定ID または サーバー所有者）
+    // 1. サーバー外（DM等）での実行防止
+    if (!interaction.guild) {
+      return interaction.reply({
+        content: '❌ このコマンドはサーバー内でのみ使用できます。',
+        flags: MessageFlags.Ephemeral
+      });
+    }
+
+    // 2. 実行権限チェック（指定ID または サーバー所有者）
     const isOwner = interaction.guild.ownerId === interaction.user.id;
     const isAllowedUser = interaction.user.id === ALLOWED_USER_ID;
 
@@ -23,10 +31,12 @@ module.exports = {
     const guildId = interaction.guildId;
     const cfg = globalConfig[guildId] || {};
 
-    // 1. ロール自動制御設定
+    // --- 1. ロール自動制御設定 ---
     const roleControlStatus = cfg.enabled ? '🟢 動作中' : '🔴 停止中';
     const roleInterval = cfg.executionInterval === '5min' ? '⏱️ 5分ごと' : '⚡ 即時検知';
     const conditionRole = cfg.conditionRoleId ? `<@&${cfg.conditionRoleId}>` : '未設定';
+    const hasRoles = (cfg.hasRoleIds && cfg.hasRoleIds.length > 0)
+      ? cfg.hasRoleIds.map(id => `<@&${id}>`).join(', ') : '指定なし（全員）';
     const removeRoles = (cfg.removeRoleIds && cfg.removeRoleIds.length > 0) 
       ? cfg.removeRoleIds.map(id => `<@&${id}>`).join(', ') : 'なし';
     const addRoles = (cfg.addRoleIds && cfg.addRoleIds.length > 0) 
@@ -34,7 +44,7 @@ module.exports = {
     const roleLogChannel = cfg.logChannelId ? `<#${cfg.logChannelId}>` : '未設定';
     const restartNotify = cfg.restartNotify ? '🔔 ON' : '🔕 OFF';
 
-    // 2. 条件ロール自動付与設定
+    // --- 2. 条件ロール自動付与設定 ---
     const addRoleCfg = cfg.addRoleConfig || {};
     const addRoleStatus = addRoleCfg.enabled ? '🟢 動作中' : '🔴 停止中';
     const addRoleInterval = addRoleCfg.executionInterval === '5min' ? '⏱️ 5分ごと' : '⚡ 即時検知';
@@ -44,7 +54,7 @@ module.exports = {
       ? addRoleCfg.targetRoleIds.map(id => `<@&${id}>`).join(', ') : '未設定';
     const addRoleLogChannel = addRoleCfg.logChannelId ? `<#${addRoleCfg.logChannelId}>` : '未設定';
 
-    // 3. 数字カウンター設定
+    // --- 3. 数字カウンター設定 ---
     const countCfg = cfg.countConfig || {};
     const countStatus = countCfg.enabled ? '🟢 動作中' : '🔴 停止中';
     const countChannel = countCfg.channelId ? `<#${countCfg.channelId}>` : '未設定';
@@ -61,7 +71,8 @@ module.exports = {
           value: 
             `> **ステータス:** ${roleControlStatus}\n` +
             `> **実行タイミング:** ${roleInterval}\n` +
-            `> **条件ロール:** ${conditionRole}\n` +
+            `> **トリガーロール:** ${conditionRole}\n` +
+            `> **チェック対象ロール:** ${hasRoles}\n` +
             `> **自動削除:** ${removeRoles}\n` +
             `> **自動付与:** ${addRoles}\n` +
             `> **ログ先:** ${roleLogChannel}\n` +
@@ -92,6 +103,9 @@ module.exports = {
       .setFooter({ text: '※このメッセージはあなただけに表示されています' })
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    await interaction.reply({
+      embeds: [embed],
+      flags: MessageFlags.Ephemeral
+    });
   }
 };
