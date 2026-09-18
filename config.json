@@ -754,7 +754,7 @@
     "executionInterval": "instant",
     "restartNotify": false,
     "restartNotifyChannelId": "1538795471772852359",
-    "announceEnabled": true,
+    "announceEnabled": false,
     "announceChannelId": "1538795471772852359",
     "conditionRoleId": null,
     "hasRoleIds": [],
