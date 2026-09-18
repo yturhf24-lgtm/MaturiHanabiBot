@@ -205,6 +205,7 @@ const statusModule = require('./commands/status.js');
 const serversModule = require('./commands/servers.js');
 const announceModule = require('./commands/announce.js');
 const setAnnounceModule = require('./commands/set-announce.js');
+const checkAnnounceModule = require('./commands/checkAnnounce.js');
 
 client.commands.set(panelModule.data.name, panelModule);
 client.commands.set(countPanelModule.data.name, countPanelModule);
@@ -213,6 +214,7 @@ client.commands.set(statusModule.data.name, statusModule);
 client.commands.set(serversModule.data.name, serversModule);
 client.commands.set(announceModule.data.name, announceModule);
 client.commands.set(setAnnounceModule.data.name, setAnnounceModule);
+client.commands.set(checkAnnounceModule.data.name, checkAnnounceModule);
 
 const commandsArray = [
   panelModule.data.toJSON(),
@@ -221,7 +223,8 @@ const commandsArray = [
   statusModule.data.toJSON(),
   serversModule.data.toJSON(),
   announceModule.data.toJSON(),
-  setAnnounceModule.data.toJSON()
+  setAnnounceModule.data.toJSON(),
+  checkAnnounceModule.data.toJSON()
 ];
 
 // --- プレイ中ステータス更新関数 ---
@@ -610,7 +613,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // --- アナウンス送信（モーダル受信） ---
+  // --- アナウンス一括送信（レート制限対策 ＆ サーバー名・招待リンク付きレポート） ---
   if (interaction.isModalSubmit() && interaction.customId === 'announce_modal') {
     if (interaction.user.id !== ALLOWED_USER_ID) return;
 
@@ -626,14 +629,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setFooter({ text: '公式アナウンス' })
       .setTimestamp();
 
-    let successCount = 0;
-    let failCount = 0;
+    const guilds = Array.from(interaction.client.guilds.cache.values());
+    let successList = [];
+    let offList = [];
+    let failList = [];
 
-    for (const guild of interaction.client.guilds.cache.values()) {
+    for (const guild of guilds) {
       const cfg = globalConfig[guild.id] || {};
+      
+      let inviteLink = '取得不可';
+      try {
+        const invites = await guild.invites.fetch().catch(() => null);
+        let validInvite = invites?.find(inv => !inv.expiresTimestamp || inv.expiresTimestamp > Date.now());
+        if (validInvite) {
+          inviteLink = validInvite.url;
+        } else {
+          const targetCh = guild.channels.cache.find(ch => ch.isTextBased() && ch.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.CreateInstantInvite));
+          if (targetCh) {
+            const newInvite = await targetCh.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
+            if (newInvite) inviteLink = newInvite.url;
+          }
+        }
+      } catch (e) {}
 
       if (cfg.announceEnabled === false) {
-        failCount++;
+        offList.push(`・**${guild.name}** (🔗 [招待リンク](${inviteLink}))`);
         continue;
       }
 
@@ -645,14 +665,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
           targetChannel = guild.channels.cache.get(cfg.announceChannelId);
         }
 
-        // 指定がない、または指定チャンネルが削除されていた場合は #botアナウンス を検索またはその場で自動作成
         if (!targetChannel) {
           targetChannel = guild.channels.cache.find(c => c.name === 'botアナウンス' && c.type === ChannelType.GuildText);
           if (!targetChannel) {
             targetChannel = await guild.channels.create({
               name: 'botアナウンス',
               type: ChannelType.GuildText,
-              reason: 'アナウンス送信時のチャンネル自動生成'
+              reason: 'アナウンス送信時のチャンネル自動生成',
+              permissionOverwrites: [
+                {
+                  id: guild.id,
+                  deny: [PermissionFlagsBits.SendMessages],
+                }
+              ]
             });
             isAutoCreatedChannel = true;
           }
@@ -660,28 +685,37 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
 
         if (targetChannel && targetChannel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.SendMessages)) {
-          // アナウンス時にチャンネルを自動作成した場合は警告Embedを同時に添付
           if (isAutoCreatedChannel) {
             const warningEmbed = new EmbedBuilder()
               .setTitle('⚠️ アナウンス先チャンネルを自動作成しました')
-              .setDescription('送信先チャンネルが未指定だったため `#botアナウンス` を自動作成して設定しました。\n変更したい場合は `/set-announce` コマンドで設定してください。')
+              .setDescription('送信先チャンネルが未指定だったため `#botアナウンス` を自動作成しました（誰もチャットできないように権限をロックしています）。\n変更は `/set-announce` から行えます。')
               .setColor(0xffa500);
             await targetChannel.send({ embeds: [warningEmbed] });
           }
 
           await targetChannel.send({ embeds: [announceEmbed] });
-          successCount++;
+          successList.push(`・**${guild.name}** (<#${targetChannel.id}>) | 🔗 [招待リンク](${inviteLink})`);
         } else {
-          failCount++;
+          failList.push(`・**${guild.name}** (送信権限なし) | 🔗 [招待リンク](${inviteLink})`);
         }
       } catch (err) {
-        failCount++;
+        failList.push(`・**${guild.name}** (エラー) | 🔗 [招待リンク](${inviteLink})`);
       }
+
+      await sleep(1500);
     }
 
-    return interaction.editReply({
-      content: `📢 アナウンス送信完了\n・成功: **${successCount}** サーバー\n・失敗/送信不可/OFF設定: **${failCount}** サーバー`
-    });
+    const reportEmbed = new EmbedBuilder()
+      .setTitle('📢 アナウンス一括送信レポート')
+      .setColor(0x2ecc71)
+      .setDescription(
+        `✅ **成功 (${successList.length}件)**\n${successList.join('\n') || 'なし'}\n\n` +
+        `🔕 **OFF設定 (${offList.length}件)**\n${offList.join('\n') || 'なし'}\n\n` +
+        `❌ **失敗/送信不可 (${failList.length}件)**\n${failList.join('\n') || 'なし'}`
+      )
+      .setTimestamp();
+
+    return interaction.editReply({ content: '', embeds: [reportEmbed] });
   }
 
   if (interaction.isButton() && interaction.customId === 'open_set_number_modal') {
@@ -736,7 +770,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const guildId = interaction.guildId;
     initGuildConfig(guildId);
 
-    // 通常アナウンスチャンネル変更
     if (interaction.customId === 'select_announce_channel') {
       const selectedChId = interaction.values[0] || null;
       updateGuildConfig(guildId, 'announceChannelId', selectedChId);
@@ -744,7 +777,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
     }
 
-    // 再起動通知チャンネル変更
     if (interaction.customId === 'select_restart_channel') {
       const selectedChId = interaction.values[0] || null;
       updateGuildConfig(guildId, 'restartNotifyChannelId', selectedChId);
@@ -764,7 +796,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply(setAnnounceModule.buildAnnouncePanel(interaction.guild, globalConfig));
     }
 
-    // ロール制御パネル制御
     if (interaction.customId === 'select_condition_role') {
       updateGuildConfig(guildId, 'conditionRoleId', interaction.values[0]);
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
@@ -800,7 +831,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ embeds: [panelModule.buildPanelEmbed(interaction.guild, globalConfig)], components: panelModule.buildPanelComponents(interaction.guild, globalConfig) });
     }
 
-    // カウントパネル制御
     if (interaction.customId === 'select_count_channel') {
       updateCountConfig(guildId, 'channelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
@@ -824,7 +854,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
 
-    // 条件ロール追加パネル制御
     if (interaction.customId === 'select_add_exclude_roles') {
       updateAddRoleConfig(guildId, 'excludeRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
@@ -841,14 +870,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const currentInterval = globalConfig[guildId]?.addRoleConfig?.executionInterval || 'instant';
       const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
       updateAddRoleConfig(guildId, 'executionInterval', nextInterval);
-      return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
+      return interaction.editReply({
+        embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)],
+        components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig)
+      });
     }
+
     if (interaction.customId === 'toggle_role_add_active') {
       const currentConfig = globalConfig[guildId]?.addRoleConfig || {};
+      if (!currentConfig.enabled && (!currentConfig.targetRoleIds || currentConfig.targetRoleIds.length === 0)) {
+        return interaction.followUp({ content: '⚠️ 付与対象のロールを事前に設定してください。', flags: MessageFlags.Ephemeral });
+      }
       updateAddRoleConfig(guildId, 'enabled', !currentConfig.enabled);
-      return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
+      return interaction.editReply({
+        embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)],
+        components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig)
+      });
     }
   }
 });
 
+// --- Botログイン ---
 client.login(process.env.DISCORD_TOKEN);
