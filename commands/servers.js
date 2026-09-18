@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 
 // 実行を許可する特定ユーザーのID（環境変数がない場合はフォールバック）
 const ALLOWED_USER_ID = process.env.ALLOWED_USER_ID || '1266013271518089258';
@@ -26,15 +26,41 @@ module.exports = {
       });
     }
 
+    // 処理に時間がかかる場合があるため、一度「思考中」の返信する（Ephemeral）
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const guilds = Array.from(interaction.client.guilds.cache.values());
     const totalGuilds = guilds.length;
     const totalMembers = guilds.reduce((acc, guild) => acc + guild.memberCount, 0);
 
-    // サーバーリストを表示用に整形
-    let serverListText = guilds.map((guild, index) => {
+    // サーバーリストを表示用に整形（各サーバーの招待リンクを自動取得）
+    const serverLines = [];
+    for (let index = 0; index < guilds.length; index++) {
+      const guild = guilds[index];
       const number = String(index + 1).padStart(2, '0');
-      return `\`${number}.\` **${guild.name}**\n┗ 🆔 \`${guild.id}\` | 👤 **${guild.memberCount.toLocaleString()}** 人`;
-    }).join('\n\n');
+
+      let inviteLink = null;
+      try {
+        const invites = await guild.invites.fetch().catch(() => null);
+        let validInvite = invites?.find(inv => !inv.expiresTimestamp || inv.expiresTimestamp > Date.now());
+        if (validInvite) {
+          inviteLink = validInvite.url;
+        } else {
+          const targetCh = guild.channels.cache.find(ch => ch.isTextBased() && ch.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.CreateInstantInvite));
+          if (targetCh) {
+            const newInvite = await targetCh.createInvite({ maxAge: 0, maxUses: 0 }).catch(() => null);
+            if (newInvite) inviteLink = newInvite.url;
+          }
+        }
+      } catch (e) {}
+
+      // リンクが取得できた場合はMarkdownリンク、できない場合は名前のみにする
+      const serverDisplayName = inviteLink ? `[${guild.name}](${inviteLink})` : guild.name;
+
+      serverLines.push(`\`${number}.\` **${serverDisplayName}**\n┗ 🆔 \`${guild.id}\` | 👤 **${guild.memberCount.toLocaleString()}** 人`);
+    }
+
+    let serverListText = serverLines.join('\n\n');
 
     // Discordの文字数制限（4000文字）を超える場合の安全対策
     if (serverListText.length > 3800) {
@@ -54,9 +80,8 @@ module.exports = {
       .setFooter({ text: `要求ユーザー: ${interaction.user.tag}` })
       .setTimestamp();
 
-    return interaction.reply({ 
-      embeds: [embed], 
-      flags: MessageFlags.Ephemeral 
+    return interaction.editReply({ 
+      embeds: [embed] 
     });
   }
 };
