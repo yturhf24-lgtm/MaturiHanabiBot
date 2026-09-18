@@ -916,5 +916,8 @@
       "targetRoleIds": [],
       "logChannelId": null
     }
+  },
+  "1540354244748779630": {
+    "announceEnabled": false
   }
 }
