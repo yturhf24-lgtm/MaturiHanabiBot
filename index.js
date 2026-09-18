@@ -613,7 +613,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // --- アナウンス一括送信（レート制限対策 ＆ サーバー名・招待リンク付きレポート） ---
+  // --- アナウンス一括送信（レート制限対策 ＆ 失敗分・OFF分のみ報告） ---
   if (interaction.isModalSubmit() && interaction.customId === 'announce_modal') {
     if (interaction.user.id !== ALLOWED_USER_ID) return;
 
@@ -630,7 +630,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       .setTimestamp();
 
     const guilds = Array.from(interaction.client.guilds.cache.values());
-    let successList = [];
+    let successCount = 0;
     let offList = [];
     let failList = [];
 
@@ -663,6 +663,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         if (cfg.announceChannelId) {
           targetChannel = guild.channels.cache.get(cfg.announceChannelId);
+          if (!targetChannel) {
+            updateGuildConfig(guild.id, 'announceChannelId', null);
+          }
         }
 
         if (!targetChannel) {
@@ -694,12 +697,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
 
           await targetChannel.send({ embeds: [announceEmbed] });
-          successList.push(`・**${guild.name}** (<#${targetChannel.id}>) | 🔗 [招待リンク](${inviteLink})`);
+          successCount++;
         } else {
           failList.push(`・**${guild.name}** (送信権限なし) | 🔗 [招待リンク](${inviteLink})`);
         }
       } catch (err) {
-        failList.push(`・**${guild.name}** (エラー) | 🔗 [招待リンク](${inviteLink})`);
+        failList.push(`・**${guild.name}** (エラー/チャンネル不明) | 🔗 [招待リンク](${inviteLink})`);
       }
 
       await sleep(1500);
@@ -707,11 +710,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const reportEmbed = new EmbedBuilder()
       .setTitle('📢 アナウンス一括送信レポート')
-      .setColor(0x2ecc71)
+      .setColor(failList.length > 0 ? 0xe74c3c : 0x2ecc71)
       .setDescription(
-        `✅ **成功 (${successList.length}件)**\n${successList.join('\n') || 'なし'}\n\n` +
-        `🔕 **OFF設定 (${offList.length}件)**\n${offList.join('\n') || 'なし'}\n\n` +
-        `❌ **失敗/送信不可 (${failList.length}件)**\n${failList.join('\n') || 'なし'}`
+        `✅ **成功:** ${successCount} サーバー\n` +
+        `🔕 **OFF設定 (${offList.length}件):**\n${offList.join('\n') || 'なし'}\n\n` +
+        (failList.length > 0 
+          ? `❌ **失敗/送信不可 (${failList.length}件)**\n${failList.join('\n')}` 
+          : `🎉 失敗したサーバーはありません。すべての有効なサーバーへの送信が完了しました！`)
       )
       .setTimestamp();
 
@@ -854,41 +859,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.editReply({ embeds: [countPanelModule.buildCountPanelEmbed(interaction.guild, globalConfig)], components: countPanelModule.buildCountPanelComponents(interaction.guild, globalConfig) });
     }
 
-    if (interaction.customId === 'select_add_exclude_roles') {
+    if (interaction.customId === 'select_addrole_exclude') {
       updateAddRoleConfig(guildId, 'excludeRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
-    if (interaction.customId === 'select_add_target_roles') {
+    if (interaction.customId === 'select_addrole_targets') {
       updateAddRoleConfig(guildId, 'targetRoleIds', interaction.values || []);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
-    if (interaction.customId === 'select_add_role_log_channel') {
+    if (interaction.customId === 'select_addrole_log') {
       updateAddRoleConfig(guildId, 'logChannelId', interaction.values[0] || null);
       return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
-    if (interaction.customId === 'toggle_role_add_interval') {
+    if (interaction.customId === 'toggle_addrole_interval') {
       const currentInterval = globalConfig[guildId]?.addRoleConfig?.executionInterval || 'instant';
       const nextInterval = currentInterval === 'instant' ? '5min' : 'instant';
       updateAddRoleConfig(guildId, 'executionInterval', nextInterval);
-      return interaction.editReply({
-        embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)],
-        components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig)
-      });
+      return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
-
-    if (interaction.customId === 'toggle_role_add_active') {
+    if (interaction.customId === 'toggle_addrole_active') {
       const currentConfig = globalConfig[guildId]?.addRoleConfig || {};
       if (!currentConfig.enabled && (!currentConfig.targetRoleIds || currentConfig.targetRoleIds.length === 0)) {
-        return interaction.followUp({ content: '⚠️ 付与対象のロールを事前に設定してください。', flags: MessageFlags.Ephemeral });
+        return interaction.followUp({ content: '⚠️ 「1. 付与するロール」を事前に設定してください。', flags: MessageFlags.Ephemeral });
       }
       updateAddRoleConfig(guildId, 'enabled', !currentConfig.enabled);
-      return interaction.editReply({
-        embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)],
-        components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig)
-      });
+      return interaction.editReply({ embeds: [roleAddPanelModule.buildRoleAddPanelEmbed(interaction.guild, globalConfig)], components: roleAddPanelModule.buildRoleAddPanelComponents(interaction.guild, globalConfig) });
     }
   }
 });
 
-// --- Botログイン ---
+// --- Bot ログイン ---
+if (!process.env.DISCORD_TOKEN) {
+  console.error('❌ DISCORD_TOKEN が環境変数に設定されていません。');
+  process.exit(1);
+}
+
 client.login(process.env.DISCORD_TOKEN);
