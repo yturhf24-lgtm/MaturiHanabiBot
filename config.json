@@ -671,7 +671,7 @@
     "restartNotify": false,
     "restartNotifyChannelId": null,
     "announceEnabled": true,
-    "announceChannelId": "1549845311512641646",
+    "announceChannelId": null,
     "conditionRoleId": null,
     "hasRoleIds": [],
     "removeRoleIds": [],
